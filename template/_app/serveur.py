@@ -585,6 +585,18 @@ def sonder(chemin):
     base = {"m": round(taille / 1048576, 2), "octets": taille,
             "w": None, "h": None, "fps": 0,
             "s": DUREE_IMAGE if image else 0.0, "a": False, "image": image}
+    if image:
+        # Lire l en-tete d une image prend quelques microsecondes ; lancer un
+        # ffprobe par fichier en prend cent mille fois plus. Sur un dossier de
+        # deux mille images, c est la difference entre une seconde et une
+        # demi-heure. Sans Pillow, ffprobe prend le relais plus bas.
+        try:
+            from PIL import Image
+            with Image.open(chemin) as im:
+                base["w"], base["h"] = im.size
+            return base
+        except Exception:
+            pass
     if not FFPROBE:
         return base
     try:
@@ -778,8 +790,32 @@ def onde_de(pr, fiche):
     return d
 
 
+def _pillow_la():
+    try:
+        from PIL import Image          # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def _vignette_pillow(source, cible):
+    """La vignette d une image, faite par Pillow : bien plus rapide qu un
+    ffmpeg par fichier. Faux si Pillow n est pas la — ffmpeg prend le relais."""
+    try:
+        from PIL import Image, ImageOps
+        with Image.open(source) as im:
+            im = ImageOps.exif_transpose(im).convert("RGB")
+            im.thumbnail((480, 480 * 4))
+            tmp = cible + ".tmp.jpg"
+            im.save(tmp, "JPEG", quality=82)
+        os.replace(tmp, cible)
+        return True
+    except Exception:
+        return False
+
+
 def fabriquer_posters(pr, budget=None, bavard=True):
-    if not FFMPEG:
+    if not FFMPEG and not _pillow_la():
         if bavard:
             print("ffmpeg missing: posters taken by the browser.")
         return 0
@@ -799,7 +835,12 @@ def fabriquer_posters(pr, budget=None, bavard=True):
         src = sur(pr, f["rel"])
         if not src or not os.path.isfile(src):
             continue
+        if not FFMPEG and not f.get("image"):
+            continue
         if f.get("image"):
+            if _vignette_pillow(src, cible):
+                faits += 1
+                continue
             # Pas de « -ss » sur une image fixe : il n y a rien a chercher.
             cmd = [FFMPEG, "-nostdin", "-v", "error", "-i", src]
         else:
