@@ -1,0 +1,5 @@
+# Rien de ce dossier ne doit etre servi directement : catalogues, montages et
+# prereglages ne passent que par api.php. Les deux syntaxes Apache, parce que
+# l hebergeur peut etre en 2.2 comme en 2.4.
+Require all denied
+Deny from all

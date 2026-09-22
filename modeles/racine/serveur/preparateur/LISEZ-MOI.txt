@@ -1,0 +1,48 @@
+PREPARER UNE BIBLIOTHEQUE
+
+Lanceur : Preparer une bibliotheque.bat, a la racine.
+Python 3.7 minimum. Pillow est facultatif pour les petites vignettes.
+Les chemins sont calcules depuis le dossier du programme.
+
+NOUVEAU DOSSIER
+1. Placez votre dossier a la racine, puis choisissez-le dans le preparateur.
+2. Indiquez UN suffixe de miniature, avant l'extension (exemple : _source).
+3. Cliquez sur Verifier les correspondances.
+4. Cliquez sur Creer la bibliotheque.
+5. Actualisez les bibliotheques dans l'accueil general.
+
+Chaque dossier contenant des images est un asset.
+La miniature doit etre unique dans ce dossier pour le suffixe choisi.
+Au clic sur elle, TOUTES les images du meme dossier sont accessibles,
+quels que soient leurs noms, prefixes ou suffixes.
+Les images d'un sous-dossier appartiennent a cet autre dossier, elles ne sont
+pas melangees aux images de son parent.
+Sans miniature correspondante, le dossier est signale et non inclus.
+Plusieurs miniatures dans le meme dossier bloquent la creation : precisez le suffixe.
+Aucune image n'est deplacee, renommee ou supprimee.
+Les dossiers serveur, caches techniques, dossiers masques et liens externes sont exclus.
+Formats indexes : JPG, JPEG, PNG, WebP, GIF, BMP, TIFF et AVIF.
+L'affichage integral depend des formats reconnus par le navigateur.
+
+REGLAGES ET COMPATIBILITE
+Les nouvelles configurations ont le mode dossier et un suffixe de vignette dans
+serveur/_configuration.json. Il n'y a plus de configuration des vues detaillees.
+Les anciennes configurations avec des suffixes de vues restent compatibles ;
+elles ne sont ni effacees ni converties automatiquement.
+Police utilise le mode dossier ; ses anciennes valeurs de configuration restent
+conservees et ses identifiants et marquages sont maintenus.
+La nouvelle galerie reprend la presentation historique : grille compacte,
+favoris sur les cartes, pastille sur le numero, filtres colores en haut,
+selection et telechargement ZIP.
+Cliquer sur le numero d'une carte permet de changer sa pastille.
+Une selection affiche la barre inferieure pour appliquer une couleur ou telecharger.
+
+BIBLIOTHEQUE EXISTANTE
+L'accueil general detecte directement une banque deja equipee.
+Le bouton Actualiser les chemins du preparateur relance uniquement son scanner,
+apres selection explicite. Les anciens index sont sauvegardes.
+Configuration, favoris, pastilles, serveur et interface sont proteges.
+La creation ne remplace jamais un dossier serveur existant.
+Aucune tache planifiee ni surveillance permanente.
+Ctrl+C dans la console ferme le preparateur.
+

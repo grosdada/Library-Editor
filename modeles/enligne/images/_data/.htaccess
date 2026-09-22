@@ -1,0 +1,5 @@
+# Rien de ce dossier n est servi directement : images, vignettes, index et
+# marques ne passent que par api.php. Les deux syntaxes Apache, parce que
+# l hebergeur peut etre en 2.2 comme en 2.4.
+Require all denied
+Deny from all

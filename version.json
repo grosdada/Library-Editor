@@ -1,0 +1,217 @@
+{
+ "version": "1.1.0",
+ "date": "2026-09-22",
+ "notes": "",
+ "genres": {
+  "films": {
+   "fichiers": {
+    "_app/serveur.py": {
+     "depot": "template/_app/serveur.py",
+     "sha256": "ea172db806ac11052ee370de9a6a8aebf62d4d9784b5d2d56cb329095a6f48c8",
+     "historique": [
+      "e1cdd0258910b7986a6c26f6b7164d7b8a2610f66f69ef292806e8115ba3a49d",
+      "85d2a6014b37143750673fcc5da50dc4dd63dd837627cf2d002be0e1f08a9a03"
+     ]
+    },
+    "_app/app.html": {
+     "depot": "template/_app/app.html",
+     "sha256": "74903d9979e22b203bbe19969f2de020fefbbc921e39f889312beb36d3c962be",
+     "historique": [
+      "bcaee501fc23d322034fee64afde7dff827884ddb7139dd4c370ed07d4fc2410",
+      "5fdf04c279c4c900a3a202b2b3c5310bee53684a032f7c965e8f466684eae5d9"
+     ]
+    },
+    "_app/_maj.py": {
+     "depot": "modeles/commun/_maj.py",
+     "sha256": "491e4cbb1a724a90759306bc875cd77958b0582bba7e67e4adb8a32eb2909cd8",
+     "historique": []
+    },
+    "_app/LANCER.bat": {
+     "depot": "modeles/films/LANCER.bat",
+     "sha256": "240625faf14fc34eadbd4cd5979bfa926b28ab4c225a1f4515215e58f0693865",
+     "historique": [
+      "6d1a65db88b5d3e3ae2a5d29143bda7ff1e862842c68e3ec19f7c6ee52f29b94"
+     ],
+     "lanceur": true
+    },
+    "LANCER-LA-BIBLIOTHEQUE.bat": {
+     "depot": "modeles/films/LANCER-LA-BIBLIOTHEQUE.bat",
+     "sha256": "6b9b28329e47be8c6b9bf2b2858985d86394d7d5d2b6279ff2c5e28ea27682e8",
+     "historique": [
+      "df2a2699ebf56c8648d3a08ec9e9bb39a08ef3f2db42159b3eb900c80bc26319"
+     ],
+     "lanceur": true,
+     "cache": true
+    },
+    "LANCER-LA-BIBLIOTHEQUE.exe": {
+     "depot": "modeles/lanceur/lanceur.exe",
+     "sha256": "61251f26242b218de4259028e1be81aead173884058bf58d1dd889be71598d60",
+     "historique": [],
+     "si_jumeau": "LANCER-LA-BIBLIOTHEQUE.bat"
+    }
+   }
+  },
+  "racine": {
+   "fichiers": {
+    "serveur/_serveur.py": {
+     "depot": "modeles/racine/serveur/_serveur.py",
+     "sha256": "88666536f6146252a0c39f2a640a9254e123edc9a566a65ef0d5b9caa9bc4871",
+     "historique": [
+      "c3606e708a8f0ee39e7893d6b2d96224054a4d646873d88c197b4e9ff074c74d"
+     ]
+    },
+    "serveur/NAVIGATEUR.html": {
+     "depot": "modeles/racine/serveur/NAVIGATEUR.html",
+     "sha256": "9c08f082d90fa2cc05c9cb8e6f43b100334fc12cf118cbc5463126f375f9a7ee",
+     "historique": [
+      "7b59a5ebe7f1ec585f7a5f702dc47d84558793f4172d73ba44bbedfe90f2be0c"
+     ]
+    },
+    "serveur/_maj.py": {
+     "depot": "modeles/commun/_maj.py",
+     "sha256": "491e4cbb1a724a90759306bc875cd77958b0582bba7e67e4adb8a32eb2909cd8",
+     "historique": []
+    },
+    "serveur/LISEZ-MOI.txt": {
+     "depot": "modeles/racine/serveur/LISEZ-MOI.txt",
+     "sha256": "7af9fa177cb945015e0de33e9a971a6fa614ee81911352f3b99433a9f18d4557",
+     "historique": []
+    },
+    "serveur/biblio-generale.bat": {
+     "depot": "modeles/racine/serveur/biblio-generale.bat",
+     "sha256": "9dc66d01cc04dc1692a8cbd9d098e57313ff56b32a33fe34035ed64622e63625",
+     "historique": [
+      "e68a3a994b5b49758be95973ea67b540204551435cf3538c72f3375aefa2bd29"
+     ],
+     "lanceur": true
+    },
+    "serveur/preparateur/_preparateur.py": {
+     "depot": "modeles/racine/serveur/preparateur/_preparateur.py",
+     "sha256": "1beef62b304b0a99f1a5d764857bf52c43e521ad2295d00e099be92b7e6b10f4",
+     "historique": [
+      "338c87618902dfac178b9b371f773f5b395a11bc7330ea6b76f571705f000102"
+     ]
+    },
+    "serveur/preparateur/PREPARER.html": {
+     "depot": "modeles/racine/serveur/preparateur/PREPARER.html",
+     "sha256": "534c757d0691c2f86c9007821185da4e08efc28a48f65cf88f7f3cae425774c3",
+     "historique": []
+    },
+    "serveur/preparateur/LISEZ-MOI.txt": {
+     "depot": "modeles/racine/serveur/preparateur/LISEZ-MOI.txt",
+     "sha256": "c9860119f185e192d5a4fe74a5612310f7cacda6c210d8c309987a58323f7753",
+     "historique": []
+    },
+    "serveur/preparateur/preparer.bat": {
+     "depot": "modeles/racine/serveur/preparateur/preparer.bat",
+     "sha256": "680d89b7798bb3bc2c7c76deb16212c53827caa5c61599629b0f29e2d8b6af77",
+     "historique": [
+      "5bd9ccddaedbaa07564a74d05e4a13d68804c37cce415ae9f6231bce64c3ec7b"
+     ],
+     "lanceur": true
+    },
+    "serveur/preparateur/modeles/_serveur.py": {
+     "depot": "modeles/images/_serveur.py",
+     "sha256": "2095772de574a3ad0e66124ca27620351c779a09ef5be900bf69efdf898b6577",
+     "historique": [
+      "90a892cdb6e599ef260d3ee2fcce3d9bd399d972c4e4fa9be9c79ff2e00c3280"
+     ]
+    },
+    "serveur/preparateur/modeles/_scan.py": {
+     "depot": "modeles/images/_scan.py",
+     "sha256": "e3998832e87e274d57105728f9d50e5003df9392ca2f78abf5cd1eba91741893",
+     "historique": [
+      "aa363d7cbcf4901cb3976509408067eb01e9434fcdc1c4a3b88b4d87827a6e7e",
+      "33c7b03bafdff1f40111d3ae401d1fdecdee93c62522370c22da564387619744"
+     ]
+    },
+    "serveur/preparateur/modeles/NAVIGATEUR.html": {
+     "depot": "modeles/images/NAVIGATEUR.html",
+     "sha256": "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945",
+     "historique": []
+    },
+    "serveur/preparateur/modeles/biblio.bat": {
+     "depot": "modeles/images/biblio.bat",
+     "sha256": "280a2011c8ffda4dc28e44bc8fbe4a78362797051edd7efb85c015444f289293",
+     "historique": [
+      "2e77325c0d5c35da3a42e2a05f4572f29c3bf99286ded355e53d8eedefc9fcf7",
+      "e276bceba497c674856596a568e92fd9d3624cb71f8d52d3069cdb461f49a575"
+     ]
+    },
+    "Bibliotheque generale.bat": {
+     "depot": "modeles/racine/Bibliotheque generale.bat",
+     "sha256": "a922089a7fc1002a05709ae828a9130efd4e3c1966066157b9f6c8a7b9094757",
+     "historique": [],
+     "lanceur": true,
+     "cache": true
+    },
+    "Preparer une bibliotheque.bat": {
+     "depot": "modeles/racine/Preparer une bibliotheque.bat",
+     "sha256": "b63854196370746450da269c3557899b4878bf4806b890d9a32046e63eab55e1",
+     "historique": [],
+     "lanceur": true,
+     "cache": true
+    },
+    "Bibliotheque generale.exe": {
+     "depot": "modeles/lanceur/lanceur.exe",
+     "sha256": "61251f26242b218de4259028e1be81aead173884058bf58d1dd889be71598d60",
+     "historique": [],
+     "si_jumeau": "Bibliotheque generale.bat"
+    },
+    "Preparer une bibliotheque.exe": {
+     "depot": "modeles/lanceur/lanceur.exe",
+     "sha256": "61251f26242b218de4259028e1be81aead173884058bf58d1dd889be71598d60",
+     "historique": [],
+     "si_jumeau": "Preparer une bibliotheque.bat"
+    }
+   }
+  },
+  "banque": {
+   "fichiers": {
+    "serveur/_serveur.py": {
+     "depot": "modeles/images/_serveur.py",
+     "sha256": "2095772de574a3ad0e66124ca27620351c779a09ef5be900bf69efdf898b6577",
+     "historique": [
+      "90a892cdb6e599ef260d3ee2fcce3d9bd399d972c4e4fa9be9c79ff2e00c3280"
+     ]
+    },
+    "serveur/_scan.py": {
+     "depot": "modeles/images/_scan.py",
+     "sha256": "e3998832e87e274d57105728f9d50e5003df9392ca2f78abf5cd1eba91741893",
+     "historique": [
+      "aa363d7cbcf4901cb3976509408067eb01e9434fcdc1c4a3b88b4d87827a6e7e",
+      "33c7b03bafdff1f40111d3ae401d1fdecdee93c62522370c22da564387619744"
+     ]
+    },
+    "serveur/NAVIGATEUR.html": {
+     "depot": "modeles/images/NAVIGATEUR.html",
+     "sha256": "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945",
+     "historique": []
+    },
+    "serveur/biblio.bat": {
+     "depot": "modeles/images/biblio.bat",
+     "sha256": "280a2011c8ffda4dc28e44bc8fbe4a78362797051edd7efb85c015444f289293",
+     "historique": [
+      "2e77325c0d5c35da3a42e2a05f4572f29c3bf99286ded355e53d8eedefc9fcf7",
+      "e276bceba497c674856596a568e92fd9d3624cb71f8d52d3069cdb461f49a575"
+     ],
+     "lanceur": true
+    },
+    "LANCER-LA-BIBLIOTHEQUE.bat": {
+     "depot": "modeles/images/LANCER-LA-BIBLIOTHEQUE.bat",
+     "sha256": "665f959d65c7309632da6e8a5b55c23dcf36e82cda38e7432a60e3c865bbe1b7",
+     "historique": [],
+     "lanceur": true,
+     "cache": true,
+     "si_present": true
+    },
+    "LANCER-LA-BIBLIOTHEQUE.exe": {
+     "depot": "modeles/lanceur/lanceur.exe",
+     "sha256": "61251f26242b218de4259028e1be81aead173884058bf58d1dd889be71598d60",
+     "historique": [],
+     "si_jumeau": "LANCER-LA-BIBLIOTHEQUE.bat"
+    }
+   }
+  }
+ }
+}

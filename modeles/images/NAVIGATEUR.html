@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bibliothèque d’images</title><style>:root{--fond:#151719;--carte:#1e2124;--encre:#e6e8ea;--sourd:#858c93;--orange:#2e9dbb;--trait:#2c3034;--c1:#e0483c;--c2:#e5b73b;--c3:#4caf6d;--c4:#3f8fd0;--c5:#9b6bd6}
+*{box-sizing:border-box}body{margin:0;background:var(--fond);color:var(--encre);font:14px/1.5 "Segoe UI",system-ui,sans-serif}
+header{position:sticky;top:0;z-index:10;background:var(--fond);border-bottom:1px solid var(--trait);padding:14px 20px}
+h1{margin:0 0 10px;font-size:16px;letter-spacing:.16em;text-transform:uppercase}.barre,.sous-barre{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.sous-barre{margin-top:10px}
+button,input,select{font:inherit;color:var(--encre);background:var(--carte);border:1px solid var(--trait);border-radius:4px;padding:6px 12px}button{cursor:pointer}button:hover{border-color:var(--sourd)}button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--encre);outline-offset:3px}
+button[aria-pressed=true]{border-color:var(--encre)}#bFavoris[aria-pressed=true]{background:var(--orange);border-color:var(--orange);color:white}
+#q{min-width:240px}#compte{color:var(--sourd);font-size:12px}.sep{width:1px;height:26px;background:var(--trait)}.sous-barre select,.sous-barre button{font-size:12px;padding:4px 9px}
+#filtres-couleurs{display:flex;gap:10px;align-items:center}.filtre-couleur,.pastille-choix{width:26px;height:26px;border-radius:50%;padding:0;border:2px solid var(--trait)}
+.filtre-couleur[aria-pressed=true]{border-color:var(--encre);box-shadow:0 0 0 2px var(--fond),0 0 0 3px var(--encre)}
+.couleur-1,.couleur-1:hover{background:var(--c1)}.couleur-2,.couleur-2:hover{background:var(--c2)}.couleur-3,.couleur-3:hover{background:var(--c3)}.couleur-4,.couleur-4:hover{background:var(--c4)}.couleur-5,.couleur-5:hover{background:var(--c5)}
+#grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;padding:18px 20px 70px}
+.c{background:var(--carte);border:1px solid var(--trait);border-radius:5px;overflow:hidden;position:relative}.c:hover{border-color:var(--orange)}.c[data-couleur]:not([data-couleur="0"]){border-color:var(--pastille)}
+.image{display:block;width:100%;padding:0;border:0;border-radius:0;background:#0d0f11;cursor:pointer}.image img{width:100%;display:block;aspect-ratio:3/4;object-fit:contain;background:#0d0f11}
+.t{padding:7px 9px;font-size:11px;line-height:1.35}.t b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:5px}.t span{display:flex;align-items:center;gap:5px;color:var(--sourd);font-size:10px}
+.favori{position:absolute;top:5px;right:5px;width:28px;height:28px;padding:0;border-radius:50%;background:rgba(0,0,0,.45);border:0;color:#fff9;font-size:15px;line-height:28px;text-align:center}
+.favori:hover{background:rgba(0,0,0,.7);color:white}.favori[aria-pressed=true]{color:#ffc83d}
+.num{display:inline-block;font:10px/1 ui-monospace,monospace;background:var(--orange);color:white;padding:3px 6px;border-radius:3px;margin-right:5px;border:0;cursor:pointer}.num.coloree{background:var(--pastille);color:#141719}
+.case{margin:0 0 0 auto;flex:none;width:15px;height:15px;min-width:0;padding:0;cursor:pointer;accent-color:var(--orange)}
+.c.choisi{border-color:var(--orange);box-shadow:inset 0 0 0 2px var(--orange)}
+#menu{position:fixed;z-index:80;background:var(--carte);border:1px solid var(--sourd);border-radius:6px;padding:8px;display:flex;gap:6px;box-shadow:0 6px 20px #000a}
+#menu .aucune{background:var(--carte);border:2px dashed var(--sourd);color:var(--sourd);font-size:14px}
+#message{font-size:12px;color:#e5b73b;padding:10px 20px;margin:0}
+dialog{padding:0;background:var(--carte);color:var(--encre);border:1px solid var(--trait);border-radius:7px;width:min(1400px,96vw);max-height:94vh;overflow:auto}
+dialog::backdrop{background:rgba(0,0,0,.86)}.vue{background:#0d0f11;text-align:center}#grande{max-width:100%;width:100%;height:66vh;object-fit:contain;display:block;margin:0 auto}
+.corps{padding:14px 18px}.corps h2{margin:0 0 3px;font-size:16px}.marques-detail{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 12px;padding:9px 10px;background:#181b1e;border:1px solid var(--trait);border-radius:5px}.detail-favori[aria-pressed=true]{color:#ffc83d;border-color:#ffc83d}.detail-couleurs{display:flex;gap:7px;align-items:center}.detail-couleurs .pastille-choix[aria-pressed=true]{border-color:var(--encre);box-shadow:0 0 0 2px var(--carte),0 0 0 3px var(--encre)}.detail-couleurs .aucune{background:var(--carte);border-style:dashed;color:var(--sourd)}.onglets{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;align-items:center}.onglets button{font-size:12px;overflow-wrap:anywhere;max-width:100%}
+.onglets button[aria-pressed=true]{background:var(--orange);border-color:var(--orange);color:white}.act{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}.act a{color:var(--encre)}
+.lig{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--trait);font-size:12px}.lig i{color:var(--sourd);font-style:normal;min-width:70px}.lig code{word-break:break-all}
+#selbar{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:60;background:var(--carte);border:1px solid var(--sourd);border-radius:9px;box-shadow:0 10px 34px #000c;padding:10px 14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap;max-width:96vw}
+#selN{font-size:12px;color:var(--sourd);white-space:nowrap}[hidden]{display:none!important}
+@media(max-width:600px){#grille{grid-template-columns:repeat(2,minmax(0,1fr));padding:12px 10px 100px;gap:10px}header{padding:12px 10px}#q{min-width:0;width:100%}.barre{gap:8px}#selbar{width:96vw}.onglets{gap:5px}#grande{height:55vh}}
+</style></head><body>
+<header><h1 id="titre">Bibliothèque</h1><div class="barre"><input id="q" placeholder="chercher un nom, un numéro…" aria-label="Rechercher un nom"><input type="checkbox" id="favoris" hidden><button id="bFavoris" aria-pressed="false">★ favoris</button><div class="sep"></div><select id="couleur" hidden><option value="">Toutes les pastilles</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select><div id="filtres-couleurs" role="group" aria-label="Filtrer par couleur"><button type="button" class="filtre-couleur couleur-1" data-filtre="1" aria-label="Filtrer : Rouge" title="Rouge" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-2" data-filtre="2" aria-label="Filtrer : Jaune" title="Jaune" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-3" data-filtre="3" aria-label="Filtrer : Vert" title="Vert" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-4" data-filtre="4" aria-label="Filtrer : Bleu" title="Bleu" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-5" data-filtre="5" aria-label="Filtrer : Violet" title="Violet" aria-pressed="false"></button></div><button id="tout">tout</button><div class="sep"></div><button id="scan">Mettre à jour</button><span id="compte"></span></div><div class="sous-barre"><select id="dossier" aria-label="Filtrer par dossier"><option value="">Tous les dossiers</option></select><select id="tri" aria-label="Trier"><option value="nom">Par nom</option><option value="date">Plus récents</option></select><button id="selection">Sélectionner les résultats</button></div></header>
+<p id="message" role="status" hidden></p><main id="grille"></main><div id="menu" role="group" aria-label="Choisir une pastille" hidden></div>
+<dialog id="detail"><div class="vue"><img id="grande" alt=""></div><div class="corps"><h2 id="nom-detail"></h2><div class="marques-detail"><button type="button" id="detail-favori" class="detail-favori" aria-pressed="false">☆ Favori</button><div class="detail-couleurs" role="group" aria-label="Pastille de couleur"><button type="button" class="pastille-choix aucune" data-detail-couleur="0" aria-label="Aucune couleur" title="Aucune">×</button><button type="button" class="pastille-choix couleur-1" data-detail-couleur="1" aria-label="Rouge" title="Rouge"></button><button type="button" class="pastille-choix couleur-2" data-detail-couleur="2" aria-label="Jaune" title="Jaune"></button><button type="button" class="pastille-choix couleur-3" data-detail-couleur="3" aria-label="Vert" title="Vert"></button><button type="button" class="pastille-choix couleur-4" data-detail-couleur="4" aria-label="Bleu" title="Bleu"></button><button type="button" class="pastille-choix couleur-5" data-detail-couleur="5" aria-label="Violet" title="Violet"></button></div></div><div id="vues" class="onglets"></div><div class="lig"><i>Dossier</i><code id="detail-dossier"></code></div><div class="act"><button id="precedent" aria-label="Asset précédent">‹ Précédent</button><button id="suivant" aria-label="Asset suivant">Suivant ›</button><button id="ouvrir">Ouvrir le dossier</button><a id="original" target="_blank" rel="noopener">Image originale</a><button id="fermer">Fermer</button></div></div></dialog>
+<div id="selbar" hidden><span id="selN"></span><div class="sep"></div><button class="pastille-choix couleur-0" data-selection-couleur="0" aria-label="Appliquer : Aucune" title="Aucune">×</button><button class="pastille-choix couleur-1" data-selection-couleur="1" aria-label="Appliquer : Rouge" title="Rouge"></button><button class="pastille-choix couleur-2" data-selection-couleur="2" aria-label="Appliquer : Jaune" title="Jaune"></button><button class="pastille-choix couleur-3" data-selection-couleur="3" aria-label="Appliquer : Vert" title="Vert"></button><button class="pastille-choix couleur-4" data-selection-couleur="4" aria-label="Appliquer : Bleu" title="Bleu"></button><button class="pastille-choix couleur-5" data-selection-couleur="5" aria-label="Appliquer : Violet" title="Violet"></button><div class="sep"></div><button id="zip">Télécharger le ZIP</button><button id="vider">Tout désélectionner</button></div><iframe name="telechargement" title="Téléchargement du ZIP" hidden></iframe>
+<script>
+const $=id=>document.getElementById(id),choix=new Set();let items=[],marques={},visibles=[],courant=null,fichierCourant=null;
+const couleurs=['Aucune','Rouge','Jaune','Vert','Bleu','Violet'];
+const teintes=['#2c3034','#e0483c','#e5b73b','#4caf6d','#3f8fd0','#9b6bd6'];
+const url=(p,item)=>'/fichier?p='+encodeURIComponent(p)+(item?.versions?.[p]?'&v='+encodeURIComponent(item.versions[p]):'');
+function message(texte){$('message').textContent=texte;$('message').hidden=!texte;}
+async function api(route,donnees){
+ const r=await fetch(route,donnees===undefined?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(donnees)});
+ const d=await r.json();if(!r.ok)throw Error(d.erreur||'Action impossible');return d;
+}
+function selection(){ $('selbar').hidden=!choix.size;$('selN').textContent=choix.size+' sélectionné(s)';$('zip').textContent='Télécharger le ZIP ('+choix.size+')';$('zip').disabled=!choix.size;}
+async function marquer(item,modification){
+ const valeur={fav:false,coul:0,...marques[item.id],...modification,t:Math.max(Date.now(),Number(marques[item.id]?.t||0)+1)};marques[item.id]=valeur;rendre();
+ try{const retour=await api('/marques',{[item.id]:valeur});for(const [id,v]of Object.entries(retour)){if(!marques[id]||v.t>=marques[id].t)marques[id]=v;}rendre();message('');}
+ catch(e){message('Enregistrement impossible : '+e.message);}
+}
+function actualiserMarquesDetail(){
+ if(!courant)return;const marque=marques[courant.id]||{},favori=$('detail-favori');
+ favori.setAttribute('aria-pressed',String(!!marque.fav));favori.textContent=(marque.fav?'★':'☆')+' Favori';
+ for(const bouton of document.querySelectorAll('[data-detail-couleur]'))bouton.setAttribute('aria-pressed',String(Number(bouton.dataset.detailCouleur)===Number(marque.coul||0)));
+}
+function rendre(){
+ $('bFavoris').setAttribute('aria-pressed',String($('favoris').checked));
+ for(const b of document.querySelectorAll('[data-filtre]'))b.setAttribute('aria-pressed',String(b.dataset.filtre===$('couleur').value));
+ const q=$('q').value.trim().toLocaleLowerCase(),dossier=$('dossier').value;
+ visibles=items.filter(i=>(i.nom+' '+i.dossier).toLocaleLowerCase().includes(q)&&(!dossier||i.dossier===dossier)&&(!$('favoris').checked||marques[i.id]?.fav)&&(!$('couleur').value||String(marques[i.id]?.coul)===$('couleur').value));
+ visibles.sort($('tri').value==='date'?(a,b)=>b.date-a.date:(a,b)=>a.nom.localeCompare(b.nom,'fr',{numeric:true}));
+ $('compte').textContent=visibles.length+' / '+items.length+' · '+items.filter(i=>marques[i.id]?.fav).length+' favoris';$('grille').replaceChildren();
+ for(const item of visibles){
+  const carte=document.createElement('article');carte.className='c';carte.classList.toggle('choisi',choix.has(item.id));
+  const couleur=Number(marques[item.id]?.coul)||0;carte.dataset.couleur=couleur;carte.style.setProperty('--pastille',teintes[couleur]);
+  const bouton=document.createElement('button');bouton.className='image';bouton.setAttribute('aria-label','Voir '+item.nom);
+  const img=document.createElement('img');img.loading='lazy';img.alt=item.nom;img.src=item.miniature?'/vignette?id='+encodeURIComponent(item.miniature)+(item.miniature_version?'&v='+item.miniature_version:''):url(item.vignette,item);bouton.append(img);bouton.onclick=()=>detail(item);
+  const fav=document.createElement('button');fav.className='favori';fav.textContent=marques[item.id]?.fav?'★':'☆';fav.setAttribute('aria-label','Favori : '+item.nom);fav.setAttribute('aria-pressed',String(!!marques[item.id]?.fav));fav.onclick=()=>marquer(item,{fav:!marques[item.id]?.fav});
+  const caption=document.createElement('div');caption.className='t';const titre=document.createElement('b');titre.textContent=item.nom;titre.title=item.nom;
+  const ligne=document.createElement('span'),numero=document.createElement('button');numero.className='num'+(couleur?' coloree':'');numero.textContent=String(items.indexOf(item)+1).padStart(2,'0');numero.title='Pastille de rangement';numero.setAttribute('aria-label','Pastille : '+item.nom);numero.onclick=e=>{e.stopPropagation();menuPastille(item,numero);};
+  const caseC=document.createElement('input');caseC.type='checkbox';caseC.className='case';caseC.setAttribute('aria-label','Sélectionner : '+item.nom);caseC.checked=choix.has(item.id);caseC.onchange=()=>{caseC.checked?choix.add(item.id):choix.delete(item.id);carte.classList.toggle('choisi',caseC.checked);selection();};
+  ligne.append(numero,document.createTextNode(item.vues.length+' images'),caseC);caption.append(titre,ligne);carte.append(bouton,fav,caption);$('grille').append(carte);
+ }
+ if(!visibles.length){const p=document.createElement('p');p.textContent=items.length?'Aucun résultat avec ces filtres.':'Aucun dossier avec une miniature unique. Vérifiez le suffixe, puis mettez à jour.';$('grille').append(p);}
+ if($('detail').open&&courant)actualiserMarquesDetail();
+ selection();
+}
+function menuPastille(item,ancre){
+ const menu=$('menu');menu.replaceChildren();
+ couleurs.forEach((nom,i)=>{const b=document.createElement('button');b.className='pastille-choix '+(i?'couleur-'+i:'aucune');b.textContent=i?'':'×';b.setAttribute('aria-label','Choisir : '+nom);b.setAttribute('aria-pressed',String(Number(marques[item.id]?.coul||0)===i));b.title=nom;b.onclick=()=>{menu.hidden=true;marquer(item,{coul:i});};menu.append(b);});
+ menu.hidden=false;const rect=ancre.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(rect.left,innerWidth-menu.offsetWidth-8))+'px';menu.style.top=Math.max(8,Math.min(rect.bottom+6,innerHeight-menu.offsetHeight-8))+'px';
+}
+document.addEventListener('click',e=>{if(!$('menu').contains(e.target))$('menu').hidden=true;});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('menu').hidden=true;});
+
+function detail(item,fichier=null){fichier=fichier||item.vignette;
+ courant=item;$('detail-dossier').textContent=item.dossier;$('nom-detail').textContent=item.nom;$('vues').replaceChildren();actualiserMarquesDetail();
+ const vues=item.vues.length?item.vues:[{nom:'Vignette',fichier:item.vignette}];
+ function vue(v,b){fichierCourant=v.fichier;$('grande').src=url(v.fichier,item);$('grande').alt=item.nom+' — '+v.nom;$('original').href=url(v.fichier,item);for(const enfant of $('vues').children)enfant.setAttribute('aria-pressed',String(enfant===b));}
+ vues.forEach((v,i)=>{const b=document.createElement('button');b.textContent=v.nom;b.onclick=()=>vue(v,b);$('vues').append(b);if(v.fichier===fichier||(!i&&!vues.some(x=>x.fichier===fichier)))vue(v,b);});
+ if(!$('detail').open)$('detail').showModal();
+}
+function voisin(delta){const i=visibles.findIndex(x=>x.id===courant?.id);if(visibles.length)detail(visibles[(i+delta+visibles.length)%visibles.length]);}
+$('precedent').onclick=()=>voisin(-1);$('suivant').onclick=()=>voisin(1);$('fermer').onclick=()=>$('detail').close();
+$('detail-favori').onclick=()=>courant&&marquer(courant,{fav:!marques[courant.id]?.fav});
+for(const bouton of document.querySelectorAll('[data-detail-couleur]'))bouton.onclick=()=>courant&&marquer(courant,{coul:Number(bouton.dataset.detailCouleur)});
+$('detail').addEventListener('keydown',e=>{if(e.key==='ArrowLeft')voisin(-1);if(e.key==='ArrowRight')voisin(1);});
+$('ouvrir').onclick=async()=>{try{await api('/ouvrir',{dossier:courant.dossier});}catch(e){alert(e.message);}};
+async function charger(actualiser=false){
+ const bouton=$('scan');bouton.disabled=true;
+ try{const data=await api(actualiser?'/scan':'/donnees',actualiser?{}:undefined);items=data.items;marques=await api('/marques');document.title=data.nom;$('titre').textContent=data.nom;
+ const avant=$('dossier').value;$('dossier').replaceChildren(new Option('Tous les dossiers',''));
+ [...new Set(items.map(i=>i.dossier))].sort().forEach(d=>$('dossier').add(new Option(d==='.'?'Racine':d,d)));$('dossier').value=avant;
+ for(const id of choix)if(!items.some(i=>i.id===id))choix.delete(id);
+ if($('detail').open){const nouveau=items.find(i=>i.id===courant?.id);if(nouveau)detail(nouveau,fichierCourant);else $('detail').close();}
+ rendre();const alertes=[];if(data.stats?.vues_manquantes?.length)alertes.push(data.stats.vues_manquantes.length+' vue(s) non associée(s) dans cette ancienne configuration.');if(data.stats?.sans_vignette?.length)alertes.push(data.stats.sans_vignette.length+' dossier(s) sans miniature, non inclus.');if(data.stats?.vignettes_multiples?.length)alertes.push(data.stats.vignettes_multiples.length+' dossier(s) avec plusieurs miniatures, non inclus : précisez le suffixe.');message(alertes.join(' '));
+ }catch(e){message(e.message);}finally{bouton.disabled=false;}
+}
+for(const id of ['q','dossier','favoris','couleur','tri'])$(id).addEventListener(id==='q'?'input':'change',rendre);
+$('bFavoris').onclick=()=>{$('favoris').checked=!$('favoris').checked;rendre();};
+for(const b of document.querySelectorAll('[data-filtre]'))b.onclick=()=>{$('couleur').value=$('couleur').value===b.dataset.filtre?'':b.dataset.filtre;rendre();};
+$('tout').onclick=()=>{$('couleur').value='';$('favoris').checked=false;$('q').value='';$('dossier').value='';rendre();};
+$('scan').onclick=()=>charger(true);$('selection').onclick=()=>{visibles.forEach(i=>choix.add(i.id));rendre();};$('vider').onclick=()=>{choix.clear();rendre();};
+$('zip').onclick=()=>{const fichiers=[...new Set(items.filter(i=>choix.has(i.id)).flatMap(i=>i.fichiers))];const f=document.createElement('form');f.method='POST';f.action='/zip';f.target='telechargement';const champ=document.createElement('input');champ.name='d';champ.value=JSON.stringify({fichiers});f.append(champ);document.body.append(f);f.submit();f.remove();};
+for(const b of document.querySelectorAll('[data-selection-couleur]'))b.onclick=async()=>{
+ const changements={};for(const item of items.filter(i=>choix.has(i.id))){changements[item.id]={fav:false,coul:0,...marques[item.id],coul:Number(b.dataset.selectionCouleur),t:Math.max(Date.now(),Number(marques[item.id]?.t||0)+1)};marques[item.id]=changements[item.id];}rendre();
+ try{const retour=await api('/marques',changements);for(const [id,v]of Object.entries(retour))if(!marques[id]||v.t>=marques[id].t)marques[id]=v;rendre();message('');}catch(e){message('Enregistrement impossible : '+e.message);}
+};
+charger();
+</script></body></html>

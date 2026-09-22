@@ -1,0 +1,9 @@
+{
+ "titre": "Nom affiché de la bibliothèque",
+ "projets_dans": ".",
+ "projets": ["Dossier-de-rushes-1", "Dossier-de-rushes-2"],
+ "donnees": "_app/_donnees",
+ "lecture_seule": true,
+ "port": 8781,
+ "format": [1920, 1080]
+}

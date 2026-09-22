@@ -1,0 +1,16 @@
+# Ce qui se fabrique
+build/
+dist/
+__pycache__/
+*.pyc
+
+# Les sauvegardes que l application ecrit a cote des fichiers
+*.avant-*
+
+# Notes et documents de travail, qui n ont pas a etre publies
+CLAUDE.md
+BRIEF-LIBRARY-EDITOR.html
+Documentation-Bibliotheque-Claude.html
+LIVRAISON-LIBRARY-EDITOR.html
+docs/
+journal.txt

@@ -1,0 +1,1226 @@
+<!doctype html>
+<html lang="fr" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Edge proposait de traduire la page : elle est en français exprès. -->
+<meta name="google" content="notranslate">
+<title>Library Editor</title>
+<link rel="icon" href="/icone.png">
+<style>
+:root{
+  --fond:#0f1012; --panneau:#141518; --carte:#191a1e; --carte2:#1f2025; --survol:#24252b;
+  --trait:#28292f; --trait2:#34363d; --encre:#ecebe8; --doux:#a1a2a9; --faible:#6f7078;
+  --accent:#d6a45c; --accent2:#e6b872; --accent-pale:rgba(214,164,92,.12); --accent-encre:#1d150a;
+  --ok:#78c297; --ok-pale:rgba(120,194,151,.12); --alerte:#e2b35e; --alerte-pale:rgba(226,179,94,.12);
+  --erreur:#e57b6d; --erreur-pale:rgba(229,123,109,.12); --info:#8db3e6; --info-pale:rgba(141,179,230,.11);
+  --ombre:0 18px 50px rgba(0,0,0,.45); --r:12px;
+  --mono:"Cascadia Mono",Consolas,ui-monospace,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --fond:#f4f2ee; --panneau:#ebe8e2; --carte:#ffffff; --carte2:#f8f6f2; --survol:#f1eee8;
+    --trait:#e2ded6; --trait2:#d3cec4; --encre:#1d1c1a; --doux:#5f5c56; --faible:#8d8980;
+    --accent:#a8671c; --accent2:#8f5614; --accent-pale:rgba(168,103,28,.10); --accent-encre:#ffffff;
+    --ok:#2f8a57; --ok-pale:rgba(47,138,87,.10); --alerte:#a86d0c; --alerte-pale:rgba(168,109,12,.10);
+    --erreur:#b8432f; --erreur-pale:rgba(184,67,47,.09); --info:#2d5fa8; --info-pale:rgba(45,95,168,.08);
+    --ombre:0 18px 50px rgba(60,50,30,.14);
+    color-scheme:light;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--fond);color:var(--encre);
+  font:14.5px/1.55 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  display:grid;grid-template-columns:264px minmax(0,1fr);overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--accent)}
+code,.mono{font-family:var(--mono);font-size:.88em}
+[hidden]{display:none!important}
+svg.i{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---- colonne ---------------------------------------------------------- */
+aside{background:var(--panneau);border-right:1px solid var(--trait);display:flex;flex-direction:column;min-height:0}
+.marque{display:flex;align-items:center;gap:11px;padding:22px 20px 18px}
+.marque img{width:34px;height:34px;border-radius:9px}
+.marque b{display:block;font:600 15.5px/1.2 "Segoe UI Variable Display","Segoe UI",sans-serif;letter-spacing:.01em}
+.marque span{font-size:11.5px;color:var(--faible)}
+nav.principal{padding:4px 12px 10px;display:flex;flex-direction:column;gap:2px}
+.nav{display:flex;align-items:center;gap:11px;width:100%;text-align:left;background:none;border:0;border-radius:9px;
+  padding:9px 12px;color:var(--doux);cursor:pointer;font-weight:500}
+.nav:hover{background:var(--survol);color:var(--encre)}
+.nav[aria-current="page"]{background:var(--carte2);color:var(--encre);box-shadow:inset 2px 0 0 var(--accent)}
+.nav[aria-current="page"] svg{color:var(--accent)}
+.rubrique{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faible);padding:16px 24px 8px;font-weight:600}
+#recents{flex:1;min-height:0;overflow:auto;padding:0 12px 12px}
+.recent{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;background:none;border:0;border-radius:9px;padding:8px 10px;cursor:pointer;color:var(--encre)}
+.recent:hover{background:var(--survol)}
+.recent[aria-current="page"]{background:var(--carte2)}
+.recent .pastille{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;flex:none;background:var(--carte2);color:var(--doux);margin-top:1px}
+.recent .pastille svg{width:15px;height:15px}
+.recent b{display:block;font-weight:500;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recent small{display:block;color:var(--faible);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
+.recent.absent{opacity:.5}
+.recent-texte{min-width:0;flex:1}
+.pied{padding:12px 20px 16px;border-top:1px solid var(--trait);font-size:11.5px;color:var(--faible);display:flex;flex-direction:column;gap:4px}
+.pied .etat{display:flex;align-items:center;gap:7px}
+.point{width:7px;height:7px;border-radius:50%;background:var(--faible);flex:none}
+.point.ok{background:var(--ok)} .point.non{background:var(--erreur)}
+
+/* ---- contenu --------------------------------------------------------- */
+main{overflow:auto;min-width:0;scroll-behavior:smooth}
+.page{max-width:1040px;margin:0 auto;padding:34px 44px 70px}
+.entete{margin-bottom:26px}
+.entete .sur{font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:6px}
+h1{font:600 27px/1.2 "Segoe UI Variable Display","Segoe UI",sans-serif;margin:0 0 6px;letter-spacing:-.005em}
+.entete p{margin:0;color:var(--doux);max-width:70ch}
+h2{font:600 16.5px/1.3 "Segoe UI Variable Display","Segoe UI",sans-serif;margin:0 0 4px}
+h3{font-size:13px;margin:22px 0 10px;color:var(--doux);font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+.petit{font-size:12.5px;color:var(--doux)}
+.faible{color:var(--faible)}
+
+/* étapes */
+.etapes{display:flex;gap:6px;margin:0 0 28px;padding:0;list-style:none;flex-wrap:wrap}
+.etapes li{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--faible);padding:6px 12px 6px 7px;border-radius:99px;border:1px solid var(--trait)}
+.etapes li span{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;background:var(--carte2);color:var(--doux)}
+.etapes li.fait{color:var(--doux)} .etapes li.fait span{background:var(--ok-pale);color:var(--ok)}
+.etapes li.ici{color:var(--encre);border-color:var(--accent);background:var(--accent-pale)} .etapes li.ici span{background:var(--accent);color:var(--accent-encre)}
+
+/* cartes */
+.carte{background:var(--carte);border:1px solid var(--trait);border-radius:var(--r);padding:20px 22px}
+.carte + .carte{margin-top:14px}
+.grille2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.choix{position:relative;text-align:left;cursor:pointer;background:var(--carte);border:1px solid var(--trait);border-radius:var(--r);padding:22px 22px 20px;display:flex;flex-direction:column;gap:10px;transition:border-color .15s,background .15s,transform .15s}
+.choix:hover{border-color:var(--trait2);background:var(--carte2)}
+.choix:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.choix[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-pale)}
+.choix .ico{width:42px;height:42px;border-radius:11px;background:var(--carte2);border:1px solid var(--trait);display:grid;place-items:center;color:var(--accent)}
+.choix .ico svg{width:21px;height:21px}
+.choix p{margin:0;color:var(--doux);font-size:13.5px}
+.choix ul{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--doux)}
+.choix ul li{display:flex;gap:8px;align-items:flex-start}
+.choix ul li svg{width:15px;height:15px;color:var(--ok);margin-top:3px}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;letter-spacing:.03em;padding:2px 8px;border-radius:99px;background:var(--carte2);color:var(--doux);border:1px solid var(--trait);white-space:nowrap}
+.badge.accent{background:var(--accent-pale);color:var(--accent);border-color:transparent}
+.badge.ok{background:var(--ok-pale);color:var(--ok);border-color:transparent}
+.badge.alerte{background:var(--alerte-pale);color:var(--alerte);border-color:transparent}
+.badge.erreur{background:var(--erreur-pale);color:var(--erreur);border-color:transparent}
+.choix .badge.coin{position:absolute;top:16px;right:16px}
+
+/* boutons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--trait2);background:var(--carte2);color:var(--encre);border-radius:9px;padding:8px 15px;cursor:pointer;font-weight:500;white-space:nowrap;transition:background .15s,border-color .15s}
+.btn:hover{background:var(--survol);border-color:var(--faible)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.principal{background:var(--accent);border-color:var(--accent);color:var(--accent-encre);font-weight:600}
+.btn.principal:hover{background:var(--accent2);border-color:var(--accent2)}
+.btn.discret{background:none;border-color:transparent;color:var(--doux)}
+.btn.discret:hover{background:var(--survol);color:var(--encre)}
+.btn.danger{color:var(--erreur)}
+.btn svg{width:16px;height:16px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:22px}
+.actions .ressort{flex:1}
+
+/* champs */
+label.champ{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--doux);font-weight:500}
+input[type=text],input[type=number],select{background:var(--fond);border:1px solid var(--trait2);border-radius:9px;padding:9px 12px;color:var(--encre);min-width:0}
+input[type=text]:focus,input[type=number]:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-pale)}
+.ligne-champ{display:flex;gap:10px;align-items:stretch}
+.ligne-champ input{flex:1}
+.coche{display:flex;gap:11px;align-items:flex-start;cursor:pointer;padding:12px 14px;border:1px solid var(--trait);border-radius:10px;background:var(--carte)}
+.coche:hover{border-color:var(--trait2)}
+.coche input{margin:3px 0 0;accent-color:var(--accent);width:16px;height:16px;flex:none}
+.coche b{display:block;font-weight:600;font-size:13.5px}
+.coche span{display:block;font-size:12.5px;color:var(--doux)}
+.reglages{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 18px}
+.reglages .large{grid-column:1/-1}
+
+/* encarts */
+.encart{display:flex;gap:12px;align-items:flex-start;border-radius:10px;padding:13px 16px;margin:14px 0;background:var(--info-pale);border:1px solid transparent;font-size:13.5px}
+.encart svg{margin-top:1px;color:var(--info)}
+.encart.alerte{background:var(--alerte-pale)} .encart.alerte svg{color:var(--alerte)}
+.encart.erreur{background:var(--erreur-pale)} .encart.erreur svg{color:var(--erreur)}
+.encart.ok{background:var(--ok-pale)} .encart.ok svg{color:var(--ok)}
+.encart p{margin:0} .encart p + p{margin-top:5px}
+.encart .actions{margin-top:10px}
+
+/* dossier choisi */
+.dossier{display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--trait);border-radius:10px;background:var(--carte);margin-bottom:22px}
+.dossier .ico{color:var(--accent)}
+.dossier b{display:block;font-weight:600}
+.dossier code{color:var(--doux);font-size:12px;word-break:break-all}
+.dossier .ressort{flex:1;min-width:0}
+
+/* tableau */
+.tableau{border:1px solid var(--trait);border-radius:var(--r);overflow:hidden;background:var(--carte)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faible);font-weight:600;text-align:left;padding:10px 12px;border-bottom:1px solid var(--trait);background:var(--carte2);white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid var(--trait);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tr.coche-non td{color:var(--faible)}
+td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
+td.nom{font-weight:500;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* suffixes */
+.puces{display:flex;flex-wrap:wrap;gap:8px}
+.puce{border:1px solid var(--trait2);background:var(--carte2);border-radius:99px;padding:5px 12px;cursor:pointer;font-size:12.5px;display:flex;gap:7px;align-items:center}
+.puce:hover{border-color:var(--faible)}
+.puce[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-pale);color:var(--encre)}
+.puce code{font-size:12.5px}
+.puce small{color:var(--faible)}
+.vignettes{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px;margin-top:14px}
+.vignettes figure{margin:0;background:var(--fond);border:1px solid var(--trait);border-radius:9px;overflow:hidden}
+.vignettes img{display:block;width:100%;aspect-ratio:1;object-fit:contain;background:var(--fond)}
+.vignettes figcaption{font-size:11px;padding:5px 7px;color:var(--doux);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+details.diag{border:1px solid var(--trait);border-radius:10px;margin-top:10px;background:var(--carte)}
+details.diag summary{cursor:pointer;padding:11px 14px;font-weight:500;font-size:13.5px}
+details.diag .corps{padding:0 14px 12px;font-size:12.5px;max-height:320px;overflow:auto}
+details.diag .corps div{padding:6px 0;border-top:1px solid var(--trait)}
+details.diag .corps code{color:var(--doux)}
+
+/* progression */
+.progres{height:6px;background:var(--carte2);border-radius:99px;overflow:hidden}
+.progres i{display:block;height:100%;width:0;background:var(--accent);border-radius:99px;transition:width .3s}
+.progres.indetermine i{width:30%;animation:va 1.2s ease-in-out infinite}
+@keyframes va{0%{transform:translateX(-100%)}100%{transform:translateX(340%)}}
+.liste-etapes{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.liste-etapes li{display:flex;gap:12px;align-items:center;padding:8px 2px;font-size:13.5px;color:var(--doux)}
+.liste-etapes li .marque-etape{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--trait2);flex:none}
+.liste-etapes li.fait{color:var(--encre)} .liste-etapes li.fait .marque-etape{background:var(--ok-pale);border-color:transparent;color:var(--ok)}
+.liste-etapes li.encours{color:var(--encre);font-weight:600} .liste-etapes li.encours .marque-etape{border-color:var(--accent);border-top-color:transparent;animation:tourne .9s linear infinite}
+@keyframes tourne{to{transform:rotate(360deg)}}
+.liste-etapes li .marque-etape svg{width:13px;height:13px;stroke-width:2.4}
+.compteur{font-variant-numeric:tabular-nums;color:var(--doux);font-size:12.5px;display:flex;justify-content:space-between;margin:10px 0 7px}
+.journal{background:var(--fond);border:1px solid var(--trait);border-radius:10px;padding:10px 12px;font:12px/1.6 var(--mono);color:var(--doux);max-height:220px;overflow:auto;margin-top:14px}
+.journal div{white-space:pre-wrap;word-break:break-word}
+.journal .ok{color:var(--ok)} .journal .alerte{color:var(--alerte)} .journal .erreur{color:var(--erreur)}
+.journal time{color:var(--faible);margin-right:8px}
+
+/* résultat */
+.resultat{display:flex;gap:18px;align-items:flex-start}
+.resultat .grand{width:46px;height:46px;border-radius:50%;background:var(--ok-pale);color:var(--ok);display:grid;place-items:center;flex:none}
+.resultat .grand svg{width:24px;height:24px;stroke-width:2.2}
+.resultat.rate .grand{background:var(--erreur-pale);color:var(--erreur)}
+.chiffres{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:16px 0 4px}
+.chiffre{background:var(--carte2);border:1px solid var(--trait);border-radius:10px;padding:11px 14px}
+.chiffre b{display:block;font:600 20px/1.2 "Segoe UI Variable Display","Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.chiffre span{font-size:12px;color:var(--doux)}
+.preuve{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:10px;background:var(--ok-pale);color:var(--encre);font-size:13.5px;margin-top:8px}
+.preuve svg{color:var(--ok)}
+.preuve.rate{background:var(--erreur-pale)} .preuve.rate svg{color:var(--erreur)}
+
+/* guide */
+.guide{list-style:none;margin:0;padding:0;counter-reset:g}
+.guide > li{position:relative;padding:0 0 26px 50px}
+.guide > li::before{counter-increment:g;content:counter(g);position:absolute;left:0;top:0;width:30px;height:30px;border-radius:50%;background:var(--carte2);border:1px solid var(--trait2);display:grid;place-items:center;font-weight:700;font-size:13px;color:var(--accent)}
+.guide > li::after{content:"";position:absolute;left:15px;top:36px;bottom:6px;width:1px;background:var(--trait)}
+.guide > li:last-child::after{display:none}
+.guide h2{margin:4px 0 8px}
+.guide p{margin:6px 0;color:var(--doux);max-width:74ch}
+.guide p b,.guide p i{color:var(--encre)}
+.guide ul{color:var(--doux);margin:6px 0;padding-left:20px}
+.guide code{background:var(--accent-pale);padding:.1em .4em;border-radius:5px;color:var(--encre);overflow-wrap:anywhere}
+.guide code.url{display:inline-block;padding:6px 10px;font-size:12.5px}
+.guide .outil{margin-top:12px;padding:16px 18px;border:1px solid var(--trait);border-radius:10px;background:var(--carte)}
+
+/* fiche de bibliothèque */
+.fiche-tete{display:flex;gap:16px;align-items:center}
+.fiche-tete .ico{width:52px;height:52px;border-radius:13px;background:var(--carte2);border:1px solid var(--trait);display:grid;place-items:center;color:var(--accent)}
+.fiche-tete .ico svg{width:25px;height:25px}
+dl.infos{display:grid;grid-template-columns:150px minmax(0,1fr);gap:9px 16px;margin:18px 0 0;font-size:13.5px}
+dl.infos dt{color:var(--faible)} dl.infos dd{margin:0;word-break:break-all}
+
+/* notifications */
+#toasts{position:fixed;right:22px;bottom:22px;display:flex;flex-direction:column;gap:8px;z-index:50}
+.toast{background:var(--carte2);border:1px solid var(--trait2);box-shadow:var(--ombre);border-radius:10px;padding:11px 15px;font-size:13.5px;max-width:420px;display:flex;gap:10px;align-items:flex-start;animation:monte .2s ease-out}
+.toast.erreur svg{color:var(--erreur)} .toast.ok svg{color:var(--ok)}
+@keyframes monte{from{transform:translateY(8px);opacity:0}}
+.vide{padding:34px;text-align:center;color:var(--faible);border:1px dashed var(--trait2);border-radius:var(--r)}
+.coupure{position:sticky;top:0;z-index:40;background:var(--erreur-pale);color:var(--encre);border-bottom:1px solid var(--erreur);padding:10px 44px;font-size:13.5px;backdrop-filter:blur(8px)}
+
+@media (max-width:860px){
+  body{grid-template-columns:1fr;overflow:auto}
+  aside{display:none}
+  .page{padding:24px 16px 60px}
+  .grille2,.reglages{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<aside>
+  <div class="marque"><img src="/icone.png" alt=""><div><b>Library Editor</b><span>version %%VERSION%%</span></div></div>
+  <nav class="principal" aria-label="Sections">
+    <button class="nav" data-vue="nouvelle" aria-current="page"><svg class="i"><use href="#i-plus"/></svg>Nouvelle bibliothèque</button>
+    <button class="nav" data-vue="maj"><svg class="i"><use href="#i-refresh"/></svg>Mettre à jour</button>
+    <button class="nav" data-vue="enligne"><svg class="i"><use href="#i-cloud"/></svg>Mettre en ligne</button>
+  </nav>
+  <div class="rubrique">Bibliothèques</div>
+  <div id="recents"></div>
+  <div class="pied">
+    <button class="btn principal" id="b-maj-editeur" hidden style="width:100%;justify-content:center;margin-bottom:10px"></button>
+    <div class="etat"><span class="point" id="p-ffmpeg"></span><span id="t-ffmpeg">ffmpeg…</span></div>
+    <div class="etat"><span class="point" id="p-moteur"></span><span id="t-moteur">moteur Python…</span></div>
+  </div>
+</aside>
+<main id="principal"><div id="coupure" class="coupure" role="alert" hidden>Library Editor s'est arrêté. Relancez-le pour continuer : un travail en cours, lui, n'est jamais interrompu.</div><div class="page" id="vue"></div></main>
+<div id="toasts" role="status" aria-live="polite"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8.5a4 4 0 0 1-.5 9.5"/><path d="M12 12v8M9 15l3-3 3 3"/></symbol>
+  <symbol id="i-dossier" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-dossier-plus" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10.5v5M9.5 13h5"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 9"/></symbol>
+  <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-alerte" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-lancer" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></symbol>
+  <symbol id="i-sortie" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+  <symbol id="i-raccourci" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+  <symbol id="i-copier" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></symbol>
+  <symbol id="i-bouclier" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="i-fleche" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-retour" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+</svg>
+
+<script>
+"use strict";
+const JETON = "%%JETON%%";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const ico = (n, cls = "i") => `<svg class="${cls}"><use href="#i-${n}"/></svg>`;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const nb = n => Number(n || 0).toLocaleString("fr-FR");
+function taille(o) {
+  o = Number(o || 0); const u = ["octets", "Ko", "Mo", "Go", "To"]; let i = 0;
+  while (o >= 1024 && i < u.length - 1) { o /= 1024; i++; }
+  return i ? o.toLocaleString("fr-FR", {maximumFractionDigits: o < 10 ? 2 : 1}) + " " + u[i] : nb(o) + " octets";
+}
+function duree(s) {
+  s = Math.round(s || 0); if (s < 60) return s + " s";
+  const m = Math.floor(s / 60), r = s % 60; if (m < 60) return m + " min " + (r ? r + " s" : "");
+  return Math.floor(m / 60) + " h " + (m % 60) + " min";
+}
+
+// ---- échanges avec l'application ---------------------------------------
+async function api(route, donnees = {}) {
+  const r = await fetch(route, {method: "POST", headers: {"Content-Type": "application/json", "X-LE-Jeton": JETON},
+    body: JSON.stringify(donnees)});
+  const d = await r.json().catch(() => ({erreur: "Réponse illisible (" + r.status + ")"}));
+  if (!r.ok) throw new Error(d.erreur || ("Erreur " + r.status));
+  return d;
+}
+async function lire(route, params = {}) {
+  const q = new URLSearchParams({...params, j: JETON});
+  const r = await fetch(route + "?" + q, {cache: "no-store"});
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.erreur || ("Erreur " + r.status));
+  return d;
+}
+function toast(texte, genre = "ok") {
+  const t = document.createElement("div");
+  t.className = "toast " + genre;
+  t.innerHTML = ico(genre === "erreur" ? "alerte" : genre === "ok" ? "check" : "info") + "<div>" + esc(texte) + "</div>";
+  $("#toasts").append(t);
+  setTimeout(() => t.remove(), genre === "erreur" ? 9000 : 4500);
+}
+async function essayer(fn, bouton) {
+  if (bouton) bouton.disabled = true;
+  try { return await fn(); }
+  catch (e) { toast(e.message, "erreur"); }
+  finally { if (bouton) bouton.disabled = false; }
+}
+
+// La fenêtre dit qu'elle est là ; en se fermant, elle dit au revoir. Le
+// battement porte le jeton : une page restée ouverte d'une session précédente
+// reçoit un refus et se recharge sur l'instance en cours.
+let pannes = 0;
+async function battre() {
+  try {
+    const r = await fetch("/api/vivant?j=" + JETON, {cache: "no-store"});
+    if (r.status === 403) { location.reload(); return; }
+    pannes = 0; $("#coupure").hidden = true;
+  } catch (e) { if (++pannes >= 2) $("#coupure").hidden = false; }
+}
+setInterval(battre, 5000); battre();
+addEventListener("pagehide", () => navigator.sendBeacon("/api/adieu?j=" + JETON, JETON));
+
+// ---- état général ---------------------------------------------------------
+const S = {etat: null, vue: "nouvelle", n: {}, maj: {}, en: {}};
+
+async function rafraichir() {
+  try { S.etat = await lire("/api/etat"); } catch (e) { return; }
+  const e = S.etat;
+  $("#p-ffmpeg").className = "point " + (e.ffmpeg && e.ffprobe ? "ok" : "non");
+  $("#t-ffmpeg").textContent = e.ffmpeg && e.ffprobe ? "ffmpeg et ffprobe trouvés" : "ffmpeg introuvable";
+  $("#p-moteur").className = "point " + (e.moteur ? "ok" : "non");
+  $("#t-moteur").textContent = e.moteur ? "moteur Python embarqué" : "sans moteur Python embarqué";
+  const box = $("#recents");
+  if (!e.recents.length) { box.innerHTML = '<p class="petit faible" style="padding:4px 12px">Les bibliothèques créées ici apparaîtront dans cette liste.</p>'; return; }
+  box.innerHTML = e.recents.map((r, i) => `
+    <button class="recent ${r.existe ? "" : "absent"}" data-i="${i}" ${S.vue === "fiche" && S.fiche === r.chemin ? 'aria-current="page"' : ""}>
+      <span class="pastille">${ico(r.genre === "films" ? "film" : "image")}</span>
+      <span class="recent-texte"><b>${esc(r.titre || r.chemin)}</b><small title="${esc(r.chemin)}">${esc(r.chemin)}</small></span>
+    </button>`).join("");
+  $$(".recent", box).forEach(b => b.onclick = () => montrerFiche(e.recents[+b.dataset.i].chemin));
+}
+
+function aller(vue) {
+  S.vue = vue;
+  $$(".nav").forEach(b => { if (b.dataset.vue === vue) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
+  $("#principal").scrollTop = 0;
+  if (vue === "nouvelle") vueNouvelle();
+  if (vue === "maj") vueMaj();
+  if (vue === "enligne") vueEnligne();
+  rafraichir();
+}
+$$(".nav").forEach(b => b.onclick = () => aller(b.dataset.vue));
+
+function entete(sur, titre, texte) {
+  return `<header class="entete"><div class="sur">${esc(sur)}</div><h1>${esc(titre)}</h1>${texte ? `<p>${texte}</p>` : ""}</header>`;
+}
+function etapes(liste, ici) {
+  return `<ol class="etapes">${liste.map((t, i) => `<li class="${i < ici ? "fait" : i === ici ? "ici" : ""}"><span>${i < ici ? "✓" : i + 1}</span>${esc(t)}</li>`).join("")}</ol>`;
+}
+function encart(genre, html, icone) {
+  return `<div class="encart ${genre}">${ico(icone || (genre === "ok" ? "check" : genre === "info" ? "info" : "alerte"))}<div>${html}</div></div>`;
+}
+function boiteDossier(info, extra = "") {
+  return `<div class="dossier"><span class="ico">${ico("dossier")}</span><div class="ressort"><b>${esc(info.nom)}</b><code>${esc(info.chemin)}</code></div>${extra}</div>`;
+}
+
+// ---- suivre un travail de fond ---------------------------------------------
+function suivre(conteneur, quandFini, options = {}) {
+  let depuis = 0, lignes = [], arret = false;
+  conteneur.innerHTML = `
+    <div class="carte">
+      <ul class="liste-etapes" data-r="etapes"></ul>
+      <div class="compteur"><span data-r="etape">Démarrage…</span><span data-r="nombres"></span></div>
+      <div class="progres indetermine" data-r="barre"><i></i></div>
+      <div class="actions" style="margin-top:14px">
+        <button class="btn discret" data-r="voir">Afficher le détail</button><span class="ressort"></span>
+        <button class="btn discret danger" data-r="stop">${ico("x")} Arrêter</button>
+      </div>
+      <div class="journal" data-r="journal" ${options.journalOuvert ? "" : "hidden"}></div>
+    </div>`;
+  const R = n => $(`[data-r="${n}"]`, conteneur);
+  R("voir").onclick = () => { const j = R("journal"); j.hidden = !j.hidden; R("voir").textContent = j.hidden ? "Afficher le détail" : "Masquer le détail"; };
+  R("stop").onclick = async () => { R("stop").disabled = true; await api("/api/tache/arreter").catch(() => {}); };
+  async function tour() {
+    if (arret) return;
+    let t;
+    try { t = await lire("/api/tache", {depuis}); } catch (e) { setTimeout(tour, 1000); return; }
+    if (t.etat === "aucune") return;
+    depuis = t.nlignes;
+    const j = R("journal");
+    for (const l of t.lignes) { const d = document.createElement("div"); d.className = l.genre; d.innerHTML = `<time>${esc(l.t)}</time>${esc(l.texte)}`; j.append(d); }
+    if (t.lignes.length) j.scrollTop = j.scrollHeight;
+    R("etapes").innerHTML = t.etapes.map(e => `<li class="${e.etat}"><span class="marque-etape">${e.etat === "fait" ? ico("check") : ""}</span>${esc(e.libelle)}</li>`).join("");
+    R("etape").textContent = t.etape || "…";
+    const barre = R("barre");
+    if (t.total) {
+      barre.classList.remove("indetermine");
+      barre.firstElementChild.style.width = Math.min(100, 100 * t.fait / t.total).toFixed(1) + "%";
+      R("nombres").textContent = (t.total > 5e6 ? taille(t.fait) + " / " + taille(t.total) : nb(t.fait) + " / " + nb(t.total));
+    } else { barre.classList.add("indetermine"); R("nombres").textContent = duree(t.duree); }
+    if (options.partiel && t.partiel) options.partiel(t.partiel);
+    if (t.etat === "encours") { setTimeout(tour, 450); return; }
+    arret = true;
+    R("stop").hidden = true;
+    barre.classList.remove("indetermine");
+    barre.firstElementChild.style.width = "100%";
+    quandFini(t);
+    rafraichir();
+  }
+  tour();
+  return {stop: () => { arret = true; }};
+}
+
+// =============================================================================
+//  NOUVELLE BIBLIOTHÈQUE
+// =============================================================================
+const ETAPES_N = ["Dossier", "Genre", "Analyse", "Réglages", "Installation"];
+
+function vueNouvelle() {
+  S.n = {};
+  $("#vue").innerHTML = entete("Nouvelle bibliothèque", "Où construire la bibliothèque ?",
+      "Choisissez un dossier qui contient déjà vos images ou vos rushes, ou créez-en un. Aucun fichier existant ne sera déplacé, renommé ni modifié : la bibliothèque s'installe à côté, et le prouve.") +
+    etapes(ETAPES_N, 0) + `
+    <div class="grille2">
+      <button class="choix" id="c-existant">
+        <span class="ico">${ico("dossier")}</span>
+        <h2>Choisir un dossier existant</h2>
+        <p>Un dossier de rushes, de rendus ou d'images, déjà rempli. On le lit ; on n'y écrit que le dossier technique de la bibliothèque.</p>
+      </button>
+      <button class="choix" id="c-nouveau">
+        <span class="ico">${ico("dossier-plus")}</span>
+        <h2>Créer un nouveau dossier</h2>
+        <p>Un dossier vide, prêt à recevoir vos fichiers. Vous y déposerez ensuite vos images ou vos vidéos.</p>
+      </button>
+    </div>
+    <div class="carte" id="f-nouveau" hidden style="margin-top:14px">
+      <div class="reglages">
+        <label class="champ large">Dans le dossier
+          <span class="ligne-champ"><input type="text" id="n-parent" placeholder="K:\\Bibliotheques"><button class="btn" id="n-parcourir">${ico("dossier")} Parcourir…</button></span></label>
+        <label class="champ large">Nom du nouveau dossier
+          <input type="text" id="n-nom" placeholder="Ma-bibliotheque"></label>
+      </div>
+      <div class="actions"><button class="btn principal" id="n-creer">${ico("dossier-plus")} Créer le dossier</button></div>
+    </div>
+    <div class="carte" style="margin-top:14px">
+      <label class="champ">Ou collez un chemin
+        <span class="ligne-champ"><input type="text" id="n-chemin" placeholder="Y:\\project\\Projet-2026\\Mon-projet"><button class="btn" id="n-utiliser">Utiliser ${ico("fleche")}</button></span></label>
+    </div>
+    <div id="n-detecte"></div>`;
+  $("#c-existant").onclick = e => essayer(async () => {
+    const r = await api("/api/choisir", {titre: "Choisir le dossier de la bibliothèque"});
+    if (r.chemin) await choisirDossier(r.chemin);
+  }, e.currentTarget);
+  $("#c-nouveau").onclick = () => { $("#f-nouveau").hidden = false; $("#c-nouveau").setAttribute("aria-pressed", "true"); $("#n-parent").focus(); };
+  $("#n-parcourir").onclick = e => essayer(async () => {
+    const r = await api("/api/choisir", {titre: "Dans quel dossier créer la bibliothèque ?"});
+    if (r.chemin) $("#n-parent").value = r.chemin;
+  }, e.currentTarget);
+  $("#n-creer").onclick = e => essayer(async () => {
+    const r = await api("/api/creer-dossier", {parent: $("#n-parent").value, nom: $("#n-nom").value});
+    toast("Dossier créé : " + r.chemin);
+    await choisirDossier(r.chemin);
+  }, e.currentTarget);
+  $("#n-utiliser").onclick = e => essayer(() => choisirDossier($("#n-chemin").value), e.currentTarget);
+  $("#n-chemin").onkeydown = e => { if (e.key === "Enter") $("#n-utiliser").click(); };
+}
+
+async function choisirDossier(chemin) {
+  const info = await api("/api/inspecter", {chemin});
+  if (info.detection && !$("#n-detecte")) vueNouvelle();
+  S.n = {info};
+  if (info.detection) {
+    const d = info.detection;
+    $("#n-detecte").innerHTML = encart("info", `<p><b>Ce dossier est déjà une bibliothèque ${d.genre === "images" ? "d'images" : "de films"}</b> — « ${esc(d.titre)} ». Rien ne sera installé par-dessus.</p>
+      <div class="actions"><button class="btn principal" id="d-ouvrir">${ico("lancer")} Ouvrir</button>
+      <button class="btn" id="d-maj">${ico("refresh")} Mettre à jour</button><button class="btn" id="d-enligne">${ico("cloud")} Mettre en ligne</button></div>`);
+    $("#d-ouvrir").onclick = e => essayer(async () => { await api("/api/ouvrir", {chemin: info.chemin}); toast("Bibliothèque lancée : sa fenêtre s'ouvre à part."); }, e.currentTarget);
+    $("#d-maj").onclick = () => { aller("maj"); choisirMaj(info.chemin); };
+    $("#d-enligne").onclick = () => { aller("enligne"); choisirEnligne(info.chemin); };
+    $("#n-detecte").scrollIntoView({behavior: "smooth", block: "nearest"});
+    return false;
+  }
+  if (!info.ecriture) throw new Error("Impossible d'écrire dans ce dossier : " + info.chemin);
+  vueGenre();
+  return true;
+}
+
+function vueGenre() {
+  const info = S.n.info;
+  $("#vue").innerHTML = entete("Nouvelle bibliothèque", "Quel genre de bibliothèque ?", "Les deux s'ouvrent d'un double-clic et marchent sans Internet.") +
+    etapes(ETAPES_N, 1) +
+    boiteDossier(info, `<span class="badge">${info.vide ? "vide" : nb(info.sous_dossiers) + " sous-dossier" + (info.sous_dossiers > 1 ? "s" : "")}</span>${info.reseau ? '<span class="badge alerte">disque réseau</span>' : ""}<button class="btn discret" id="g-changer">Changer</button>`) + `
+    <div class="grille2">
+      <button class="choix" data-genre="images">
+        <span class="ico">${ico("image")}</span>
+        <h2>Bibliothèque d'images</h2>
+        <p>Pour des banques d'assets, de personnages, de décors, de références. Chaque sous-dossier devient une banque, rangée dans les onglets de la bibliothèque générale.</p>
+        <ul><li>${ico("check")}Favoris et pastilles de couleur</li><li>${ico("check")}Recherche, tri et filtres par dossier</li>
+            <li>${ico("check")}Fiche détaillée avec toutes les variantes</li><li>${ico("check")}Onglets, et « Préparer une bibliothèque » pour en ajouter</li></ul>
+      </button>
+      <button class="choix" data-genre="films">
+        <span class="ico">${ico("film")}</span>
+        <h2>Bibliothèque de films</h2>
+        <p>Pour des rushes et des rendus vidéo, avec la table de montage intégrée.</p>
+        <ul><li>${ico("check")}Catalogue des rushes avec vignettes</li><li>${ico("check")}Montage : pistes, fondus, vitesse, images-clés</li>
+            <li>${ico("check")}Rendu MP4 et export XML pour Premiere</li><li>${ico("check")}Dossiers virtuels, lecture seule</li></ul>
+      </button>
+    </div>
+    <div class="actions"><button class="btn discret" id="g-retour">${ico("retour")} Retour</button></div>`;
+  $("#g-changer").onclick = $("#g-retour").onclick = () => vueNouvelle();
+  $$(".choix[data-genre]").forEach(b => b.onclick = () => { S.n.genre = b.dataset.genre; vueAnalyse(); });
+}
+
+function vueAnalyse() {
+  const info = S.n.info, films = S.n.genre === "films";
+  $("#vue").innerHTML = entete("Nouvelle bibliothèque " + (films ? "de films" : "d'images"), "Analyse du dossier",
+      films ? "Chaque sous-dossier qui contient des vidéos ou des sons devient un projet. Cochez ceux qui en sont." :
+              "Comment faire une fiche : un asset par dossier (avec sa vignette), ou une fiche par image.") +
+    etapes(ETAPES_N, 2) + boiteDossier(info, `<span class="badge accent">${films ? "films" : "images"}</span>`) +
+    `<div id="a-suivi"></div><div id="a-resultat"></div>`;
+  essayer(async () => {
+    await api("/api/analyser", {chemin: info.chemin, genre: S.n.genre});
+    suivre($("#a-suivi"), t => {
+      if (t.etat !== "fini") {
+        $("#a-resultat").innerHTML = encart("erreur", `<p>${esc(t.erreur || "Analyse interrompue.")}</p><div class="actions"><button class="btn" id="a-refaire">Recommencer</button></div>`);
+        $("#a-refaire").onclick = () => vueAnalyse();
+        return;
+      }
+      $("#a-suivi").innerHTML = "";
+      S.n.analyse = t.resultat;
+      films ? afficherAnalyseFilms() : afficherAnalyseImages();
+    }, {partiel: p => { if (films) afficherLignesFilms(p, true); }});
+  });
+}
+
+// ---- analyse : films ------------------------------------------------------
+const LISIBLE = {oui: ["ok", "lisible"], selon: ["alerte", "selon la machine"], partiel: ["alerte", "en partie"], non: ["erreur", "illisible"], "?": ["", "—"]};
+function afficherLignesFilms(a, provisoire) {
+  const zone = $("#a-resultat");
+  if (!a.lignes.length) { if (provisoire) zone.innerHTML = ""; return; }
+  const coche = S.n.coches || (S.n.coches = {});
+  zone.innerHTML = `<div class="tableau"><table><thead><tr><th></th><th>Dossier</th><th style="text-align:right">Vidéos</th><th style="text-align:right">Sons</th><th style="text-align:right">Poids</th><th>Codec</th><th>Image</th><th>Lecture</th></tr></thead><tbody>${
+    a.lignes.map((l, i) => {
+      if (!(l.nom in coche)) coche[l.nom] = l.coche;
+      const [g, t] = LISIBLE[l.lisible] || LISIBLE["?"];
+      return `<tr class="${coche[l.nom] ? "" : "coche-non"}"><td><input type="checkbox" data-nom="${esc(l.nom)}" ${coche[l.nom] ? "checked" : ""} ${provisoire ? "disabled" : ""} aria-label="Projet ${esc(l.nom)}"></td>
+        <td class="nom" title="${esc(l.nom)}">${esc(l.nom)}${l.images && !l.videos && !l.sons ? ' <span class="badge">images</span>' : ""}</td>
+        <td class="n">${nb(l.videos)}</td><td class="n">${nb(l.sons)}</td><td class="n">${l.octets ? taille(l.octets) : "—"}</td>
+        <td>${esc(l.codec || "—")}</td><td>${esc(l.resolution || "—")}${l.fps ? ` <span class="faible">${l.fps} i/s</span>` : ""}</td>
+        <td>${l.sondes ? `<span class="badge ${g}">${t}</span>` : '<span class="faible">—</span>'}</td></tr>`;
+    }).join("")}</tbody></table></div>`;
+  $$("input[data-nom]", zone).forEach(c => c.onchange = () => { coche[c.dataset.nom] = c.checked; c.closest("tr").classList.toggle("coche-non", !c.checked); majBoutonAnalyse(); });
+}
+function afficherAnalyseFilms() {
+  const a = S.n.analyse, zone = $("#a-resultat");
+  afficherLignesFilms(a, false);
+  let notes = "";
+  if (!a.ffprobe) notes += encart("alerte", "<p><b>ffprobe est introuvable.</b> Les fiches n'auront ni durée ni dimensions, et sans ffmpeg il n'y aura ni vignettes au premier scan ni rendu. Installez ffmpeg (avec ffprobe) dans le PATH.</p>");
+  const illisibles = a.lignes.filter(l => (l.lisible === "non" || l.lisible === "partiel") && l.coche).map(l => l.nom);
+  if (illisibles.length) notes += encart("alerte", `<p><b>Codec illisible dans le navigateur</b> dans ${illisibles.map(esc).join(", ")} (ProRes, DNxHD, H.264 10 bits…) : la vignette apparaîtra, la lecture non. Le rendu ffmpeg, lui, marche.</p>`);
+  const selon = a.lignes.filter(l => l.lisible === "selon" && l.coche).map(l => l.nom);
+  if (selon.length) notes += encart("info", `<p>HEVC dans ${selon.map(esc).join(", ")} : lisible selon la carte graphique de la machine.</p>`);
+  const ignorees = a.lignes.reduce((s, l) => s + l.ignorees, 0);
+  if (ignorees) notes += encart("info", `<p>${nb(ignorees)} fichier(s) .mkv, .avi, .mxf… ne seront pas listés : le scan ne connaît que .mp4, .mov, .m4v et .webm.</p>`);
+  if (a.a_la_racine.videos || a.a_la_racine.sons) notes += encart("alerte", `<p><b>${nb(a.a_la_racine.videos + a.a_la_racine.sons)} média(s) directement dans ce dossier.</b> Un projet est un sous-dossier : ceux-là ne seraient vus par aucun. Si c'est votre dossier de rushes, construisez plutôt la bibliothèque dans le dossier parent — ce dossier-ci en deviendra un projet, et on n'y écrira rien.</p>
+      <div class="actions"><button class="btn" id="a-parent">${ico("dossier")} Utiliser le dossier parent</button></div>`);
+  const aucun = !a.lignes.some(l => l.videos || l.sons);
+  if (aucun) notes += encart("info", `<p><b>Aucun dossier de rushes ici.</b> La bibliothèque sera créée vide, rangée comme aux Coulisses : un dossier <code>projets\\</code> (chaque sous-dossier y devient un projet) et <code>bibliotheques\\</code> pour la musique.</p>`);
+  zone.insertAdjacentHTML("beforeend", notes + `<div class="actions"><button class="btn discret" id="a-retour">${ico("retour")} Retour</button><span class="ressort"></span><span class="petit" id="a-compte"></span><button class="btn principal" id="a-suite">Continuer ${ico("fleche")}</button></div>`);
+  S.n.neuve = aucun;
+  $("#a-retour").onclick = () => vueGenre();
+  if ($("#a-parent")) $("#a-parent").onclick = e => essayer(async () => {
+    if (await choisirDossier(a.parent)) { S.n.genre = "films"; vueAnalyse(); }
+  }, e.currentTarget);
+  $("#a-suite").onclick = () => vueReglages();
+  majBoutonAnalyse();
+}
+function majBoutonAnalyse() {
+  if (!$("#a-suite") || S.n.genre !== "films") return;
+  const n = Object.values(S.n.coches || {}).filter(Boolean).length;
+  $("#a-suite").disabled = !S.n.neuve && !n;
+  $("#a-compte").textContent = S.n.neuve ? "bibliothèque vide" : n + " projet" + (n > 1 ? "s" : "") + " coché" + (n > 1 ? "s" : "");
+}
+
+// ---- analyse : images -----------------------------------------------------
+// Le dossier choisi devient une bibliothèque générale à onglets : chaque
+// sous-dossier coché y devient une banque. S'il n'y a rien à mettre dans des
+// onglets (images en vrac), le dossier est lui-même une banque.
+function afficherAnalyseImages() {
+  const a = S.n.analyse;
+  S.n.racine = a.conseil === "racine";
+  if (!S.n.racine) { S.n.banque = a.banque || a; afficherAnalyseBanque(); return; }
+  afficherAnalyseRacine();
+}
+
+function afficherAnalyseRacine() {
+  const a = S.n.analyse, zone = $("#a-resultat");
+  const R = S.n.rangs || (S.n.rangs = {});
+  for (const l of a.lignes) {
+    if (R[l.nom]) continue;
+    R[l.nom] = {coche: !!l.coche, etat: l.etat,
+      mode: (l.proposition || {}).mode || "image",
+      vignette: (l.proposition || {}).vignette || "", verif: null};
+  }
+  const notes = [];
+  if (a.ancienne_banque) notes.push(encart("alerte", `<p><b>Ce dossier est déjà une banque unique</b> (${nb(a.ancienne_banque.fiches)} fiches${a.ancienne_banque.marques ? `, ${nb(a.ancienne_banque.marques)} favoris ou pastilles` : ""}). En le transformant en bibliothèque à onglets, son <code>serveur\\</code> est <b>mis de côté</b> dans <code>serveur\\sauvegardes\\</code> — rien n'est supprimé — et chaque sous-dossier coché devient une banque${a.ancienne_banque.marques ? ". Les favoris et pastilles sont reportés dans la banque où se trouve chaque image" : ""}.</p>`));
+  if (a.a_la_racine) notes.push(encart("info", `<p><b>${nb(a.a_la_racine)} image(s) directement dans ce dossier.</b> Une banque est un sous-dossier : celles-là ne seront dans aucun onglet. Rangez-les dans un sous-dossier si vous les voulez dans la bibliothèque.</p>`));
+  zone.innerHTML = notes.join("") + `
+    <h3>Les banques de la bibliothèque</h3>
+    <p class="petit" style="margin:-6px 0 12px">Cochez les sous-dossiers à préparer maintenant. Les autres pourront l'être plus tard, sans Library Editor, avec <b>Préparer une bibliothèque</b> posé dans le dossier.</p>
+    <div class="tableau"><table><thead><tr><th></th><th>Sous-dossier</th><th style="text-align:right">Images</th><th style="text-align:right">Dossiers</th><th style="text-align:right">Poids</th><th>Une fiche</th><th>Suffixe</th><th></th></tr></thead><tbody>${
+      a.lignes.map((l, i) => ligneRacine(l, i)).join("")}</tbody></table></div>
+    <div class="actions"><button class="btn discret" id="a-tout">Tout cocher</button><button class="btn discret" id="a-rien">Tout décocher</button>
+      <button class="btn" id="a-verif-tout">Vérifier les cochées</button></div>
+    <div class="actions"><button class="btn discret" id="a-retour">${ico("retour")} Retour</button><span class="ressort"></span>
+      <span class="petit" id="a-compte"></span><button class="btn principal" id="a-suite">Continuer ${ico("fleche")}</button></div>`;
+  brancherRangs();
+  $("#a-retour").onclick = () => vueGenre();
+  $("#a-tout").onclick = () => { a.lignes.forEach(l => { if (l.etat === "nouvelle") R[l.nom].coche = true; }); afficherAnalyseRacine(); };
+  $("#a-rien").onclick = () => { a.lignes.forEach(l => R[l.nom].coche = false); afficherAnalyseRacine(); };
+  $("#a-verif-tout").onclick = e => essayer(async () => {
+    for (const l of a.lignes) if (R[l.nom].coche && R[l.nom].mode === "dossier") await verifierRang(l.nom);
+  }, e.currentTarget);
+  $("#a-suite").onclick = () => vueReglages();
+  majCompteRacine();
+}
+
+function ligneRacine(l, i) {
+  const r = S.n.rangs[l.nom];
+  if (l.etat === "banque") return `<tr class="coche-non"><td></td><td class="nom" title="${esc(l.nom)}">${esc(l.nom)}</td>
+    <td class="n" colspan="3"><span class="badge ok">déjà une banque</span> ${l.configuration ? `<span class="faible">${l.configuration.mode === "image" ? "une fiche par image" : "un asset par dossier"}</span>` : ""}</td>
+    <td colspan="3" class="faible">elle est gardée telle quelle</td></tr>`;
+  const vide = !l.images;
+  const cands = (l.candidats || []).map(c => `<option value="${esc(c.suffixe)}">${esc(c.suffixe)} — ${nb(c.uniques)} dossier(s)${c.multiples ? ", " + nb(c.multiples) + " en double" : ""}</option>`).join("");
+  return `<tr class="${r.coche ? "" : "coche-non"}" data-rang="${esc(l.nom)}">
+    <td><input type="checkbox" data-nom="${esc(l.nom)}" ${r.coche ? "checked" : ""} ${vide ? "disabled" : ""} aria-label="Banque ${esc(l.nom)}"></td>
+    <td class="nom" title="${esc(l.nom)}">${esc(l.nom)}${vide ? ' <span class="badge">aucune image</span>' : ""}</td>
+    <td class="n">${nb(l.images)}</td><td class="n">${nb(l.dossiers)}</td><td class="n">${l.octets ? taille(l.octets) : "—"}</td>
+    <td><select data-mode="${esc(l.nom)}" ${vide ? "disabled" : ""}>
+      <option value="dossier" ${r.mode === "dossier" ? "selected" : ""}>un asset par dossier</option>
+      <option value="image" ${r.mode === "image" ? "selected" : ""}>une fiche par image</option></select></td>
+    <td>${r.mode === "dossier" ? `<input type="text" data-vig="${esc(l.nom)}" value="${esc(r.vignette)}" list="dl-${i}" placeholder="_clean" style="width:120px"><datalist id="dl-${i}">${cands}</datalist>` : '<span class="faible">—</span>'}</td>
+    <td>${vide ? "" : `<button class="btn discret" data-verif="${esc(l.nom)}">Vérifier</button>`} <span data-etat="${esc(l.nom)}">${etatRang(r)}</span></td></tr>
+    <tr class="detail" data-detail="${esc(l.nom)}" hidden><td colspan="8"></td></tr>`;
+}
+
+function etatRang(r) {
+  if (!r.verif) return r.mode === "dossier" ? '<span class="faible">non vérifié</span>' : "";
+  const v = r.verif;
+  if (v.creable) return `<span class="badge ok">${nb(v.assets)} fiches</span>`;
+  if (v.multiples) return `<span class="badge erreur">${nb(v.multiples)} dossier(s) en double</span>`;
+  return '<span class="badge erreur">aucune correspondance</span>';
+}
+
+function brancherRangs() {
+  const R = S.n.rangs;
+  $$("input[data-nom]").forEach(c => c.onchange = () => {
+    R[c.dataset.nom].coche = c.checked;
+    c.closest("tr").classList.toggle("coche-non", !c.checked);
+    majCompteRacine();
+  });
+  $$("select[data-mode]").forEach(s => s.onchange = () => {
+    const r = R[s.dataset.mode];
+    r.mode = s.value; r.verif = null;
+    afficherAnalyseRacine();
+  });
+  $$("input[data-vig]").forEach(i => {
+    i.onchange = i.onblur = () => { const r = R[i.dataset.vig]; if (r.vignette !== i.value.trim()) { r.vignette = i.value.trim(); r.verif = null; $(`[data-etat="${CSS.escape(i.dataset.vig)}"]`).innerHTML = etatRang(r); } };
+    i.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); i.blur(); verifierRang(i.dataset.vig); } };
+  });
+  $$("button[data-verif]").forEach(b => b.onclick = e => essayer(() => verifierRang(b.dataset.verif), e.currentTarget));
+}
+
+function majCompteRacine() {
+  const R = S.n.rangs, noms = Object.keys(R).filter(n => R[n].coche);
+  const deja = S.n.analyse.lignes.filter(l => l.etat === "banque").length;
+  $("#a-compte").textContent = noms.length + " banque" + (noms.length > 1 ? "s" : "") + " à préparer" + (deja ? `, ${deja} déjà prête${deja > 1 ? "s" : ""}` : "");
+  $("#a-suite").disabled = !noms.length && !deja;
+}
+
+async function verifierRang(nom) {
+  const r = S.n.rangs[nom], marque = $(`[data-etat="${CSS.escape(nom)}"]`), detail = $(`[data-detail="${CSS.escape(nom)}"]`);
+  if (!marque) return;
+  marque.innerHTML = '<span class="faible">vérification…</span>';
+  const chemin = S.n.analyse.racine + "\\" + nom;
+  try {
+    r.verif = await api("/api/images/verifier", {chemin, reglage: {mode: r.mode, vignette: r.vignette}});
+  } catch (e) {
+    marque.innerHTML = `<span class="badge erreur">${esc(e.message)}</span>`;
+    return;
+  }
+  marque.innerHTML = etatRang(r);
+  if (detail) {
+    detail.hidden = false;
+    detail.firstElementChild.innerHTML = detailVerif(r.verif, chemin);
+  }
+}
+
+function detailVerif(v, chemin) {
+  let h = "";
+  if (v.diag_multiples.length) h += `<details class="diag" open><summary>Plusieurs vignettes possibles (${nb(v.multiples)}) — à régler avant de créer</summary><div class="corps">${v.diag_multiples.map(d => `<div><b>${esc(d.dossier === "." ? "(racine)" : d.dossier)}</b><br><code>${d.fichiers.map(esc).join("<br>")}</code></div>`).join("")}</div></details>`;
+  if (v.diag_absents.length) h += `<details class="diag"><summary>Dossiers sans vignette (${nb(v.sans_vignette)}) — laissés de côté</summary><div class="corps">${v.diag_absents.map(d => `<div><b>${esc(d.dossier === "." ? "(racine)" : d.dossier)}</b><br><code>${d.fichiers.map(esc).join("<br>") || "—"}</code></div>`).join("")}</div></details>`;
+  if (v.exemples.length) h += `<p class="petit" style="margin:10px 0 4px">Aperçu des premières fiches</p><div class="vignettes">${v.exemples.slice(0, 12).map(x => `<figure><img loading="lazy" alt="" src="/api/apercu?${new URLSearchParams({j: JETON, racine: chemin, p: x.vignette})}"><figcaption title="${esc(x.nom)}">${esc(x.nom)}${x.images > 1 ? ` · ${x.images}` : ""}</figcaption></figure>`).join("")}</div>`;
+  return h || '<p class="petit" style="margin:0">Rien à signaler.</p>';
+}
+
+// ---- analyse : une banque seule (images en vrac dans le dossier choisi) ----
+function afficherAnalyseBanque() {
+  const a = S.n.banque, zone = $("#a-resultat");
+  S.n.mode = S.n.mode || a.proposition.mode;
+  S.n.vignette = S.n.vignette ?? a.proposition.vignette;
+  if (!a.images) {
+    zone.innerHTML = encart("alerte", `<p><b>Aucune image dans ce dossier.</b> Déposez-y vos images (JPG, PNG, WebP…) puis recommencez l'analyse — ou choisissez un autre dossier.</p>
+      <div class="actions"><button class="btn" id="a-refaire">Recommencer l'analyse</button><button class="btn discret" id="a-retour">${ico("retour")} Retour</button></div>`);
+    $("#a-refaire").onclick = () => vueAnalyse(); $("#a-retour").onclick = () => vueNouvelle();
+    return;
+  }
+  zone.innerHTML = encart("info", "<p><b>Les images sont en vrac dans ce dossier</b> (aucun sous-dossier n'en contient) : il devient lui-même une banque, sans onglets.</p>") + `
+    <div class="chiffres">
+      <div class="chiffre"><b>${nb(a.images)}</b><span>images</span></div>
+      <div class="chiffre"><b>${nb(a.dossiers)}</b><span>dossier${a.dossiers > 1 ? "s" : ""} d'images</span></div>
+      <div class="chiffre"><b>${esc(a.taille)}</b><span>au total</span></div>
+    </div>
+    <h3>Une fiche, c'est…</h3>
+    <div class="grille2">
+      <button class="choix" data-mode="dossier" aria-pressed="${S.n.mode === "dossier"}">
+        <h2>Un asset par dossier</h2>
+        <p>Chaque sous-dossier est une fiche. Sa vignette est l'image dont le nom finit par un suffixe (<code>_clean</code>, <code>_def</code>…) ; un clic montre toutes les autres.</p>
+        ${a.proposition.mode === "dossier" ? '<span class="badge accent coin">recommandé</span>' : ""}
+      </button>
+      <button class="choix" data-mode="image" aria-pressed="${S.n.mode === "image"}">
+        <h2>Une fiche par image</h2>
+        <p>Chaque image est une fiche. Pour un dossier d'images en vrac, sans convention de nom.</p>
+        ${a.proposition.mode === "image" ? '<span class="badge accent coin">recommandé</span>' : ""}
+      </button>
+    </div>
+    <div id="i-suffixe" ${S.n.mode === "dossier" ? "" : "hidden"}>
+      <h3>Suffixe de la vignette</h3>
+      <div class="carte">
+        ${a.candidats.length ? `<p class="petit" style="margin:0 0 10px">Trouvés dans les noms de fichiers — le nombre de dossiers où le suffixe désigne une seule image :</p>
+        <div class="puces">${a.candidats.slice(0, 6).map(c => `<button class="puce" data-s="${esc(c.suffixe)}" aria-pressed="${c.suffixe === S.n.vignette}"><code>${esc(c.suffixe)}</code><small>${nb(c.uniques)} dossier${c.uniques > 1 ? "s" : ""}${c.multiples ? " · " + nb(c.multiples) + " en double" : ""}</small></button>`).join("")}</div>` : '<p class="petit" style="margin:0">Aucun suffixe commun trouvé : tapez-le.</p>'}
+        <label class="champ" style="margin-top:16px">Suffixe, sans l'extension
+          <span class="ligne-champ"><input type="text" id="i-s" value="${esc(S.n.vignette)}" placeholder="_clean" style="max-width:260px"><button class="btn" id="i-verifier">Vérifier les correspondances</button></span></label>
+      </div>
+    </div>
+    <div id="i-verif"></div>
+    <div class="actions"><button class="btn discret" id="a-retour">${ico("retour")} Retour</button><span class="ressort"></span><button class="btn principal" id="a-suite" disabled>Continuer ${ico("fleche")}</button></div>`;
+  $("#a-retour").onclick = () => vueGenre();
+  $$(".choix[data-mode]", zone).forEach(b => b.onclick = () => {
+    S.n.mode = b.dataset.mode;
+    $$(".choix[data-mode]", zone).forEach(x => x.setAttribute("aria-pressed", x === b));
+    $("#i-suffixe").hidden = S.n.mode !== "dossier";
+    verifierImages();
+  });
+  $$(".puce", zone).forEach(p => p.onclick = () => { $("#i-s").value = p.dataset.s; verifierImages(); });
+  $("#i-verifier").onclick = () => verifierImages();
+  $("#i-s").onkeydown = e => { if (e.key === "Enter") verifierImages(); };
+  $("#a-suite").onclick = () => vueReglages();
+  verifierImages();
+}
+async function verifierImages() {
+  const a = S.n.banque;
+  S.n.vignette = $("#i-s") ? $("#i-s").value.trim() : "";
+  $$(".puce").forEach(p => p.setAttribute("aria-pressed", p.dataset.s === S.n.vignette));
+  const zone = $("#i-verif");
+  $("#a-suite").disabled = true;
+  if (S.n.mode === "dossier" && !S.n.vignette) { zone.innerHTML = encart("info", "<p>Choisissez ou tapez un suffixe, puis <b>Vérifier les correspondances</b>.</p>"); return; }
+  zone.innerHTML = `<div class="carte" style="margin-top:14px"><div class="progres indetermine"><i></i></div><p class="petit" style="margin:10px 0 0">Vérification…</p></div>`;
+  try {
+    const v = await api("/api/images/verifier", {chemin: a.racine, reglage: {mode: S.n.mode, vignette: S.n.vignette}});
+    S.n.verif = v;
+    let h = "";
+    if (v.creable) h += encart("ok", `<p><b>${nb(v.assets)} fiche${v.assets > 1 ? "s" : ""}</b> à partir de ${nb(v.images)} images.${v.sans_vignette ? ` ${nb(v.sans_vignette)} dossier(s) sans vignette seront laissés de côté.` : ""}</p>`);
+    else if (v.multiples) h += encart("erreur", `<p><b>${nb(v.multiples)} dossier(s) ont plusieurs images qui finissent par « ${esc(S.n.vignette)} ».</b> La création est bloquée : précisez le suffixe, ou renommez les fichiers en cause (liste ci-dessous).</p>`);
+    else h += encart("erreur", `<p><b>Aucune image ne correspond.</b> Essayez un autre suffixe.</p>`);
+    h += detailVerif(v, a.racine);
+    zone.innerHTML = h;
+    $("#a-suite").disabled = !v.creable;
+  } catch (e) { zone.innerHTML = encart("erreur", `<p>${esc(e.message)}</p>`); }
+}
+// ---- réglages -------------------------------------------------------------
+const FORMATS = [[1920,1080],[3840,2160],[1280,720],[2048,858],[1920,1440],[1440,1080],[1080,1920],[1080,1350],[1080,1080]];
+function vueReglages() {
+  const info = S.n.info, a = S.n.analyse, films = S.n.genre === "films";
+  const p = a.proposition || {};
+  let corps = "";
+  if (films) {
+    const fmt = p.format ? p.format.join("x") : "";
+    const liste = FORMATS.map(f => f.join("x"));
+    if (fmt && !liste.includes(fmt)) liste.unshift(fmt);
+    corps = `<div class="carte"><div class="reglages">
+      <label class="champ large">Titre affiché dans l'application<input type="text" id="r-titre" value="${esc(S.n.titre ?? p.titre)}"></label>
+      <label class="champ">Format des séquences
+        <select id="r-format">${liste.map(f => `<option value="${f}" ${f === (S.n.format || fmt || "1920x1080") ? "selected" : ""}>${f.replace("x", " × ")}${f === fmt ? " — celui des rushes" : ""}</option>`).join("")}</select></label>
+      <label class="champ">Port local<input type="number" id="r-port" value="${esc(S.n.port ?? p.port ?? "")}" min="1024" max="65000"></label>
+      ${S.n.neuve ? `<label class="champ large">Premier projet (créé dans projets\\)<input type="text" id="r-premier" value="${esc(S.n.premier || "Rushes")}"></label>` : ""}
+    </div>
+    <p class="petit" style="margin:12px 0 0">Un port par bibliothèque : les préférences et la dernière séquence du navigateur y sont attachées. 8779 et 8780 sont déjà pris (Coulisses, Mode Cringe).</p></div>
+    <h3>Options</h3>
+    <div class="reglages">
+      <label class="coche"><input type="checkbox" id="r-ls" ${S.n.ls === false ? "" : "checked"}><div><b>Lecture seule</b><span>L'application ne renomme, ne déplace et n'efface rien dans les dossiers de rushes. Vous rangez avec des dossiers virtuels.</span></div></label>
+      <label class="coche"><input type="checkbox" id="r-moteur" ${S.etat.moteur ? "checked" : "disabled"}><div><b>Moteur Python embarqué</b><span>La bibliothèque marchera sur un PC sans Python (37 Mo, dans <code>_app\\_python</code>).</span></div></label>
+      <label class="coche"><input type="checkbox" id="r-raccourci" checked><div><b>Raccourci sur le Bureau</b><span>Vers le lanceur de la bibliothèque.</span></div></label>
+    </div>`;
+  } else if (S.n.racine) {
+    const cochees = Object.keys(S.n.rangs).filter(n => S.n.rangs[n].coche);
+    const deja = a.lignes.filter(l => l.etat === "banque").length;
+    corps = `<div class="carte"><dl class="infos" style="margin:0">
+      <dt>Titre</dt><dd>${esc(info.nom)} <span class="faible">— le nom du dossier, en tête de la bibliothèque générale</span></dd>
+      <dt>Banques à préparer</dt><dd>${cochees.length ? cochees.map(esc).join(", ") : "aucune"}${deja ? ` <span class="faible">— ${nb(deja)} déjà prête(s), gardée(s) telle(s) quelle(s)</span>` : ""}</dd>
+      <dt>Onglets</dt><dd>À ranger quand vous voudrez, avec <b>Préparer une bibliothèque</b> posé dans le dossier</dd>
+    </dl></div>
+    <h3>Options</h3>
+    <div class="reglages">
+      <label class="coche"><input type="checkbox" id="r-moteur" ${S.etat.moteur ? "checked" : "disabled"}><div><b>Moteur Python embarqué</b><span>La bibliothèque marchera sur un PC sans Python (37 Mo, dans <code>serveur\\_python</code>). Il sert à la bibliothèque générale et à toutes ses banques.</span></div></label>
+      <label class="coche"><input type="checkbox" id="r-raccourci" checked><div><b>Raccourci sur le Bureau</b><span>Vers la bibliothèque générale.</span></div></label>
+    </div>`;
+  } else {
+    corps = `<div class="carte"><dl class="infos" style="margin:0">
+      <dt>Titre</dt><dd>${esc(info.nom)} <span class="faible">— le nom du dossier, comme dans la bibliothèque générale</span></dd>
+      <dt>Fiches</dt><dd>${nb(S.n.verif.assets)} ${S.n.mode === "dossier" ? `(un asset par dossier, vignette <code>${esc(S.n.vignette)}</code>)` : "(une par image)"}</dd>
+    </dl></div>
+    <h3>Options</h3>
+    <div class="reglages">
+      <label class="coche"><input type="checkbox" id="r-moteur" ${S.etat.moteur ? "checked" : "disabled"}><div><b>Moteur Python embarqué</b><span>La bibliothèque marchera sur un PC sans Python (37 Mo, dans <code>serveur\\_python</code>).</span></div></label>
+      <label class="coche"><input type="checkbox" id="r-raccourci" checked><div><b>Raccourci sur le Bureau</b><span>Vers le lanceur de la bibliothèque.</span></div></label>
+    </div>`;
+  }
+  const projets = films ? Object.entries(S.n.coches || {}).filter(([, v]) => v).map(([k]) => k) : [];
+  const faire = films ? [
+    S.n.neuve ? "créer <code>projets\\</code> et <code>bibliotheques\\</code>" : `relever l'empreinte de ${projets.length} dossier(s) de rushes (nom, taille, date de chaque fichier)`,
+    "déposer <code>_app\\</code> (serveur, application, réglages) et <code>LANCER-LA-BIBLIOTHEQUE.bat</code>",
+    "premier scan : sondage de chaque média, puis vignettes",
+    S.n.neuve ? "" : "relever l'empreinte à nouveau et vous montrer qu'elle n'a pas bougé",
+  ].filter(Boolean) : S.n.racine ? [
+    "relever l'empreinte de toutes les images (nom, taille, date)",
+    `préparer ${nb(Object.keys(S.n.rangs).filter(n => S.n.rangs[n].coche).length)} banque(s) : un dossier <code>serveur\\</code> dans chacune, index et vignettes`,
+    "déposer <code>serveur\\</code> (bibliothèque générale à onglets + préparateur) et les deux lanceurs",
+    a.ancienne_banque ? "mettre l'ancienne banque de côté dans <code>serveur\\sauvegardes\\</code> et y reporter favoris et pastilles" : "",
+    "relever l'empreinte à nouveau et vous montrer qu'elle n'a pas bougé",
+  ].filter(Boolean) : [
+    "relever l'empreinte de toutes les images (nom, taille, date)",
+    "déposer <code>serveur\\</code> (serveur, indexeur, navigateur) et <code>LANCER-LA-BIBLIOTHEQUE.bat</code>",
+    "indexer et fabriquer les vignettes",
+    "relever l'empreinte à nouveau et vous montrer qu'elle n'a pas bougé",
+  ];
+  $("#vue").innerHTML = entete("Nouvelle bibliothèque " + (films ? "de films" : "d'images"), "Réglages", "") +
+    etapes(ETAPES_N, 3) + boiteDossier(info, `<span class="badge accent">${films ? "films" : "images"}</span>`) + corps +
+    `<h3>Ce qui va être fait</h3><div class="carte"><ol style="margin:0;padding-left:20px;color:var(--doux)">${faire.map(f => `<li style="margin:4px 0">${f}</li>`).join("")}</ol></div>
+     <div class="actions"><button class="btn discret" id="r-retour">${ico("retour")} Retour</button><span class="ressort"></span><button class="btn principal" id="r-installer">${ico("check")} Installer la bibliothèque</button></div>`;
+  $("#r-retour").onclick = () => { memoriserReglages(); vueAnalyse(); };
+  $("#r-installer").onclick = e => essayer(() => installer(), e.currentTarget);
+}
+function memoriserReglages() {
+  if ($("#r-titre")) S.n.titre = $("#r-titre").value;
+  if ($("#r-format")) S.n.format = $("#r-format").value;
+  if ($("#r-port")) S.n.port = $("#r-port").value;
+  if ($("#r-ls")) S.n.ls = $("#r-ls").checked;
+  if ($("#r-premier")) S.n.premier = $("#r-premier").value;
+}
+async function installer() {
+  memoriserReglages();
+  const films = S.n.genre === "films";
+  let reglages;
+  if (films) {
+    reglages = {titre: S.n.titre, format: (S.n.format || "").split("x").map(Number), port: +S.n.port || null,
+      lecture_seule: S.n.ls !== false, moteur: $("#r-moteur").checked, raccourci: $("#r-raccourci").checked,
+      disposition: S.n.neuve ? "neuve" : "existante",
+      projets: Object.entries(S.n.coches || {}).filter(([, v]) => v).map(([k]) => k), premier_projet: S.n.premier || "Rushes"};
+  } else if (S.n.racine) {
+    reglages = {racine: true, moteur: $("#r-moteur").checked, raccourci: $("#r-raccourci").checked,
+      lignes: Object.entries(S.n.rangs).map(([nom, r]) => ({nom, coche: r.coche, mode: r.mode, vignette: r.vignette}))};
+  } else {
+    reglages = {mode: S.n.mode, vignette: S.n.vignette, moteur: $("#r-moteur").checked, raccourci: $("#r-raccourci").checked};
+  }
+  await api("/api/installer", {chemin: S.n.info.chemin, genre: S.n.genre, reglages});
+  vueInstallation();
+}
+
+// ---- installation -----------------------------------------------------------
+function vueInstallation() {
+  const info = S.n.info, films = S.n.genre === "films";
+  $("#vue").innerHTML = entete("Nouvelle bibliothèque " + (films ? "de films" : "d'images"), "Installation",
+      "Vous pouvez fermer cette fenêtre : le travail continue, et relancer Library Editor le retrouve.") +
+    etapes(ETAPES_N, 4) + boiteDossier(info) + `<div id="i-suivi"></div><div id="i-fin"></div>`;
+  suivre($("#i-suivi"), t => afficherFin(t, $("#i-fin")));
+}
+function blocPreuve(preuve) {
+  if (!preuve || !preuve.length) return "";
+  return `<h3>La preuve</h3>` + preuve.map(p => p.identiques
+    ? `<div class="preuve">${ico("bouclier")}<div><b>${esc(p.projet)}</b> — ${nb(p.entrees)} entrées, <b>identiques</b> avant et après (nom, taille, date).</div></div>`
+    : `<div class="preuve rate">${ico("alerte")}<div><b>${esc(p.projet)}</b> — des différences : ${esc([...p.disparues, ...p.nouvelles].slice(0, 6).join(", "))}</div></div>`).join("");
+}
+function afficherFin(t, zone) {
+  if (t.etat !== "fini") {
+    zone.innerHTML = `<div class="carte resultat rate" style="margin-top:14px"><span class="grand">${ico("x")}</span><div><h2>${t.etat === "annule" ? "Arrêté" : "L'installation n'a pas abouti"}</h2>
+      <p class="petit">${esc(t.erreur || "Arrêté à la demande.")}</p><p class="petit">Aucun fichier existant n'a été modifié. Le détail est au-dessus.</p>
+      <div class="actions"><button class="btn" id="f-nouvelle">Recommencer</button></div></div></div>`;
+    $("#f-nouvelle").onclick = () => aller("nouvelle");
+    return;
+  }
+  const r = t.resultat, films = r.genre === "films", racine = r.genre === "racine";
+  const chiffres = films
+    ? r.projets.map(p => `<div class="chiffre"><b>${nb(p.fiches)}</b><span>fiches · ${esc(p.projet)}</span></div>`).join("") + `<div class="chiffre"><b>${r.port}</b><span>port local</span></div><div class="chiffre"><b>${duree(r.duree)}</b><span>d'installation</span></div>`
+    : racine
+    ? `<div class="chiffre"><b>${nb(r.banques.length)}</b><span>banque${r.banques.length > 1 ? "s" : ""} préparée${r.banques.length > 1 ? "s" : ""}</span></div><div class="chiffre"><b>${nb(r.fiches)}</b><span>fiches</span></div><div class="chiffre"><b>${duree(r.duree)}</b><span>d'installation</span></div>`
+    : `<div class="chiffre"><b>${nb(r.fiches)}</b><span>fiches</span></div><div class="chiffre"><b>${nb(r.vignettes)}</b><span>vignettes</span></div><div class="chiffre"><b>${duree(r.duree)}</b><span>d'installation</span></div>`;
+  zone.innerHTML = `<div class="carte" style="margin-top:14px"><div class="resultat"><span class="grand">${ico("check")}</span><div style="flex:1;min-width:0">
+      <h2>« ${esc(r.titre)} » est prête</h2>
+      <p class="petit" style="margin:2px 0 0">Elle s'ouvre avec <code>${racine ? "Bibliotheque generale" : "LANCER-LA-BIBLIOTHEQUE"}</code>${r.raccourci ? ", ou le raccourci posé sur le Bureau" : ""}.${r.moteur ? " Elle embarque son moteur Python." : ""}</p>
+      <div class="chiffres">${chiffres}</div>
+      ${racine ? blocRacine(r) : ""}
+      ${blocPreuve(r.preuve)}
+      ${films && !r.ffmpeg ? encart("alerte", "<p>ffmpeg est introuvable : les vignettes seront faites par le navigateur à la première ouverture, et le rendu ne marchera pas.</p>") : ""}
+      <div class="actions"><button class="btn principal" id="f-ouvrir">${ico("lancer")} Ouvrir la bibliothèque</button>
+        ${racine ? `<button class="btn" id="f-preparer">${ico("plus")} Préparer une bibliothèque</button>` : ""}
+        <button class="btn" id="f-dossier">${ico("dossier")} Ouvrir le dossier</button>
+        ${r.raccourci ? "" : `<button class="btn" id="f-raccourci">${ico("raccourci")} Raccourci sur le Bureau</button>`}
+        <span class="ressort"></span><button class="btn discret" id="f-enligne">${ico("cloud")} Mettre en ligne…</button></div>
+    </div></div></div>`;
+  $("#f-ouvrir").onclick = e => essayer(async () => { await api("/api/ouvrir", {chemin: r.racine}); toast("La bibliothèque démarre dans sa propre fenêtre."); }, e.currentTarget);
+  $("#f-dossier").onclick = () => essayer(() => api("/api/explorer", {chemin: r.racine}));
+  if ($("#f-raccourci")) $("#f-raccourci").onclick = e => essayer(async () => { const x = await api("/api/raccourci", {chemin: r.racine}); toast("Raccourci créé : " + x.raccourci); e.target.closest("button").remove(); }, e.currentTarget);
+  if ($("#f-preparer")) $("#f-preparer").onclick = e => essayer(async () => { await api("/api/preparer", {chemin: r.racine}); toast("Le préparateur s'ouvre dans sa propre fenêtre."); }, e.currentTarget);
+  $("#f-enligne").onclick = () => { aller("enligne"); choisirEnligne(r.racine); };
+}
+
+// Ce que la racine a donné : ses banques, les ratées, l'ancienne mise de côté.
+function blocRacine(r) {
+  let h = `<div class="tableau"><table><thead><tr><th>Banque</th><th>Fiches</th><th>Une fiche</th></tr></thead><tbody>${
+    r.banques.map(b => `<tr><td class="nom">${esc(b.nom)}</td><td class="n">${nb(b.fiches)}</td><td>${b.mode === "image" ? "une fiche par image" : "un asset par dossier"}${b.sans_vignette ? ` <span class="faible">· ${nb(b.sans_vignette)} dossier(s) sans vignette</span>` : ""}</td></tr>`).join("")}
+    ${(r.deja || []).map(n => `<tr class="coche-non"><td class="nom">${esc(n)}</td><td class="n">—</td><td class="faible">déjà prête, gardée telle quelle</td></tr>`).join("")}</tbody></table></div>`;
+  if (r.echecs && r.echecs.length) h += encart("alerte", `<p><b>${nb(r.echecs.length)} dossier(s) n'ont pas pu être préparés</b> — rien n'y a été écrit :</p><ul style="margin:6px 0 0;padding-left:18px">${r.echecs.map(e => `<li><b>${esc(e.nom)}</b> — ${esc(e.erreur)}</li>`).join("")}</ul><p class="petit" style="margin:8px 0 0">Corrigez (suffixe, doublons) puis reprenez-les avec <b>Préparer une bibliothèque</b>.</p>`);
+  if (r.sauvegarde) h += encart("info", `<p>L'ancienne banque unique a été mise de côté dans <code>${esc(r.sauvegarde)}</code> — rien n'a été supprimé.${r.marques_reportees ? ` ${nb(r.marques_reportees)} favori(s) et pastille(s) ont été reportés dans les nouvelles banques.` : ""} Vous pourrez supprimer ce dossier quand tout ira bien.</p>`);
+  return h;
+}
+
+// =============================================================================
+//  FICHE D'UNE BIBLIOTHÈQUE
+// =============================================================================
+async function montrerFiche(chemin) {
+  S.vue = "fiche"; S.fiche = chemin;
+  $$(".nav").forEach(b => b.removeAttribute("aria-current"));
+  rafraichir();
+  let info;
+  try { info = await api("/api/inspecter", {chemin}); } catch (e) {
+    $("#vue").innerHTML = entete("Bibliothèque", chemin.split("\\").pop(), "") + encart("alerte", `<p>${esc(e.message)}</p><div class="actions"><button class="btn danger" id="x-oublier">${ico("x")} Retirer de la liste</button></div>`);
+    $("#x-oublier").onclick = async () => { await api("/api/oublier", {chemin}); aller("nouvelle"); };
+    return;
+  }
+  const d = info.detection;
+  if (!d) { $("#vue").innerHTML = entete("Bibliothèque", info.nom, "") + encart("alerte", "<p>Ce dossier ne contient plus de bibliothèque.</p>"); return; }
+  const films = d.genre === "films", racine = d.genre === "racine";
+  const sorte = films ? "de films" : racine ? "d'images à onglets" : "d'images";
+  $("#vue").innerHTML = `<div class="fiche-tete"><span class="ico">${ico(films ? "film" : "image")}</span><div><div class="entete" style="margin:0"><div class="sur">Bibliothèque ${sorte}</div><h1>${esc(d.titre)}</h1></div></div></div>
+    <div class="carte" style="margin-top:22px"><dl class="infos" style="margin:0">
+      <dt>Dossier</dt><dd><code>${esc(info.chemin)}</code></dd>
+      ${films ? `<dt>Adresse locale</dt><dd>${d.port ? `<code>http://127.0.0.1:${d.port}/</code>` : "—"}</dd>
+        <dt>Lecture seule</dt><dd>${d.reglages ? (d.reglages.lecture_seule ? "oui" : "non") : "ancienne variante, sans réglages"}</dd>
+        <dt>Projets</dt><dd>${d.reglages && d.reglages.projets ? esc(d.reglages.projets.join(", ")) : (d.reglages && d.reglages.projets_dans === "projets" ? "tous les dossiers de <code>projets\\</code>" : "—")}</dd>`
+      : racine ? `<dt>Banques</dt><dd>${d.banques.length ? d.banques.map(b => `<code>${esc(b.nom)}</code>`).join(" ") : "aucune pour l'instant — <b>Préparer une bibliothèque</b> en ajoute une"}</dd>
+        <dt>Onglets</dt><dd>À ranger avec <b>Préparer une bibliothèque</b></dd>`
+      : `<dt>Fiches</dt><dd>${d.configuration ? (d.configuration.mode === "image" ? "une par image" : `un asset par dossier, vignette <code>${esc(d.configuration.vignette)}</code>`) : "ancienne banque"}</dd>`}
+      <dt>Moteur Python</dt><dd>${d.moteur ? "embarqué" : "celui de la machine"}</dd>
+    </dl>
+    <div class="actions"><button class="btn principal" id="x-ouvrir">${ico("lancer")} Ouvrir</button>
+      ${racine ? `<button class="btn" id="x-preparer">${ico("plus")} Préparer une bibliothèque</button>` : ""}
+      <button class="btn" id="x-dossier">${ico("dossier")} Dossier</button>
+      <button class="btn" id="x-raccourci">${ico("raccourci")} Raccourci</button><span class="ressort"></span>
+      <button class="btn" id="x-maj">${ico("refresh")} Mettre à jour</button><button class="btn" id="x-enligne">${ico("cloud")} Mettre en ligne</button></div></div>
+    <div class="actions"><span class="ressort"></span><button class="btn discret" id="x-oublier">Retirer de la liste</button></div>`;
+  if ($("#x-preparer")) $("#x-preparer").onclick = e => essayer(async () => { await api("/api/preparer", {chemin: info.chemin}); toast("Le préparateur s'ouvre dans sa propre fenêtre."); }, e.currentTarget);
+  $("#x-ouvrir").onclick = e => essayer(async () => { await api("/api/ouvrir", {chemin: info.chemin}); toast("La bibliothèque démarre dans sa propre fenêtre."); }, e.currentTarget);
+  $("#x-dossier").onclick = () => essayer(() => api("/api/explorer", {chemin: info.chemin}));
+  $("#x-raccourci").onclick = e => essayer(async () => { const x = await api("/api/raccourci", {chemin: info.chemin}); toast("Raccourci créé : " + x.raccourci); }, e.currentTarget);
+  $("#x-maj").onclick = () => { aller("maj"); choisirMaj(info.chemin); };
+  $("#x-enligne").onclick = () => { aller("enligne"); choisirEnligne(info.chemin); };
+  $("#x-oublier").onclick = async () => { await api("/api/oublier", {chemin: info.chemin}); toast("Retirée de la liste (le dossier n'est pas touché)."); aller("nouvelle"); };
+}
+
+// =============================================================================
+//  CHOISIR UNE BIBLIOTHÈQUE EXISTANTE (mise à jour, mise en ligne)
+// =============================================================================
+function selecteurBibliotheque(quand) {
+  const recents = (S.etat?.recents || []).filter(r => r.existe);
+  return `<div class="carte">
+    ${recents.length ? `<div class="puces" style="margin-bottom:14px">${recents.map((r, i) => `<button class="puce" data-r="${i}">${ico(r.genre === "films" ? "film" : "image")}<span>${esc(r.titre)}</span></button>`).join("")}</div>` : ""}
+    <span class="ligne-champ"><input type="text" id="s-chemin" placeholder="Chemin du dossier de la bibliothèque"><button class="btn" id="s-parcourir">${ico("dossier")} Parcourir…</button><button class="btn principal" id="s-ok">Choisir</button></span>
+  </div>`;
+}
+function brancherSelecteur(quand) {
+  const recents = (S.etat?.recents || []).filter(r => r.existe);
+  $$(".puce[data-r]").forEach(b => b.onclick = () => quand(recents[+b.dataset.r].chemin));
+  $("#s-parcourir").onclick = e => essayer(async () => { const r = await api("/api/choisir", {titre: "Choisir une bibliothèque"}); if (r.chemin) quand(r.chemin); }, e.currentTarget);
+  $("#s-ok").onclick = () => quand($("#s-chemin").value);
+  $("#s-chemin").onkeydown = e => { if (e.key === "Enter") quand($("#s-chemin").value); };
+}
+
+// =============================================================================
+//  METTRE À JOUR
+// =============================================================================
+function vueMaj() {
+  $("#vue").innerHTML = entete("Mettre à jour", "Mettre à jour une bibliothèque",
+    "Remplace le code (serveur, application, lanceur) par la version de ce Library Editor, avec une sauvegarde <code>.avant-maj-…</code> de chaque fichier. Les données — catalogue, vignettes, séquences, rangement, favoris, pastilles, polices — ne sont jamais touchées.") +
+    selecteurBibliotheque() + `<div id="m-etat"></div>`;
+  brancherSelecteur(chemin => essayer(() => choisirMaj(chemin)));
+}
+async function choisirMaj(chemin) {
+  if (S.vue !== "maj") aller("maj");
+  const zone = $("#m-etat");
+  zone.innerHTML = `<div class="carte" style="margin-top:14px"><div class="progres indetermine"><i></i></div></div>`;
+  try {
+    const e = await api("/api/maj/etat", {chemin});
+    S.maj = e;
+    const d = e.detection || {}, films = e.genre === "films", racine = e.genre === "racine";
+    const sorte = films ? "bibliothèque de films" : racine ? "bibliothèque d'images à onglets" : "banque d'images";
+    let h = `<h3>${esc(d.titre || chemin)} — ${sorte}</h3>
+      <p class="petit" style="margin:-6px 0 12px">Version installée : <b>${esc(e.version_locale)}</b> · version de ce Library Editor : <b>${esc(e.version_distante)}</b></p>`;
+    if (films && d.ancienne_variante) h += encart("info", "<p>Bibliothèque sans <code>bibliotheque.json</code> (variante des Coulisses) : le nouveau serveur garde exactement ses emplacements et son port 8779. Les outils à côté (<code>publier.py</code>, <code>ajouter.py</code>…) ne sont pas touchés.</p>");
+    if (e.ouverte) h += encart("alerte", "<p><b>Cette bibliothèque est ouverte.</b> Ses lanceurs (<code>.bat</code>) ne seront pas remplacés : une console est en train de les lire, et Windows en ferait n'importe quoi. Tout le reste est mis à jour. Fermez-la et relancez la mise à jour si les lanceurs ont changé.</p>");
+    const ETATS = {
+      a_jour: ['<span class="badge ok">à jour</span>', 0],
+      a_installer: ['<span class="badge accent">sera ajouté</span>', 1],
+      a_remplacer: ['<span class="badge accent">sera remplacé (sauvegardé avant)</span>', 1],
+      modifie: ['<span class="badge alerte">modifié à la main — gardé tel quel</span>', 0],
+      sans_objet: ['<span class="faible">—</span>', 0],
+    };
+    const lignes = e.fichiers.filter(f => f.etat !== "sans_objet");
+    h += `<div class="tableau"><table><thead><tr><th>Fichier</th><th>État</th></tr></thead><tbody>${
+      lignes.map(f => `<tr><td><code>${esc(f.fichier)}</code></td><td>${(ETATS[f.etat] || ETATS.sans_objet)[0]}${f.lanceur && e.ouverte && f.etat !== "a_jour" ? ' <span class="faible">lanceur : attendra la fermeture</span>' : ""}</td></tr>`).join("")}</tbody></table></div>`;
+    if (e.modifies.length) h += encart("alerte", `<p><b>${nb(e.modifies.length)} fichier(s) ne viennent d'aucune version connue</b> — ils ont été retouchés à la main (les banques « 3d » de LDR, par exemple). Ils sont gardés tels quels. Cochez l'option ci-dessous pour les remplacer quand même : une sauvegarde <code>.avant-maj-…</code> est faite d'abord.</p>`);
+    if (e.candidats.length) h += `<h3>Dossiers de rushes</h3><p class="petit" style="margin:-4px 0 10px">Cochez un dossier pour l'ajouter comme projet : il sera scanné, et son empreinte vérifiée avant et après.</p>
+      <div class="tableau"><table><tbody>${e.candidats.map(c => `<tr class="${c.coche ? "" : "coche-non"}"><td style="width:36px"><input type="checkbox" data-p="${esc(c.nom)}" ${c.coche ? "checked disabled" : ""}></td><td class="nom">${esc(c.nom)}</td><td>${c.coche ? '<span class="badge">déjà projet</span>' : ""}</td></tr>`).join("")}</tbody></table></div>`;
+    h += `<div class="reglages" style="margin-top:14px">
+      <label class="coche"><input type="checkbox" id="m-moteur" ${e.moteur_disponible ? (d.moteur ? "" : "checked") : "disabled"}><div><b>${d.moteur ? "Renouveler" : "Ajouter"} le moteur Python embarqué</b><span>${d.moteur ? "Il est déjà là : le recopier n'est utile qu'après une nouvelle version." : "La bibliothèque marchera sur un PC sans Python."}</span></div></label>
+      ${e.modifies.length ? `<label class="coche"><input type="checkbox" id="m-forcer"><div><b>Remplacer aussi les fichiers modifiés à la main</b><span>${e.modifies.map(esc).join(", ")}</span></div></label>` : ""}
+    </div>
+      <div class="actions"><span class="ressort"></span><button class="btn principal" id="m-lancer">${ico("refresh")} Mettre à jour</button></div><div id="m-suivi"></div>`;
+    zone.innerHTML = h;
+    $$("input[data-p]").forEach(c => c.onchange = () => c.closest("tr").classList.toggle("coche-non", !c.checked));
+    $("#m-lancer").onclick = ev => essayer(async () => {
+      const projets = $$("input[data-p]").filter(c => c.checked && !c.disabled).map(c => c.dataset.p);
+      const forcer = !!($("#m-forcer") || {}).checked;
+      if (e.a_jour && !projets.length && !forcer && !$("#m-moteur").checked) { toast("Tout est déjà à jour.", "info"); return; }
+      await api("/api/maj/lancer", {chemin: e.racine, options: {projets, moteur: $("#m-moteur").checked, forcer}});
+      $("#m-lancer").disabled = true;
+      suivre($("#m-suivi"), t => {
+        if (t.etat !== "fini") { $("#m-suivi").insertAdjacentHTML("beforeend", encart("erreur", `<p>${esc(t.erreur || "Arrêté.")}</p>`)); $("#m-lancer").disabled = false; return; }
+        const r = t.resultat;
+        $("#m-suivi").insertAdjacentHTML("beforeend", `<div class="carte" style="margin-top:14px"><div class="resultat"><span class="grand">${ico("check")}</span><div style="flex:1;min-width:0"><h2>Mise à jour faite — version ${esc(r.version)}</h2>
+          <p class="petit">${r.remplaces.length ? nb(r.remplaces.length) + " fichier(s) mis à jour : " + r.remplaces.slice(0, 8).map(esc).join(", ") + (r.remplaces.length > 8 ? "…" : "") + "." : "Programme déjà à jour."}${r.ajoutes && r.ajoutes.length ? " Projets ajoutés : " + r.ajoutes.map(esc).join(", ") + "." : ""}</p>
+          ${r.modifies && r.modifies.length ? encart("info", `<p>Gardés tels quels (modifiés à la main) : ${r.modifies.map(esc).join(", ")}.</p>`) : ""}
+          ${r.lanceurs_en_attente && r.lanceurs_en_attente.length ? encart("alerte", `<p>Lanceurs non remplacés, la bibliothèque étant ouverte : ${r.lanceurs_en_attente.map(esc).join(", ")}. Fermez-la et relancez la mise à jour.</p>`) : ""}
+          ${blocPreuve(r.preuve)}
+          <div class="actions"><button class="btn principal" id="m-ouvrir">${ico("lancer")} Ouvrir la bibliothèque</button></div></div></div></div>`);
+        $("#m-ouvrir").onclick = () => essayer(() => api("/api/ouvrir", {chemin: r.racine}));
+      });
+    }, ev.currentTarget);
+  } catch (err) { zone.innerHTML = encart("erreur", `<p>${esc(err.message)}</p>`); }
+}
+
+// =============================================================================
+//  METTRE EN LIGNE — module à part
+// =============================================================================
+function vueEnligne() {
+  $("#vue").innerHTML = entete("Mettre en ligne", "Mettre une bibliothèque en ligne",
+    "Pour que des collègues la consultent sans passer par votre ordinateur. Library Editor prépare un paquet prêt à envoyer, et vous guide pas à pas sur Hostinger. Il ne demande, ne reçoit et ne garde aucun mot de passe.") +
+    selecteurBibliotheque() + `<div id="e-contenu"></div>`;
+  brancherSelecteur(chemin => essayer(() => choisirEnligne(chemin)));
+}
+async function choisirEnligne(chemin) {
+  if (S.vue !== "enligne") aller("enligne");
+  const zone = $("#e-contenu");
+  zone.innerHTML = `<div class="carte" style="margin-top:14px"><div class="progres indetermine"><i></i></div></div>`;
+  try {
+    const e = await api("/api/enligne/etat", {chemin});
+    if (e.genre === "racine") {
+      zone.innerHTML = `<h3>${esc(e.titre)} — bibliothèque à onglets</h3>` +
+        encart("info", "<p>Une bibliothèque à onglets se met en ligne <b>banque par banque</b> : chacune devient un site à elle seule. Choisissez celle à publier.</p>") +
+        (e.banques.length ? `<div class="tableau"><table><tbody>${e.banques.map((b, i) => `<tr><td class="nom">${esc(b.nom)}</td><td class="n">${nb(b.fiches)} fiches</td><td style="text-align:right"><button class="btn" data-b="${i}">Choisir ${ico("fleche")}</button></td></tr>`).join("")}</tbody></table></div>`
+          : encart("alerte", "<p>Cette bibliothèque n'a encore aucune banque.</p>"));
+      $$("button[data-b]", zone).forEach(b => b.onclick = () => essayer(() => choisirEnligne(e.banques[+b.dataset.b].chemin)));
+      return;
+    }
+    S.en = {etat: e, site: S.en.site || e.paquet_precedent.site || ""};
+    await dessinerGuide();
+  } catch (err) { zone.innerHTML = encart("erreur", `<p>${esc(err.message)}</p>`); }
+}
+async function dessinerGuide(paquet) {
+  const e = S.en.etat, films = e.genre === "films", zone = $("#e-contenu");
+  const g = await api("/api/enligne/guide", {genre: e.genre, site: S.en.site, url: paquet ? paquet.url_deballer : (S.en.paquet?.url_deballer || ""), taille: paquet ? paquet.total : e.estimation});
+  if (paquet) S.en.paquet = paquet;
+  const resume = films
+    ? `${e.projets.length} projet(s) scanné(s) · ${nb(e.projets.reduce((s, p) => s + p.fiches, 0))} fiches · proxys faits : ${nb(e.proxys_faits)}`
+    : `${nb(e.fiches)} fiches · ${nb(e.images)} images`;
+  const outils = {
+    1: `<div class="outil"><label class="champ">Adresse du site (elle sert à vous donner les bons liens ; rien n'est envoyé)
+          <span class="ligne-champ"><input type="text" id="e-site" value="${esc(S.en.site)}" placeholder="https://${films ? "montage" : "images"}.votre-domaine.fr"><button class="btn" id="e-site-ok">Retenir</button></span></label>
+          <div class="actions" style="margin-top:12px"><button class="btn discret" data-url="https://hpanel.hostinger.com/">${ico("sortie")} Ouvrir hPanel</button></div></div>`,
+    2: `<div class="outil">
+          <div class="reglages"><label class="coche"><input type="radio" name="e-mode" value="tout" ${e.paquet_precedent.date ? "" : "checked"}><div><b>Tout</b><span>La première fois, ou pour tout renvoyer.</span></div></label>
+          <label class="coche"><input type="radio" name="e-mode" value="changes" ${e.paquet_precedent.date ? "checked" : "disabled"}><div><b>Seulement ce qui a changé</b><span>${e.paquet_precedent.date ? "Depuis le paquet du " + esc(e.paquet_precedent.date) + "." : "Pas encore de paquet précédent."}</span></div></label></div>
+          ${films && !e.ffmpeg ? encart("erreur", "<p>ffmpeg est introuvable : les proxys ne peuvent pas être fabriqués.</p>") : ""}
+          <div class="actions"><button class="btn principal" id="e-preparer" ${films && !e.ffmpeg ? "disabled" : ""}>${ico("cloud")} Préparer le paquet</button>
+          ${S.en.paquet ? `<button class="btn" id="e-voir">${ico("dossier")} Ouvrir le dossier du paquet</button>` : ""}</div>
+          <div id="e-suivi"></div><div id="e-fin">${S.en.paquet ? finPaquet(S.en.paquet) : ""}</div></div>`,
+    4: S.en.paquet ? `<div class="outil"><div class="actions" style="margin:0"><button class="btn" id="e-copier">${ico("copier")} Copier l'adresse</button>${S.en.site ? `<button class="btn principal" data-url="${esc(S.en.paquet.url_deballer)}">${ico("sortie")} Ouvrir la page de déballage</button>` : '<span class="petit">Indiquez l\'adresse du site à l\'étape 2 pour avoir le lien complet.</span>'}</div></div>` : "",
+    6: S.en.site ? `<div class="outil"><div class="actions" style="margin:0"><button class="btn" data-url="${esc(S.en.site)}">${ico("sortie")} Ouvrir le site</button></div></div>` : "",
+  };
+  zone.innerHTML = `<div class="carte" style="margin:14px 0 26px"><div class="fiche-tete"><span class="ico">${ico(films ? "film" : "image")}</span><div><h2>${esc(e.titre)}</h2><p class="petit" style="margin:0">${resume} · paquet estimé à <b>${esc(e.estimation)}</b></p></div></div></div>
+    <ol class="guide">${g.etapes.map((x, i) => `<li><h2>${esc(x.titre)}</h2>${x.html}${outils[i] || ""}</li>`).join("")}</ol>`;
+  $$("[data-url]", zone).forEach(b => b.onclick = () => essayer(() => api("/api/navigateur", {url: b.dataset.url})));
+  $("#e-site-ok").onclick = () => { let v = $("#e-site").value.trim(); if (v && !/^https?:\/\//.test(v)) v = "https://" + v; S.en.site = v.replace(/\/+$/, ""); if (S.en.paquet && S.en.paquet.cle) S.en.paquet.url_deballer = (S.en.site || "https://<votre-site>") + "/_deballer.php?cle=" + S.en.paquet.cle; dessinerGuide(); toast("Adresse retenue."); };
+  $("#e-preparer").onclick = ev => essayer(async () => {
+    const changes = ($("input[name=e-mode]:checked") || {}).value === "changes";
+    await api("/api/enligne/preparer", {chemin: e.racine, options: {site: S.en.site, seulement_changes: changes}});
+    $("#e-preparer").disabled = true; $("#e-fin").innerHTML = "";
+    suivre($("#e-suivi"), t => {
+      if (t.etat !== "fini") { $("#e-fin").innerHTML = encart("erreur", `<p>${esc(t.erreur || "Arrêté. Relancer reprend là où c'était : les proxys faits ne sont jamais refaits.")}</p>`); $("#e-preparer").disabled = false; return; }
+      $("#e-suivi").innerHTML = "";
+      // L'état a bougé (proxys faits, paquet précédent) : on le relit.
+      api("/api/enligne/etat", {chemin: e.racine}).then(n => { S.en.etat = n; }).catch(() => {})
+        .then(() => dessinerGuide(t.resultat))
+        .then(() => document.getElementById("e-fin")?.scrollIntoView({behavior: "smooth", block: "center"}));
+    }, {journalOuvert: false});
+  }, ev.currentTarget);
+  if ($("#e-voir")) $("#e-voir").onclick = () => essayer(() => api("/api/explorer", {chemin: S.en.paquet.paquet}));
+  if ($("#e-copier")) $("#e-copier").onclick = async () => { await navigator.clipboard.writeText(S.en.paquet.url_deballer); toast("Adresse copiée."); };
+}
+function finPaquet(p) {
+  return `<div class="carte" style="margin-top:12px;background:var(--carte2)"><div class="resultat"><span class="grand">${ico("check")}</span><div style="min-width:0">
+    <h2>Paquet prêt — ${esc(p.total)}</h2>
+    <p class="petit" style="margin:2px 0 8px">Dans <code>${esc(p.paquet)}</code>${p.echecs ? ` · <span style="color:var(--erreur)">${p.echecs} proxy(s) en échec, voir le détail</span>` : ""}</p>
+    <div class="tableau"><table><tbody>${p.zips.map(z => `<tr><td><code>${esc(z.nom)}</code></td><td class="n">${nb(z.fichiers)} fichiers</td><td class="n">${taille(z.octets)}</td></tr>`).join("")}
+      <tr><td><code>_deballer.php</code></td><td class="n" colspan="2"><span class="faible">clé ${esc(p.cle.slice(0, 6))}…</span></td></tr></tbody></table></div></div></div></div>`;
+}
+
+// ---- mise à jour de Library Editor lui-même ---------------------------------
+async function verifierMajEditeur() {
+  let e;
+  try { e = await api("/api/editeur/maj/etat"); } catch (err) { return; }   // hors ligne : rien
+  S.majEditeur = e;
+  if (!e.disponible) return;
+  const b = $("#b-maj-editeur");
+  b.hidden = false;
+  b.innerHTML = `${ico("refresh")} Library Editor ${esc(e.version_distante)}`;
+  b.onclick = () => vueMajEditeur();
+}
+
+function vueMajEditeur() {
+  const e = S.majEditeur || {};
+  S.vue = "majediteur";
+  $$(".nav").forEach(x => x.removeAttribute("aria-current"));
+  $("#vue").innerHTML = entete("Library Editor", "Mettre à jour l'application",
+      "La nouvelle version est téléchargée depuis GitHub, vérifiée par son empreinte, puis mise en place quand cette application se ferme — elle se rouvre toute seule ensuite.") +
+    `<div class="carte"><dl class="infos" style="margin:0">
+      <dt>Version installée</dt><dd>${esc(e.version_locale || "")}</dd>
+      <dt>Nouvelle version</dt><dd><b>${esc(e.version_distante || "")}</b>${e.octets ? ` <span class="faible">— ${taille(e.octets)}</span>` : ""}</dd>
+      <dt>Dépôt</dt><dd><code>${esc(e.depot || "")}</code></dd>
+      ${e.notes ? `<dt>Nouveautés</dt><dd>${esc(e.notes)}</dd>` : ""}
+    </dl></div>
+    ${e.gele === false ? encart("info", "<p>Library Editor tourne depuis ses sources : mettez-les à jour avec <code>git pull</code>.</p>") : ""}
+    <div class="actions"><button class="btn discret" id="me-retour">${ico("retour")} Retour</button><span class="ressort"></span>
+      <button class="btn principal" id="me-lancer" ${e.gele === false ? "disabled" : ""}>${ico("refresh")} Télécharger et installer</button></div>
+    <div id="me-suivi"></div><div id="me-fin"></div>`;
+  $("#me-retour").onclick = () => aller("nouvelle");
+  $("#me-lancer").onclick = ev => essayer(async () => {
+    await api("/api/editeur/maj/lancer");
+    $("#me-lancer").disabled = true;
+    suivre($("#me-suivi"), t => {
+      if (t.etat !== "fini") { $("#me-fin").innerHTML = encart("erreur", `<p>${esc(t.erreur || "Arrêté.")}</p><p class="petit">Rien n'a été remplacé : la version en place continue de marcher.</p>`); $("#me-lancer").disabled = false; return; }
+      $("#me-fin").innerHTML = encart("ok", `<p><b>Version ${esc(t.resultat.version)} prête.</b> Elle se mettra en place dès que cette application sera fermée, puis se rouvrira toute seule.</p>
+        <div class="actions"><button class="btn principal" id="me-fermer">Fermer maintenant</button></div>`);
+      $("#me-fin").querySelector("#me-fermer").onclick = () => {
+        navigator.sendBeacon("/api/adieu?j=" + JETON, JETON);
+        $("#me-fin").innerHTML = encart("info", "<p>Library Editor se ferme, se remplace et se rouvre. Vous pouvez fermer cette fenêtre.</p>");
+      };
+    });
+  }, ev.currentTarget);
+}
+
+// ---- démarrage --------------------------------------------------------------
+(async () => {
+  await rafraichir();
+  verifierMajEditeur();
+  vueNouvelle();
+  // Un travail tournait quand la fenêtre a été fermée : on le reprend à l'écran.
+  const t = S.etat && S.etat.tache;
+  if (t && t.etat === "encours") {
+    $("#vue").innerHTML = entete("Travail en cours", t.titre, "Il a continué pendant que la fenêtre était fermée.") + `<div id="i-suivi"></div><div id="i-fin"></div>`;
+    suivre($("#i-suivi"), x => { if (x.genre === "installation") afficherFin(x, $("#i-fin")); else $("#i-fin").innerHTML = encart(x.etat === "fini" ? "ok" : "erreur", `<p>${x.etat === "fini" ? "Terminé." : esc(x.erreur || "Arrêté.")}</p>`); });
+  }
+})();
+</script>
+</body>
+</html>

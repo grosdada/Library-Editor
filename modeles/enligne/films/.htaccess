@@ -1,0 +1,36 @@
+# montage.placenta.tv
+# LiteSpeed lit les directives Apache : la reecriture marche telle quelle.
+
+RewriteEngine On
+
+# /api/<quoi>  ->  api.php  (l application garde exactement les memes URL que
+# la version de bureau : aucune condition a ecrire dans app.html)
+RewriteRule ^api/(.*)$ api.php [QSA,L]
+
+# La page d accueil est l application elle-meme.
+DirectoryIndex app.html index.php
+
+# Types MIME. L hebergeur ne connaissait pas .m4a : il le servait en text/plain
+# et SANS Range — donc illisible par un lecteur audio et impossible a scruber.
+# Trouve en ligne le 12/09 ; invisible en local, ou le serveur d essai type
+# correctement. Le .mp4, lui, etait deja juste.
+AddType audio/mp4 .m4a
+AddType audio/mp4 .m4b
+AddType video/mp4 .mp4
+AddType video/mp4 .m4v
+AddType audio/mpeg .mp3
+AddType audio/wav .wav
+AddType image/webp .webp
+AddType font/woff2 .woff2
+
+# Un montage de 500 blocs pese ~300 Ko ; on laisse large sans ouvrir la porte.
+php_value post_max_size 8M
+php_value upload_max_filesize 8M
+php_value memory_limit 256M
+php_value max_execution_time 60
+
+# Les vignettes et les polices ne changent jamais sous le meme nom : un an de
+# cache. Les catalogues, eux, passent par l API et sont en no-store.
+<FilesMatch "\.(jpg|jpeg|png|webp|woff2?|ttf|otf)$">
+  Header set Cache-Control "public, max-age=31536000, immutable"
+</FilesMatch>

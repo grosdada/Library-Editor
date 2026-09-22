@@ -1,0 +1,41 @@
+BIBLIOTHEQUE GENERALE
+
+LANCEMENT
+Double-cliquez sur Bibliotheque generale.lnk sur ce poste.
+Pour une copie sur un autre ordinateur, utilisez Bibliotheque generale.bat.
+Ce BAT est portable : aucun chemin de disque ou de NAS n'est code en dur.
+Python 3.7 ou plus recent est requis ; Python 3.10 est deja installe sur ce poste.
+Pillow est facultatif pour generer les nouvelles vignettes.
+Conservez la console ouverte. Ctrl+C arrete les services du lanceur general.
+Une seule page s'ouvre ; les onglets gardent filtres, selections et defilement.
+Les lanceurs independants restent utilisables sans changement.
+
+AJOUTER UNE BIBLIOTHEQUE
+Copiez son dossier a la racine, a cote de Aliens-bizarre et des autres banques.
+Son nom de dossier devient son nom d'onglet. Cliquez sur Actualiser les bibliotheques,
+ou relancez le lanceur general. Aucune liste de noms a modifier.
+Un eventuel sous-dossier bibliotheques est aussi reconnu ; aucun deplacement n'est requis.
+
+CONVENTION TECHNIQUE
+Une banque compatible contient serveur/NAVIGATEUR.html et serveur/_serveur.py.
+Le module Python doit exposer Handler, une classe de gestion HTTP standard,
+calculer ses chemins depuis __file__, et garder son lancement dans un bloc
+if __name__ == "__main__". Son import ne doit pas demarrer de serveur.
+La page doit utiliser location.origin pour ses API et des URL relatives pour les assets.
+Le lanceur importe le module : ajoutez uniquement des banques dont vous connaissez le code.
+Les quatre banques fournies respectent cette convention.
+Si serveur/_scan.py existe, il sert a reindexer apres copie/deplacement.
+Le format des index existants est const RACINE=<chaine JSON>; et const DATA=[...];
+RACINE designe un dossier d'images directement dans la banque.
+Les scans doivent preserver images et marquages, comme ceux des quatre banques fournies.
+
+PORTABILITE ET DONNEES
+Tous les chemins actifs sont calcules depuis l'emplacement du dossier.
+Les index initiaux sont sauvegardes dans serveur/sauvegardes avant reindexation.
+Les scans actualisent index et vignettes, sans modifier les images sources ni les marquages.
+Chaque banque conserve ses propres favoris, pastilles, filtres, ZIP et corbeille.
+Le raccourci .lnk de Windows est configure pour ce poste ; apres copie, utilisez le BAT
+portable et creez un nouveau raccourci vers ce BAT si souhaite.
+Les ports libres sont choisis automatiquement, exclusivement sur 127.0.0.1.
+L'adresse exacte est affichee dans la console. Un second lancement reutilise l'accueil.
+

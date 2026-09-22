@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bibliothèque générale · Assets IA</title>
+<style>
+:root{color-scheme:dark;font-family:Segoe UI,Arial,sans-serif;background:#101116;color:#eee}
+*{box-sizing:border-box}body{margin:0;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{display:flex;align-items:center;gap:20px;padding:13px 22px 10px;border-bottom:1px solid #30313b;background:#18191f}
+h1{font-size:17px;margin:0;letter-spacing:.2px}header span{font-size:12px;color:#a7a8b3}
+nav{display:flex;gap:10px;padding:8px 16px;background:#18191f;overflow-x:auto;flex-shrink:0;align-items:center}
+nav+nav{border-top:1px solid #252630}.etiquette{font-size:11px;color:#858794;white-space:nowrap}
+.liste-onglets{display:flex;gap:6px;min-width:max-content}
+button,a{font:inherit}button{border:1px solid #393a45;color:#c5c5ce;background:#22232c;border-radius:7px;padding:9px 16px;cursor:pointer;white-space:nowrap}
+button:hover{background:#30313b}.groupes button[aria-selected="true"]{background:#c3d6a4;color:#192211;border-color:#c3d6a4;font-weight:600}
+.bibliotheques button[aria-selected="true"]{background:#4679aa;color:#fff;border-color:#5d91c4;font-weight:600}
+button:focus-visible,a:focus-visible{outline:3px solid #e8c47c;outline-offset:2px}
+.tools{margin-left:auto;display:flex;align-items:center;gap:12px;padding-left:12px}
+.tools button{font-size:12px;padding:7px 10px}a{color:#c8c9d4;text-decoration:none;font-size:12px;white-space:nowrap}a:hover{text-decoration:underline}
+.etat{margin:0;padding:8px 20px;background:#20212a;color:#d3bd86;font-size:12px}
+main{flex:1;min-height:0;position:relative}iframe{width:100%;height:100%;border:0;display:block;background:#14151b}
+[hidden]{display:none!important}
+#maj.dispo{background:#d6a45c;border-color:#d6a45c;color:#1d150a;font-weight:600}
+@media(max-width:700px){header span,.etiquette{display:none}header{padding:12px 16px}nav{padding:7px 10px}.tools{margin-left:0}button{padding:8px 11px}}
+</style>
+</head>
+<body>
+<header><h1>Bibliothèque générale</h1><span>vos collections</span></header>
+<nav class="groupes" aria-label="Onglets virtuels"><span class="etiquette">Onglets</span><div id="groupes" class="liste-onglets" role="tablist"></div></nav>
+<nav class="bibliotheques" aria-label="Bibliothèques"><span class="etiquette">Bibliothèques</span><div id="bibliotheques" class="liste-onglets" role="tablist"></div><div class="tools"><button id="actualiser">Actualiser les bibliothèques</button><button id="maj" hidden title="Mettre à jour le programme depuis GitHub">Mise à jour</button><a id="separe" target="_blank" rel="noopener">Ouvrir séparément ↗</a></div></nav>
+<p id="etat" class="etat" role="status" hidden></p>
+<p id="etat-groupe" class="etat" role="status" hidden></p>
+<main id="contenu"></main>
+<script>
+let banques=[],organisation={onglets:[],classement:{}},groupeActif='__toutes',actif=null;
+const elements=new Map(),groupes=document.getElementById('groupes'),bibliotheques=document.getElementById('bibliotheques'),contenu=document.getElementById('contenu');
+const etat=document.getElementById('etat'),etatGroupe=document.getElementById('etat-groupe'),actualiser=document.getElementById('actualiser'),separe=document.getElementById('separe');
+const valides=()=>banques.filter(b=>b.url);
+function definitionGroupes(){
+  const liste=[{id:'__toutes',nom:'Toutes',nombre:valides().length}];
+  for(const onglet of organisation.onglets){
+    const nombre=valides().filter(b=>organisation.classement[b.id]===onglet.id).length;
+    liste.push({id:'onglet:'+onglet.id,nom:onglet.nom,nombre});
+  }
+  const nonClassees=valides().filter(b=>!organisation.classement[b.id]).length;
+  if(organisation.onglets.length&&nonClassees)liste.push({id:'__nonclassees',nom:'Non classées',nombre:nonClassees});
+  return liste;
+}
+function banquesDuGroupe(){
+  if(groupeActif==='__toutes')return valides();
+  if(groupeActif==='__nonclassees')return valides().filter(b=>!organisation.classement[b.id]);
+  const id=groupeActif.startsWith('onglet:')?groupeActif.slice(7):'';
+  return valides().filter(b=>organisation.classement[b.id]===id);
+}
+function rendreGroupes(focus=false){
+  const definitions=definitionGroupes();
+  if(!definitions.some(g=>g.id===groupeActif))groupeActif='__toutes';
+  groupes.replaceChildren();
+  for(const groupe of definitions){
+    const bouton=document.createElement('button');
+    bouton.type='button';bouton.textContent=groupe.nom+' ('+groupe.nombre+')';bouton.setAttribute('role','tab');
+    bouton.setAttribute('aria-selected',String(groupe.id===groupeActif));bouton.tabIndex=groupe.id===groupeActif?0:-1;
+    bouton.onclick=()=>choisirGroupe(groupe.id);
+    bouton.onkeydown=e=>{
+      const ids=definitionGroupes().map(g=>g.id),index=ids.indexOf(groupe.id);let prochain;
+      if(e.key==='ArrowRight')prochain=(index+1)%ids.length;
+      else if(e.key==='ArrowLeft')prochain=(index+ids.length-1)%ids.length;
+      else if(e.key==='Home')prochain=0;
+      else if(e.key==='End')prochain=ids.length-1;
+      else return;
+      e.preventDefault();choisirGroupe(ids[prochain],true);
+    };
+    bouton.dataset.groupe=groupe.id;groupes.append(bouton);
+  }
+  if(focus)groupes.querySelector('[data-groupe="'+CSS.escape(groupeActif)+'"]')?.focus();
+}
+function choisirGroupe(id,focus=false){groupeActif=id;rendreGroupes(focus);afficherBibliotheques();}
+function activer(id,focus=false){
+  const visibles=new Set(banquesDuGroupe().map(b=>b.id));
+  if(!visibles.has(id))return;
+  actif=id;
+  for(const [cle,{bouton,cadre}] of elements){
+    const choisi=cle===id;bouton.setAttribute('aria-selected',String(choisi));
+    bouton.tabIndex=choisi?0:-1;cadre.hidden=!choisi;
+  }
+  const element=elements.get(id);if(!element)return;
+  if(!element.cadre.hasAttribute('src'))element.cadre.src=element.url;
+  separe.href=element.url;separe.hidden=false;separe.setAttribute('aria-label','Ouvrir '+element.bouton.textContent+' séparément');
+  history.replaceState(null,'','#'+encodeURIComponent(id));
+  if(focus)element.bouton.focus();
+}
+function afficherBibliotheques(){
+  const liste=banquesDuGroupe(),ids=new Set(liste.map(b=>b.id));
+  bibliotheques.replaceChildren();
+  for(const banque of liste){
+    const element=elements.get(banque.id);if(element)bibliotheques.append(element.bouton);
+  }
+  for(const [id,element] of elements){element.bouton.hidden=!ids.has(id);element.cadre.hidden=true;}
+  etatGroupe.hidden=!!liste.length;
+  etatGroupe.textContent=liste.length?'':'Cet onglet ne contient encore aucune bibliothèque. Classez-en une depuis Préparer une bibliothèque.';
+  if(!ids.has(actif))actif=liste[0]?.id||null;
+  if(actif)activer(actif);else{separe.hidden=true;history.replaceState(null,'','#');}
+}
+function creerBibliotheque(banque){
+  const bouton=document.createElement('button'),cadre=document.createElement('iframe'),ident='banque-'+encodeURIComponent(banque.id);
+  bouton.textContent=banque.nom;bouton.id='onglet-'+ident;bouton.setAttribute('role','tab');bouton.setAttribute('aria-controls','cadre-'+ident);
+  bouton.onclick=()=>activer(banque.id);
+  bouton.onkeydown=e=>{
+    const liste=banquesDuGroupe().map(b=>b.id),index=liste.indexOf(banque.id);let prochain;
+    if(e.key==='ArrowRight')prochain=(index+1)%liste.length;
+    else if(e.key==='ArrowLeft')prochain=(index+liste.length-1)%liste.length;
+    else if(e.key==='Home')prochain=0;
+    else if(e.key==='End')prochain=liste.length-1;
+    else return;
+    e.preventDefault();activer(liste[prochain],true);
+  };
+  cadre.id='cadre-'+ident;cadre.title=banque.nom;cadre.setAttribute('role','tabpanel');cadre.setAttribute('aria-labelledby',bouton.id);cadre.hidden=true;
+  elements.set(banque.id,{bouton,cadre,url:banque.url});contenu.append(cadre);
+}
+async function charger(){
+  actualiser.disabled=true;actualiser.textContent='Recherche…';
+  try{
+    const [reponseBanques,reponseOrganisation]=await Promise.all([
+      fetch('/bibliotheques',{cache:'no-store'}),
+      fetch('/organisation',{cache:'no-store'})
+    ]);
+    if(!reponseBanques.ok)throw new Error('Serveur indisponible');
+    banques=await reponseBanques.json();
+    organisation=reponseOrganisation.ok?await reponseOrganisation.json():{onglets:[],classement:{}};
+    const actuelles=valides(),ids=new Set(actuelles.map(b=>b.id));
+    for(const [id,element] of elements){
+      if(!ids.has(id)){element.bouton.remove();element.cadre.remove();elements.delete(id);}
+    }
+    for(const banque of actuelles){
+      if(!elements.has(banque.id))creerBibliotheque(banque);
+      const element=elements.get(banque.id);element.url=banque.url;element.bouton.textContent=banque.nom;element.cadre.title=banque.nom;
+    }
+    const erreurs=banques.filter(b=>b.erreur).map(b=>b.nom+' : '+b.erreur);
+    if(!actuelles.length)erreurs.unshift('Ajoutez une bibliothèque compatible à côté du dossier serveur, puis actualisez.');
+    etat.textContent=erreurs.join(' · ');etat.hidden=!erreurs.length;
+    if(!elements.has(actif)){
+      let initial='';try{initial=decodeURIComponent(location.hash.slice(1));}catch{}
+      actif=elements.has(initial)?initial:actuelles[0]?.id||null;
+      const affectation=actif&&organisation.classement[actif];
+      groupeActif=affectation?'onglet:'+affectation:'__toutes';
+    }
+    rendreGroupes();afficherBibliotheques();
+  }catch(erreur){etat.hidden=false;etat.textContent='Connexion impossible. Relancez Bibliotheque generale.bat, puis actualisez.';}
+  finally{actualiser.disabled=false;actualiser.textContent='Actualiser les bibliothèques';}
+}
+actualiser.onclick=charger;
+charger();
+
+// Mise a jour du PROGRAMME (cette racine et ses banques) depuis GitHub. Les
+// images, favoris, pastilles et onglets ne sont jamais touches ; un fichier
+// modifie a la main est garde tel quel. Effet au prochain lancement.
+const boutonMaj=document.getElementById('maj');
+async function verifierMaj(silencieux){
+  let r,rep;
+  try{rep=await fetch('/maj',{cache:'no-store'});r=await rep.json();if(!rep.ok)throw new Error(r.erreur||('Erreur '+rep.status));}
+  catch(e){
+    // 404 : cette racine ne sait pas se mettre a jour, pas de bouton. Sinon
+    // (GitHub injoignable...), le bouton reste la pour reessayer.
+    if(rep&&rep.status!==404)boutonMaj.hidden=false;
+    if(!silencieux){etat.hidden=false;etat.textContent='Vérification impossible : '+e.message;}
+    return null;
+  }
+  boutonMaj.hidden=false;
+  const n=(r.a_faire||[]).length;
+  boutonMaj.classList.toggle('dispo',n>0);
+  boutonMaj.textContent=n?'Mise à jour ● '+r.version_distante:'Mise à jour';
+  boutonMaj.title=n?('Version '+r.version_distante+' disponible (installée : '+r.version_locale+')'):('À jour — version '+r.version_locale);
+  return r;
+}
+boutonMaj.onclick=async()=>{
+  const avant=boutonMaj.textContent;boutonMaj.disabled=true;boutonMaj.textContent='Vérification…';
+  const r=await verifierMaj(false);boutonMaj.disabled=false;
+  if(!r){boutonMaj.textContent=avant;return;}
+  const n=(r.a_faire||[]).length;
+  if(!n){etat.hidden=false;etat.textContent='À jour — version '+r.version_locale+'.'+((r.lanceurs_en_attente||[]).length?' Lanceurs : à mettre à jour avec Library Editor.':'');return;}
+  if(!confirm('Version '+r.version_distante+' disponible (installée : '+r.version_locale+').\n\n'+n+' fichier(s) à mettre à jour :\n'+r.a_faire.slice(0,12).join('\n')+(n>12?'\n…':'')+
+    ((r.modifies||[]).length?'\n\nGardés tels quels, modifiés à la main :\n'+r.modifies.slice(0,8).join('\n'):'')+
+    '\n\nMettre à jour maintenant ? Chaque fichier remplacé est sauvegardé d\'abord. Images, favoris, pastilles et onglets ne sont pas touchés.'))return;
+  boutonMaj.disabled=true;boutonMaj.textContent='Mise à jour…';
+  try{
+    const rep=await fetch('/maj',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const d=await rep.json();
+    if(!rep.ok)throw new Error(d.erreur||('Erreur '+rep.status));
+    boutonMaj.classList.remove('dispo');boutonMaj.textContent='Relancer pour finir';
+    alert('Mise à jour installée : version '+d.version+' ('+d.faits.length+' fichier(s)).\n\nFermez cette page et la fenêtre noire de la bibliothèque générale, puis relancez-la.'+
+      ((d.lanceurs_en_attente||[]).length?'\n\nLes lanceurs seront mis à jour par Library Editor, bibliothèque fermée.':''));
+  }catch(e){etat.hidden=false;etat.textContent='Mise à jour impossible : '+e.message;boutonMaj.textContent=avant;}
+  boutonMaj.disabled=false;
+};
+verifierMaj(true);
+</script>
+</body>
+</html>

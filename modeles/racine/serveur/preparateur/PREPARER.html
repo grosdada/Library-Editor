@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Préparer une bibliothèque</title>
+<style>
+:root{font:15px "Segoe UI",Arial,sans-serif;color:#162d47;background:#eef2f6}*{box-sizing:border-box}body{margin:0}main{max-width:960px;margin:38px auto;padding:0 22px 60px}header{margin-bottom:27px;max-width:710px}h1{font-size:34px;line-height:1.15;letter-spacing:-.7px;margin:0 0 12px;font-weight:650}p{line-height:1.55;margin:8px 0;color:#52647c}h2{font-size:20px;margin:0 0 14px}
+form{background:#fff;padding:26px 30px;border:1px solid #d7e0eb;border-radius:9px;box-shadow:0 5px 20px #16365707}
+label{display:block;font-weight:600;margin-bottom:7px}button,input,select{font:inherit}input,select{background:#fff;color:#162d47;border:1px solid #9caec3;border-radius:4px;padding:10px 12px;min-width:0;width:100%}
+button{background:#f1f5fa;color:#173452;border:1px solid #a5b6cb;border-radius:5px;padding:10px 15px;cursor:pointer}button:hover{background:#e2ebf7}button:disabled{opacity:.5;cursor:default}.primaire{background:#285d9f;color:#fff;border-color:#285d9f}.primaire:hover{background:#1e4b82}.attention{background:#fff4e8;border-color:#c77a32;color:#7a3d12}.attention:hover{background:#ffe6ce}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #81b2f3;outline-offset:3px}
+.choix{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}.aide{font-size:13px;max-width:720px;margin:9px 0 20px}.separation{border-top:1px solid #d7e0eb;padding-top:24px;margin-top:24px}.vignette{max-width:390px}
+.ligne{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:14px;align-items:end}.ligne label{font-size:13px}.retirer{padding:10px 12px}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:23px}.actions p{font-size:13px;flex:1;min-width:220px}
+.organiseur{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:18px;margin-top:16px}.bloc-organisation{border:1px solid #d7e0eb;border-radius:7px;padding:16px;background:#f8fafc}.bloc-organisation h3{font-size:15px;margin:0 0 12px}.liste-organisation{display:grid;gap:8px}.onglet-ligne{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}.onglet-commandes{display:flex;gap:5px}.onglet-commandes button{padding:8px 9px;font-size:12px}.bibliotheque-ligne{display:grid;grid-template-columns:minmax(120px,.8fr) minmax(0,1.2fr);gap:10px;align-items:center}.bibliotheque-ligne label{margin:0;overflow-wrap:anywhere}.ajout-onglet{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:12px}.etat-organisation{font-size:13px;margin:0;color:#52647c}.etat-organisation.erreur{color:#8b351e}
+#message{padding:13px 16px;background:#e7eef8;border-left:4px solid #477dbb;white-space:pre-line;margin:18px 0 0}#message.erreur{background:#fff0ea;border-color:#b94620;color:#7b341d}.danger-zone{border-top:1px solid #ead3d3;margin-top:32px;padding-top:20px}.danger{background:#b42318;color:#fff;border-color:#b42318;font-weight:600}.danger:hover{background:#8f1c13}.danger-zone .aide{color:#7b341d;margin:8px 0 0}
+#apercu{margin-top:24px}#bilan{font-size:18px;font-weight:600;color:#162d47}.exemples{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}.exemple{background:#e9edf2;border-radius:5px;overflow:hidden}.exemple img{display:block;width:100%;height:170px;object-fit:contain;background:#dfe5ed}.exemple div{padding:10px;font-size:13px;overflow-wrap:anywhere}.exemple strong{display:block;color:#162d47}
+ul{padding-left:22px;color:#52647c;line-height:1.6}.problemes-miniatures{margin-top:16px;padding:14px 16px;background:#fff0ea;border-left:4px solid #b94620}.problemes-miniatures button{background:#fff;border-color:#c36b4e;color:#7b341d}.problemes-miniatures p{margin:10px 0 3px;color:#7b341d;font-size:13px}.problemes-miniatures ul{margin:6px 0 0;color:#7b341d}details{margin-top:14px;font-size:13px}summary{cursor:pointer;font-weight:600}#reparation{margin-top:23px}footer{font-size:12px;color:#61738a;padding-top:18px}
+[hidden]{display:none!important}@media(max-width:640px){main{margin-top:22px;padding:0 14px 40px}h1{font-size:29px}form{padding:20px 17px}.ligne{grid-template-columns:1fr 1fr;gap:8px}.retirer{grid-column:2;justify-self:end}.choix,.organiseur{grid-template-columns:1fr}.exemples{grid-template-columns:1fr 1fr}.actions button{width:100%}.onglet-commandes button{width:auto}.onglet-ligne{grid-template-columns:1fr}.bibliotheque-ligne{grid-template-columns:1fr}.bibliotheque-ligne select{margin-top:-4px}.ajout-onglet{grid-template-columns:1fr}.ajout-onglet button{width:100%}}
+</style></head><body><main>
+<header><h1>Préparer une bibliothèque</h1><p>Choisissez le dossier que vous avez ajouté et le suffixe de sa miniature. Au clic, toutes les images du même dossier seront accessibles.</p></header>
+<form id="formulaire">
+<div class="choix"><div><label for="dossier">Dossier à traiter</label><select id="dossier" required><option value="">Choisir un dossier…</option></select></div><button type="button" id="actualiser">Actualiser la liste</button></div>
+<p id="etat-dossier" class="aide">Les dossiers techniques sont exclus de la liste.</p>
+<section id="configuration" data-mode="creation" hidden>
+image’image de vignette</label><input id="vignette" class="vignette" value="_source" placeholder="_source" autocomplete="off">
+<p class="aide">Indiquez la fin du nom <strong>avant l’extension</strong>, par exemple <strong>_source</strong>. JPG, PNG, WebP et les autres extensions image reconnues sont pris en compte.</p></div>
+<p id="aide-configuration" class="aide">Chaque sous-dossier correspond à un asset. Toutes ses images seront disponibles au clic sur sa miniature, quels que soient leurs noms. Le suffixe doit sélectionner une seule miniature par sous-dossier.</p>
+<div class="actions"><button type="button" id="tester">Vérifier les correspondances</button><button type="submit" id="creer" class="primaire" disabled>Créer la bibliothèque</button><button type="button" id="confirmer-reset" class="attention" disabled hidden>Réinitialiser la bibliothèque</button></div>
+<section id="apercu" hidden><h2>Aperçu des correspondances</h2><p id="bilan"></p><ul id="comptes"></ul><div id="exemples" class="exemples"></div><div id="problemes-miniatures" class="problemes-miniatures" hidden><button type="button" id="voir-problemes" aria-expanded="false" aria-controls="panneau-problemes">Voir les dossiers à problème</button><div id="panneau-problemes" hidden><p>Ces dossiers contiennent plusieurs images correspondant au suffixe :</p><ul id="liste-problemes"></ul></div></div><details id="avertissements" hidden><summary id="resume-avertissements"></summary><ul id="liste-avertissements"></ul></details></section>
+</section>
+<section id="reparation" hidden><p>Cette bibliothèque possède déjà son serveur. Si elle a été copiée ou déplacée, recalculez ses chemins depuis son emplacement actuel.</p><div class="actions"><button type="button" id="reparer" class="primaire">Actualiser les chemins</button><button type="button" id="reset-library" class="attention">Reset Library</button><button type="button" id="ouvrir-bibliotheque">Open Library</button></div><p class="aide">« Actualiser les chemins » conserve les favoris, pastilles et réglages. « Reset Library » reconstruit la bibliothèque technique après confirmation.</p></section>
+<section id="organisation" class="separation">
+<h2>Organiser les onglets virtuels</h2>
+<p class="aide">Créez et nommez vos onglets, puis classez chaque bibliothèque. Ce classement est uniquement visuel : aucun dossier ni fichier d’image ne sera déplacé ou renommé.</p>
+<div class="organiseur">
+<div class="bloc-organisation"><h3>Onglets</h3><div id="liste-onglets" class="liste-organisation"></div><div class="ajout-onglet"><input id="nom-nouvel-onglet" placeholder="Nom du nouvel onglet" maxlength="60" autocomplete="off"><button type="button" id="ajouter-onglet">Ajouter l’onglet</button></div></div>
+<div class="bloc-organisation"><h3>Classement des bibliothèques</h3><div id="classement-bibliotheques" class="liste-organisation"></div></div>
+</div>
+<div class="actions"><button type="button" id="enregistrer-onglets" class="primaire" disabled>Enregistrer les onglets</button><button type="button" id="ouvrir-generale">Ouvrir la bibliothèque générale</button><p id="etat-organisation" class="etat-organisation" role="status">Chargement du classement…</p></div>
+</section>
+<p id="message" role="status" hidden></p><section class="danger-zone" aria-labelledby="titre-danger"><h2 id="titre-danger">Suppression du système général</h2><button type="button" id="delete-general" class="danger">Delete General Lib</button><p class="aide">Supprime la bibliothèque générale et ses lanceurs. Les dossiers d’images et les bibliothèques individuelles sont conservés.</p></section>
+</form><footer>La création ajoute un dossier serveur à la banque choisie. Elle ne déplace ni ne renomme vos images.</footer>
+</main><script>
+const $=id=>document.getElementById(id);let dossiers=[],verification=null,occupe=false,organisation=null,organisationSale=false;
+function message(texte,erreur=false){$('message').textContent=texte;$('message').hidden=!texte;$('message').classList.toggle('erreur',erreur);}
+function config(){return{vignette:$('vignette').value,mode:'dossier'};}
+function modeReinitialisation(){const d=dossiers.find(d=>d.nom===$('dossier').value);return $('configuration').dataset.mode==='reset'&&d?.etat==='existante';}function synchroniserActions(){const reset=modeReinitialisation();$('creer').hidden=reset;$('confirmer-reset').hidden=!reset;return reset;}function charge(){return{dossier:$('dossier').value,config:config(),reset:modeReinitialisation()};}
+function masquerProblemes(){$('problemes-miniatures').hidden=true;$('panneau-problemes').hidden=true;$('liste-problemes').replaceChildren();$('voir-problemes').setAttribute('aria-expanded','false');$('voir-problemes').textContent='Voir les dossiers à problème';}
+function invalider(){verification=null;$('creer').disabled=true;$('confirmer-reset').disabled=true;$('apercu').hidden=true;masquerProblemes();}
+function verrouiller(valeur){occupe=valeur;for(const e of document.querySelectorAll('button,input,select'))e.disabled=valeur;if(!valeur){if(organisation)rendreOrganisation();const reset=synchroniserActions();$('creer').disabled=!verification||reset;$('confirmer-reset').disabled=!verification||!reset;$('enregistrer-onglets').disabled=!organisation||!organisationSale;const d=dossiers.find(d=>d.nom===$('dossier').value);$('ouvrir-bibliotheque').disabled=d?.etat!=='existante';$('reset-library').disabled=d?.etat!=='existante';}}
+async function api(route,data){const r=await fetch(route,data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{cache:'no-store'});const d=await r.json();if(!r.ok)throw Error(d.erreur||'Action impossible');return d;}
+function etatOrganisation(texte,erreur=false){$('etat-organisation').textContent=texte;$('etat-organisation').classList.toggle('erreur',erreur);}
+function idOnglet(){return'onglet-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));}
+function marquerOrganisation(){organisationSale=true;$('enregistrer-onglets').disabled=false;etatOrganisation('Modifications non enregistrées.');}
+function synchroniserNoms(){
+ for(const select of document.querySelectorAll('#classement-bibliotheques select')){
+  for(const option of [...select.options].slice(1)){const onglet=organisation.onglets.find(o=>o.id===option.value);if(onglet)option.textContent=onglet.nom||'Onglet sans nom';}
+ }
+}
+function rendreClassement(){
+ const zone=$('classement-bibliotheques');zone.replaceChildren();
+ if(!organisation.bibliotheques.length){const p=document.createElement('p');p.className='aide';p.textContent='Préparez une bibliothèque pour pouvoir la classer.';zone.append(p);return;}
+ for(const bibliotheque of organisation.bibliotheques){
+  const ligne=document.createElement('div');ligne.className='bibliotheque-ligne';
+  const label=document.createElement('label'),select=document.createElement('select');select.id='classement-'+bibliotheque.id;
+  label.htmlFor=select.id;label.textContent=bibliotheque.nom;select.add(new Option('Non classée',''));
+  for(const onglet of organisation.onglets)select.add(new Option(onglet.nom,onglet.id));
+  select.value=organisation.classement[bibliotheque.id]||'';
+  select.onchange=()=>{if(select.value)organisation.classement[bibliotheque.id]=select.value;else delete organisation.classement[bibliotheque.id];marquerOrganisation();};
+  ligne.append(label,select);zone.append(ligne);
+ }
+}
+function rendreOnglets(){
+ const zone=$('liste-onglets');zone.replaceChildren();
+ if(!organisation.onglets.length){const p=document.createElement('p');p.className='aide';p.textContent='Aucun onglet personnalisé. Toutes les bibliothèques restent accessibles dans « Toutes ».';zone.append(p);}
+ organisation.onglets.forEach((onglet,index)=>{
+  const ligne=document.createElement('div');ligne.className='onglet-ligne';
+  const input=document.createElement('input');input.value=onglet.nom;input.maxLength=60;input.setAttribute('aria-label','Nom de l’onglet '+(index+1));
+  input.oninput=()=>{onglet.nom=input.value;synchroniserNoms();marquerOrganisation();};
+  const commandes=document.createElement('div');commandes.className='onglet-commandes';
+  const monter=document.createElement('button');monter.type='button';monter.textContent='↑';monter.title='Monter';monter.setAttribute('aria-label','Monter '+onglet.nom);monter.disabled=index===0;
+  monter.onclick=()=>{[organisation.onglets[index-1],organisation.onglets[index]]=[organisation.onglets[index],organisation.onglets[index-1]];marquerOrganisation();rendreOrganisation();};
+  const descendre=document.createElement('button');descendre.type='button';descendre.textContent='↓';descendre.title='Descendre';descendre.setAttribute('aria-label','Descendre '+onglet.nom);descendre.disabled=index===organisation.onglets.length-1;
+  descendre.onclick=()=>{[organisation.onglets[index+1],organisation.onglets[index]]=[organisation.onglets[index],organisation.onglets[index+1]];marquerOrganisation();rendreOrganisation();};
+  const supprimer=document.createElement('button');supprimer.type='button';supprimer.textContent='Supprimer';supprimer.onclick=()=>{organisation.onglets.splice(index,1);for(const [bibliotheque,id]of Object.entries(organisation.classement))if(id===onglet.id)delete organisation.classement[bibliotheque];marquerOrganisation();rendreOrganisation();};
+  commandes.append(monter,descendre,supprimer);ligne.append(input,commandes);zone.append(ligne);
+ });
+}
+function rendreOrganisation(){if(!organisation)return;rendreOnglets();rendreClassement();$('enregistrer-onglets').disabled=!organisationSale;}
+async function chargerOrganisation(){
+ try{organisation=await api('/organisation');organisationSale=false;rendreOrganisation();etatOrganisation('Classement chargé.');}
+ catch(e){organisation=null;organisationSale=false;$('enregistrer-onglets').disabled=true;etatOrganisation('Chargement impossible : '+e.message,true);}
+}
+function ajouterOnglet(){
+ if(!organisation)return;const champ=$('nom-nouvel-onglet'),nom=champ.value.trim().replace(/\s+/g,' ');
+ if(!nom){etatOrganisation('Indiquez un nom pour le nouvel onglet.',true);champ.focus();return;}
+ if(organisation.onglets.some(o=>o.nom.localeCompare(nom,'fr',{sensitivity:'base'})===0)){etatOrganisation('Ce nom d’onglet existe déjà.',true);champ.focus();return;}
+ organisation.onglets.push({id:idOnglet(),nom});champ.value='';marquerOrganisation();rendreOrganisation();champ.focus();
+}
+
+function selection(){
+ invalider();message('');$('configuration').dataset.mode='creation';const d=dossiers.find(d=>d.nom===$('dossier').value);
+ $('configuration').hidden=d?.etat!=='nouvelle';$('reparation').hidden=d?.etat!=='existante';$('ouvrir-bibliotheque').disabled=d?.etat!=='existante';$('reset-library').disabled=d?.etat!=='existante';
+ $('titre-configuration').textContent='Créer la bibliothèque';$('creer').hidden=false;$('confirmer-reset').hidden=true;$('aide-configuration').textContent='Chaque sous-dossier correspond à un asset. Toutes ses images seront disponibles au clic sur sa miniature, quels que soient leurs noms. Le suffixe doit sélectionner une seule miniature par sous-dossier.';
+ if(d?.etat==='nouvelle')$('vignette').value='_source';
+ $('etat-dossier').textContent=!d?'Les dossiers techniques sont exclus de la liste.':d.etat==='nouvelle'?'Nouveau dossier : définissez les suffixes ci-dessous.':d.etat==='existante'?'Bibliothèque existante : aucune création nécessaire.':'Un dossier serveur existe déjà, mais le scan compatible est absent. Aucun fichier ne sera remplacé.';
+}
+async function charger(){
+ const choisi=$('dossier').value;
+ try{dossiers=await api('/dossiers');$('dossier').replaceChildren(new Option('Choisir un dossier…',''));dossiers.forEach(d=>$('dossier').add(new Option(d.nom+(d.etat==='existante'?' — bibliothèque existante':d.etat==='bloquee'?' — serveur à vérifier':''),d.nom)));$('dossier').value=choisi;selection();if(!dossiers.length)message('Ajoutez un dossier d’images à côté du lanceur, puis actualisez la liste.');}
+ catch(e){message('Lecture impossible : '+e.message,true);}
+}
+$('tester').onclick=async()=>{
+ const demande=charge();masquerProblemes();verrouiller(true);message('Vérification des images…');
+ try{const d=await api(demande.reset?'/apercu-reset':'/apercu',demande);verification=d.items.length&&!d.stats.vignettes_multiples.length?JSON.parse(JSON.stringify(demande)):null;$('apercu').hidden=false;$('bilan').textContent=d.stats.assets+' asset'+(d.stats.assets>1?'s':'')+' avec vignette parmi '+d.stats.images+' images.';
+ $('comptes').replaceChildren();['Miniatures'].forEach((nom,i)=>{const li=document.createElement('li');li.textContent=nom+' : '+d.stats.correspondances[i]+' fichier(s) correspondant(s)';$('comptes').append(li);});
+ $('exemples').replaceChildren();for(const item of d.items.slice(0,6)){const carte=document.createElement('div');carte.className='exemple';const img=document.createElement('img');img.alt=item.nom;img.src='/image?dossier='+encodeURIComponent(demande.dossier)+'&p='+encodeURIComponent(item.vignette);const texte=document.createElement('div'),titre=document.createElement('strong');titre.textContent=item.nom;texte.append(titre,document.createTextNode(item.vignette));carte.append(img,texte);$('exemples').append(carte);}
+ const multiples=d.stats.vignettes_multiples;if(multiples.length){$('problemes-miniatures').hidden=false;$('voir-problemes').textContent='Voir les dossiers à problème ('+multiples.length+')';for(const chemin of multiples){const li=document.createElement('li');li.textContent=chemin;$('liste-problemes').append(li);}}
+ const avertissements=[...d.stats.sans_vignette.map(n=>n+' : aucune miniature, ce dossier ne sera pas inclus'),...d.stats.vues_manquantes.map(v=>v.asset+' : vue '+v.vue+' non associée (vérifiez le suffixe)'),...d.stats.vignettes_multiples.map(n=>n+' : plusieurs miniatures, précisez le suffixe avant de continuer'),...d.stats.erreurs];
+ $('avertissements').hidden=!avertissements.length;$('resume-avertissements').textContent=avertissements.length+' point(s) à vérifier';$('liste-avertissements').replaceChildren();for(const t of avertissements.slice(0,40)){const li=document.createElement('li');li.textContent=t;$('liste-avertissements').append(li);}
+ message(d.stats.vignettes_multiples.length?'Plusieurs miniatures correspondent dans un même dossier. Précisez le suffixe, puis vérifiez à nouveau.':d.items.length?'Vérification terminée. Vous pouvez '+(demande.reset?'réinitialiser':'créer')+' la bibliothèque.':'Aucune miniature trouvée. Corrigez le suffixe, puis vérifiez à nouveau.',!verification);
+ }catch(e){verification=null;message(e.message,true);}finally{verrouiller(false);}
+};
+$('formulaire').onsubmit=async e=>{
+ e.preventDefault();const actuel=charge(),dossier=dossiers.find(d=>d.nom===actuel.dossier);
+ if(actuel.reset||dossier?.etat!=='nouvelle'){message('La création est réservée à un nouveau dossier. Utilisez Reset Library pour une bibliothèque existante.',true);return;}
+ if(!verification||JSON.stringify(verification)!==JSON.stringify(actuel)){invalider();message('Les réglages ont changé. Vérifiez de nouveau les correspondances.',true);return;}
+ const demande=JSON.parse(JSON.stringify(verification));
+ verrouiller(true);message('Création de la bibliothèque et de ses vignettes…');
+ try{
+  const d=await api('/creer',demande);
+  await charger();await chargerOrganisation();
+  message(d.assets+' asset'+(d.assets>1?'s préparés. ':' préparé. ')+d.message);
+  verification=null;
+ }catch(e){message(e.message,true);}finally{verrouiller(false);}
+};
+$('reset-library').onclick=()=>{
+ const d=dossiers.find(d=>d.nom===$('dossier').value);if(d?.etat!=='existante')return;
+ $('configuration').dataset.mode='reset';invalider();$('configuration').hidden=false;$('vignette').value=d.vignette||'_source';
+ $('titre-configuration').textContent='Réinitialiser la bibliothèque';
+ $('creer').hidden=true;$('confirmer-reset').hidden=false;
+ $('aide-configuration').textContent='Choisissez le suffixe de miniature, vérifiez les correspondances, puis confirmez la remise à zéro. Les dossiers et images resteront inchangés.';
+ message('Choisissez le suffixe de miniature, puis cliquez sur Vérifier les correspondances.');
+ $('configuration').scrollIntoView({behavior:'smooth',block:'start'});
+};
+$('confirmer-reset').onclick=async()=>{
+ const actuel=charge(),dossier=dossiers.find(d=>d.nom===actuel.dossier);
+ if(!actuel.reset||dossier?.etat!=='existante'){message('Sélectionnez une bibliothèque existante, puis cliquez sur Reset Library.',true);return;}
+ if(!verification||JSON.stringify(verification)!==JSON.stringify(actuel)){invalider();message('Les réglages ont changé. Vérifiez de nouveau les correspondances.',true);return;}
+ const demande=JSON.parse(JSON.stringify(verification));
+ if(!confirm('Réinitialiser cette bibliothèque ?\n\nLes favoris, couleurs et réglages seront remis à zéro. Les dossiers et images ne seront pas modifiés. Une sauvegarde du serveur actuel sera créée.'))return;
+ verrouiller(true);message('Réinitialisation complète de la bibliothèque…');
+ try{
+  const d=await api('/reset',demande);
+  await charger();await chargerOrganisation();
+  message(d.assets+' asset'+(d.assets>1?'s préparés. ':' préparé. ')+d.message+(d.sauvegarde?'\nSauvegarde : '+d.sauvegarde:''));
+  verification=null;
+ }catch(e){message(e.message,true);}finally{verrouiller(false);}
+};
+$('reparer').onclick=async()=>{
+ verrouiller(true);message('Actualisation des chemins du dossier sélectionné…');
+ try{const d=await api('/reparer',{dossier:$('dossier').value});message(d.message+(d.details?'\n'+d.details:''));}
+ catch(e){message(e.message,true);}finally{verrouiller(false);}
+};
+$('ouvrir-bibliotheque').onclick=async()=>{
+ const dossier=$('dossier').value;if(!dossier)return;
+ verrouiller(true);message('Ouverture de la bibliothèque sélectionnée…');
+ try{const d=await api('/ouvrir-bibliotheque',{dossier:dossier});message(d.message);}
+ catch(e){message(e.message,true);}finally{verrouiller(false);}
+};
+$('delete-general').onclick=async()=>{
+ if(!confirm('Are you sure...\n\nLa bibliothèque générale et ses lanceurs seront supprimés. Les dossiers d’images et les bibliothèques individuelles seront conservés.'))return;
+ if(!confirm('Are you really sure...\n\nCette action supprimera immédiatement le système général de ce dossier.'))return;
+ verrouiller(true);message('Suppression de la bibliothèque générale en cours…');
+ try{const d=await api('/delete-general',{confirmation:'are you sure',confirmation_finale:'are you really sure'});message(d.message);}
+ catch(e){message('Suppression impossible : '+e.message,true);verrouiller(false);}
+};
+$('ouvrir-generale').onclick=async()=>{
+ verrouiller(true);etatOrganisation('Ouverture de la bibliothèque générale…');
+ try{const d=await api('/ouvrir-generale',{});etatOrganisation(d.message);}
+ catch(e){etatOrganisation('Ouverture impossible : '+e.message,true);}
+ finally{verrouiller(false);}
+};
+$('voir-problemes').onclick=()=>{const panneau=$('panneau-problemes'),ouvrir=panneau.hidden,total=$('liste-problemes').children.length;panneau.hidden=!ouvrir;$('voir-problemes').setAttribute('aria-expanded',String(ouvrir));$('voir-problemes').textContent=(ouvrir?'Masquer les dossiers à problème':'Voir les dossiers à problème')+' ('+total+')';};
+
+$('ajouter-onglet').onclick=ajouterOnglet;
+$('nom-nouvel-onglet').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();ajouterOnglet();}};
+$('enregistrer-onglets').onclick=async()=>{
+ if(!organisation)return;
+ const onglets=organisation.onglets.map(o=>({id:o.id,nom:o.nom.trim().replace(/\s+/g,' ')}));
+ verrouiller(true);etatOrganisation('Enregistrement des onglets…');
+ try{organisation=await api('/organisation',{onglets,classement:organisation.classement});organisationSale=false;rendreOrganisation();etatOrganisation(organisation.message+' Ouvrez maintenant la bibliothèque générale avec le bouton ci-contre.');}
+ catch(e){organisationSale=true;etatOrganisation('Enregistrement impossible : '+e.message,true);}
+ finally{verrouiller(false);}
+};
+$('dossier').onchange=selection;$('actualiser').onclick=charger;$('vignette').oninput=invalider;
+charger();chargerOrganisation();
+</script></body></html>
+
+

@@ -1,0 +1,18 @@
+# Bibliotheque d images en ligne — Library Editor
+# LiteSpeed (Hostinger) lit les directives Apache : la reecriture marche telle quelle.
+
+RewriteEngine On
+
+# Les routes de la page vont a api.php : la page garde exactement les memes
+# adresses que sur l ordinateur.
+RewriteRule ^(donnees|marques|fichier|vignette|zip|scan|ouvrir)$ api.php?r=$1 [QSA,L]
+
+DirectoryIndex index.html
+
+AddType image/webp .webp
+AddType image/avif .avif
+
+# Un ZIP de selection peut prendre plusieurs minutes a partir.
+php_value max_execution_time 600
+php_value memory_limit 256M
+php_value post_max_size 8M

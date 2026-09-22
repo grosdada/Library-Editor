@@ -1,0 +1,4 @@
+# Les bibliotheques verifient chaque fichier telecharge par son empreinte
+# SHA-256 : aucun fichier ne doit etre converti en passant par Git. Les .bat
+# restent en CRLF, le reste en LF, a l octet pres.
+* -text
