@@ -1,7 +1,7 @@
 {
  "version": "1.1.3",
  "date": "2026-09-22",
- "notes": "",
+ "notes": "Manifeste lu sans cache, et aucune bibliotheque ne peut reculer d'une version.",
  "genres": {
   "films": {
    "fichiers": {
@@ -236,5 +236,12 @@
     }
    }
   }
+ },
+ "commit": "8ea1b19fd843ae6f6c9e5a7a6566fbae330c78e8",
+ "installeur": {
+  "version": "1.1.3",
+  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.1.3/Library-Editor-1.1.3.zip",
+  "octets": 38353948,
+  "sha256": "2d5695743e86774ec9953356e7e8531320055e6db5abc85628d1895445eb95a4"
  }
 }
