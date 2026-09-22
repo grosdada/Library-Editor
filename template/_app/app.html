@@ -294,6 +294,8 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
  font-family:ui-monospace,monospace}
 .pEntete button.m.on{background:var(--rouge);border-color:var(--rouge);color:#fff}
 .pEntete button.s.on{background:var(--or);border-color:var(--or);color:#1a1917}
+/* La piste visee par « Add » : un clic sur son en-tete, un liseré orange. */
+.pEntete.active{background:#241f19;box-shadow:inset 3px 0 0 var(--orange)}
 .lane{position:relative;border-bottom:1px solid var(--trait);
  background:repeating-linear-gradient(90deg,#00000000 0 39px,#ffffff08 39px 40px)}
 .lane.va{background-color:#1d1c1a}
@@ -2539,6 +2541,11 @@ $('#mEdit').onclick = () => mode('edit');
 // ===========================================================================
 //  Modèle de montage
 // ===========================================================================
+// La piste que « Add » vise : celle dont on a clique l en-tete. Nulle par
+// defaut — l image va alors sur V1 et le son sur la premiere piste qui lui
+// convient, comme avant.
+let pisteActive = null;
+
 let PISTES = [
   {id: 'V1', type: 'v', mute: false, solo: false},
   {id: 'A1', type: 'a', mute: false, solo: false},
@@ -2913,8 +2920,11 @@ function alpha(c, t) {
 function rendreEntetes() {
   $('#entetes').innerHTML = pistesOrdonnees().map(p => {
     const v = volPiste(p);
-    return '<div class="pEntete" style="height:' +
-      hauteurPiste(p) + 'px">' +
+    return '<div class="pEntete' + (p.id === pisteActive ? ' active' : '') +
+      '" data-piste="' + p.id + '" style="height:' + hauteurPiste(p) +
+      'px" title="' + p.id + (p.id === pisteActive
+        ? ' — target track for Add (click to release)'
+        : ' — click to make it the target track for Add') + '">' +
       '<b>' + p.id + '</b>' +
       (estSon(p) ? '<i>' + (v === 1 ? '' : Math.round(v * 100) + '%') +
         '</i>' : '') +
@@ -3445,6 +3455,7 @@ function retirerPiste(id) {
   dedans.forEach(c => clipsSel.delete(c.uid));
   CLIPS = CLIPS.filter(c => c.piste !== id);
   PISTES = PISTES.filter(x => x.id !== id);
+  if (pisteActive === id) pisteActive = null;
   // On ne laisse jamais une famille sans aucune piste : la derniere effacee
   // revient vide, sinon on ne pourrait plus rien deposer.
   assurerPistes();
@@ -3510,7 +3521,15 @@ $('#entetes').addEventListener('click', e => {
   const m = e.target.closest('[data-mute]'), s = e.target.closest('[data-solo]');
   if (m) { const p = piste(m.dataset.mute); p.mute = !p.mute; }
   else if (s) { const p = piste(s.dataset.solo); p.solo = !p.solo; }
-  else return;
+  else {
+    // Cliquer l en-tete d une piste, c est dire « Add, c est ici ».
+    const en = e.target.closest('.pEntete');
+    if (!en) return;
+    pisteActive = pisteActive === en.dataset.piste ? null : en.dataset.piste;
+    rendreEntetes();
+    dire(pisteActive ? 'target track: ' + pisteActive : 'no target track');
+    return;
+  }
   rendreEntetes(); resynchroniser(true);
 });
 </script>
@@ -3584,26 +3603,29 @@ function nouveauClip(film, pisteId, t0) {
 
 function ajouterAuMontage(ids, pisteId, t0) {
   memoriser();
-  const pv = pisteId && piste(pisteId) ? piste(pisteId) : piste('V1') || PISTES[0];
+  // La piste visee : celle sur laquelle on depose, sinon celle dont l en-tete
+  // est actif. C est elle qui decide — pas l origine du fichier : un son pose
+  // sur une piste musique va sur cette piste musique, meme s il vient d un
+  // dossier de rushes.
+  const visee = (pisteId && piste(pisteId)) || (pisteActive && piste(pisteActive)) || null;
+  const pv = (visee && visee.type === 'v') ? visee
+    : (piste('V1') || PISTES.find(p => p.type === 'v') || PISTES[0]);
   let t = (t0 === undefined || t0 === null) ? finDe(pv.id) : Math.max(0, t0);
   const pa = PISTES.find(p => p.type === 'a');
   let n = 0;
   ids.forEach(id => {
     const f = PAR_ID[id];
     if (!f || f.absent) return;
-    // Un fichier de son seul ne va jamais sur une piste image. Venu de la
-    // bibliotheque de musique, il va sur une piste musique ; sinon sur une
-    // piste son — c est la distinction bruitage / musique.
+    // Un fichier de son seul ne va jamais sur une piste image. A defaut de
+    // piste visee : venu d une bibliotheque de musique il va sur une piste
+    // musique, sinon sur une piste son — la distinction bruitage / musique.
     if (f.son_seul) {
-      const musique = estBibli(f.pj);
-      let cible = piste(pisteId);
-      if (!cible || cible.type === 'v' ||
-          (musique && cible.type !== 'm') || (!musique && cible.type !== 'a')) {
+      let cible = (visee && estSon(visee)) ? visee : null;
+      if (!cible) {
+        const musique = estBibli(f.pj);
         cible = PISTES.find(x => x.type === (musique ? 'm' : 'a')) ||
                 PISTES.find(x => estSon(x));
-      }
-      if (!cible) {
-        cible = ajouterPiste(musique ? 'm' : 'a');
+        if (!cible) cible = ajouterPiste(musique ? 'm' : 'a');
       }
       const cs = nouveauClip(id, cible.id, (t0 === undefined || t0 === null)
         ? finDe(cible.id) : Math.max(0, t0));
