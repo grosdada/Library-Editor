@@ -1,7 +1,7 @@
 {
  "version": "1.1.4",
  "date": "2026-09-22",
- "notes": "",
+ "notes": "La piste musique de la table de montage recoit les blocs ; « Add » vise la piste dont on a clique l'en-tete.",
  "genres": {
   "films": {
    "fichiers": {
@@ -237,5 +237,12 @@
     }
    }
   }
+ },
+ "commit": "bb11f9fa22461c4ea8d3b38d517f6f2fb4bd875a",
+ "installeur": {
+  "version": "1.1.4",
+  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.1.4/Library-Editor-1.1.4.zip",
+  "octets": 38353472,
+  "sha256": "f81b727fc6d3ae18e217b4a89205c5c824a1b0be9d590e5b8ab06ef5ef84a36d"
  }
 }
