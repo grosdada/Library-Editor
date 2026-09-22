@@ -7,6 +7,7 @@ h1{margin:0 0 10px;font-size:16px;letter-spacing:.16em;text-transform:uppercase}
 button,input,select{font:inherit;color:var(--encre);background:var(--carte);border:1px solid var(--trait);border-radius:4px;padding:6px 12px}button{cursor:pointer}button:hover{border-color:var(--sourd)}button:disabled{opacity:.5;cursor:default}
 button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--encre);outline-offset:3px}
 button[aria-pressed=true]{border-color:var(--encre)}#bFavoris[aria-pressed=true]{background:var(--orange);border-color:var(--orange);color:white}
+#maj.dispo{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:600}
 #q{min-width:240px}#compte{color:var(--sourd);font-size:12px}.sep{width:1px;height:26px;background:var(--trait)}.sous-barre select,.sous-barre button{font-size:12px;padding:4px 9px}
 #filtres-couleurs{display:flex;gap:10px;align-items:center}.filtre-couleur,.pastille-choix{width:26px;height:26px;border-radius:50%;padding:0;border:2px solid var(--trait)}
 .filtre-couleur[aria-pressed=true]{border-color:var(--encre);box-shadow:0 0 0 2px var(--fond),0 0 0 3px var(--encre)}
@@ -32,7 +33,7 @@ dialog::backdrop{background:rgba(0,0,0,.86)}.vue{background:#0d0f11;text-align:c
 #selN{font-size:12px;color:var(--sourd);white-space:nowrap}[hidden]{display:none!important}
 @media(max-width:600px){#grille{grid-template-columns:repeat(2,minmax(0,1fr));padding:12px 10px 100px;gap:10px}header{padding:12px 10px}#q{min-width:0;width:100%}.barre{gap:8px}#selbar{width:96vw}.onglets{gap:5px}#grande{height:55vh}}
 </style></head><body>
-<header><h1 id="titre">Bibliothèque</h1><div class="barre"><input id="q" placeholder="chercher un nom, un numéro…" aria-label="Rechercher un nom"><input type="checkbox" id="favoris" hidden><button id="bFavoris" aria-pressed="false">★ favoris</button><div class="sep"></div><select id="couleur" hidden><option value="">Toutes les pastilles</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select><div id="filtres-couleurs" role="group" aria-label="Filtrer par couleur"><button type="button" class="filtre-couleur couleur-1" data-filtre="1" aria-label="Filtrer : Rouge" title="Rouge" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-2" data-filtre="2" aria-label="Filtrer : Jaune" title="Jaune" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-3" data-filtre="3" aria-label="Filtrer : Vert" title="Vert" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-4" data-filtre="4" aria-label="Filtrer : Bleu" title="Bleu" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-5" data-filtre="5" aria-label="Filtrer : Violet" title="Violet" aria-pressed="false"></button></div><button id="tout">tout</button><div class="sep"></div><button id="scan">Mettre à jour</button><span id="compte"></span></div><div class="sous-barre"><select id="dossier" aria-label="Filtrer par dossier"><option value="">Tous les dossiers</option></select><select id="tri" aria-label="Trier"><option value="nom">Par nom</option><option value="date">Plus récents</option></select><button id="selection">Sélectionner les résultats</button></div></header>
+<header><h1 id="titre">Bibliothèque</h1><div class="barre"><input id="q" placeholder="chercher un nom, un numéro…" aria-label="Rechercher un nom"><input type="checkbox" id="favoris" hidden><button id="bFavoris" aria-pressed="false">★ favoris</button><div class="sep"></div><select id="couleur" hidden><option value="">Toutes les pastilles</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select><div id="filtres-couleurs" role="group" aria-label="Filtrer par couleur"><button type="button" class="filtre-couleur couleur-1" data-filtre="1" aria-label="Filtrer : Rouge" title="Rouge" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-2" data-filtre="2" aria-label="Filtrer : Jaune" title="Jaune" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-3" data-filtre="3" aria-label="Filtrer : Vert" title="Vert" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-4" data-filtre="4" aria-label="Filtrer : Bleu" title="Bleu" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-5" data-filtre="5" aria-label="Filtrer : Violet" title="Violet" aria-pressed="false"></button></div><button id="tout">tout</button><div class="sep"></div><button id="scan">Mettre à jour</button><button id="maj" hidden title="Mettre à jour le programme depuis GitHub">Programme</button><span id="compte"></span></div><div class="sous-barre"><select id="dossier" aria-label="Filtrer par dossier"><option value="">Tous les dossiers</option></select><select id="tri" aria-label="Trier"><option value="nom">Par nom</option><option value="date">Plus récents</option></select><button id="selection">Sélectionner les résultats</button></div></header>
 <p id="message" role="status" hidden></p><main id="grille"></main><div id="menu" role="group" aria-label="Choisir une pastille" hidden></div>
 <dialog id="detail"><div class="vue"><img id="grande" alt=""></div><div class="corps"><h2 id="nom-detail"></h2><div class="marques-detail"><button type="button" id="detail-favori" class="detail-favori" aria-pressed="false">☆ Favori</button><div class="detail-couleurs" role="group" aria-label="Pastille de couleur"><button type="button" class="pastille-choix aucune" data-detail-couleur="0" aria-label="Aucune couleur" title="Aucune">×</button><button type="button" class="pastille-choix couleur-1" data-detail-couleur="1" aria-label="Rouge" title="Rouge"></button><button type="button" class="pastille-choix couleur-2" data-detail-couleur="2" aria-label="Jaune" title="Jaune"></button><button type="button" class="pastille-choix couleur-3" data-detail-couleur="3" aria-label="Vert" title="Vert"></button><button type="button" class="pastille-choix couleur-4" data-detail-couleur="4" aria-label="Bleu" title="Bleu"></button><button type="button" class="pastille-choix couleur-5" data-detail-couleur="5" aria-label="Violet" title="Violet"></button></div></div><div id="vues" class="onglets"></div><div class="lig"><i>Dossier</i><code id="detail-dossier"></code></div><div class="act"><button id="precedent" aria-label="Asset précédent">‹ Précédent</button><button id="suivant" aria-label="Asset suivant">Suivant ›</button><button id="ouvrir">Ouvrir le dossier</button><a id="original" target="_blank" rel="noopener">Image originale</a><button id="fermer">Fermer</button></div></div></dialog>
 <div id="selbar" hidden><span id="selN"></span><div class="sep"></div><button class="pastille-choix couleur-0" data-selection-couleur="0" aria-label="Appliquer : Aucune" title="Aucune">×</button><button class="pastille-choix couleur-1" data-selection-couleur="1" aria-label="Appliquer : Rouge" title="Rouge"></button><button class="pastille-choix couleur-2" data-selection-couleur="2" aria-label="Appliquer : Jaune" title="Jaune"></button><button class="pastille-choix couleur-3" data-selection-couleur="3" aria-label="Appliquer : Vert" title="Vert"></button><button class="pastille-choix couleur-4" data-selection-couleur="4" aria-label="Appliquer : Bleu" title="Bleu"></button><button class="pastille-choix couleur-5" data-selection-couleur="5" aria-label="Appliquer : Violet" title="Violet"></button><div class="sep"></div><button id="zip">Télécharger le ZIP</button><button id="vider">Tout désélectionner</button></div><iframe name="telechargement" title="Téléchargement du ZIP" hidden></iframe>
@@ -121,4 +122,45 @@ for(const b of document.querySelectorAll('[data-selection-couleur]'))b.onclick=a
  try{const retour=await api('/marques',changements);for(const [id,v]of Object.entries(retour))if(!marques[id]||v.t>=marques[id].t)marques[id]=v;rendre();message('');}catch(e){message('Enregistrement impossible : '+e.message);}
 };
 charger();
+
+// Mise a jour du PROGRAMME de cette banque depuis GitHub (les images, les
+// favoris et les pastilles ne sont jamais touches ; un fichier modifie a la
+// main est garde tel quel). Effet au prochain lancement.
+const bMaj=$('maj');
+async function verifierMaj(silencieux){
+ let r,rep;
+ try{rep=await fetch('/maj',{cache:'no-store'});r=await rep.json();if(!rep.ok)throw new Error(r.erreur||('Erreur '+rep.status));}
+ catch(e){
+  // 404 : cette banque ne se met pas a jour toute seule (elle est rangee dans
+  // une bibliotheque generale, qui s en charge) : pas de bouton.
+  if(rep&&rep.status!==404)bMaj.hidden=false;
+  if(!silencieux)message('Vérification impossible : '+e.message);
+  return null;
+ }
+ bMaj.hidden=false;
+ const n=(r.a_faire||[]).length;
+ bMaj.classList.toggle('dispo',n>0);
+ bMaj.textContent=n?'Programme ● '+r.version_distante:'Programme';
+ bMaj.title=n?('Version '+r.version_distante+' disponible (installée : '+r.version_locale+')'):('Programme à jour — version '+r.version_locale);
+ return r;
+}
+bMaj.onclick=async()=>{
+ const avant=bMaj.textContent;bMaj.disabled=true;bMaj.textContent='Vérification…';
+ const r=await verifierMaj(false);bMaj.disabled=false;
+ if(!r){bMaj.textContent=avant;return;}
+ const n=(r.a_faire||[]).length;
+ if(!n){message('Programme à jour — version '+r.version_locale+'.'+((r.lanceurs_en_attente||[]).length?' Lanceurs : à mettre à jour avec Library Editor.':''));return;}
+ if(!confirm('Version '+r.version_distante+' disponible (installée : '+r.version_locale+').\n\n'+n+' fichier(s) à mettre à jour :\n'+r.a_faire.slice(0,12).join('\n')+(n>12?'\n…':'')+
+   ((r.modifies||[]).length?'\n\nGardés tels quels, modifiés à la main :\n'+r.modifies.slice(0,8).join('\n'):'')+
+   '\n\nMettre à jour maintenant ? Chaque fichier remplacé est sauvegardé d\'abord. Images, favoris et pastilles ne sont pas touchés.'))return;
+ bMaj.disabled=true;bMaj.textContent='Mise à jour…';
+ try{
+  const d=await api('/maj',{});
+  bMaj.classList.remove('dispo');bMaj.textContent='Relancer pour finir';
+  alert('Mise à jour installée : version '+d.version+' ('+d.faits.length+' fichier(s)).\n\nFermez cette page et la fenêtre noire de la bibliothèque, puis relancez-la.'+
+   ((d.lanceurs_en_attente||[]).length?'\n\nLes lanceurs seront mis à jour par Library Editor, bibliothèque fermée.':''));
+ }catch(e){message('Mise à jour impossible : '+e.message);bMaj.textContent=avant;}
+ bMaj.disabled=false;
+};
+verifierMaj(true);
 </script></body></html>

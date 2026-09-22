@@ -573,6 +573,40 @@ def essais_images(banque, vrac):
     v("marques et index intacts", octets(os.path.join(serv, "_marques.json")) == marques
       and octets(os.path.join(serv, "_donnees.json")) == donnees_avant)
     v("tout est a jour ensuite", I.etat_mise_a_jour(banque)["a_jour"])
+
+    print("\n=== IMAGES : le bouton « Programme » de la banque ===")
+    v("_maj.py depose dans une banque seule",
+      os.path.isfile(os.path.join(serv, "_maj.py")))
+    # Le depot local tient lieu de GitHub : meme code, meme verification des
+    # empreintes, sans reseau.
+    import pathlib
+    os.environ["LIBRARY_EDITOR_DEPOT"] = pathlib.Path(PROJET).as_uri() + "/"
+    s = ServeurBanque(banque)
+    try:
+        c, corps, _ = s.req("GET", "/maj")
+        etat = json.loads(corps or b"{}")
+        v("GET /maj : a jour", c == 200 and not etat.get("a_faire")
+          and etat.get("version_distante") == C.VERSION, (c, etat))
+        vieux = vieille_version(serv, os.path.join(serv, "_scan.py"),
+                                "serveur/_scan.py")
+        c, corps, _ = s.req("GET", "/maj")
+        etat = json.loads(corps or b"{}")
+        v("GET /maj : _scan.py a remplacer",
+          etat.get("a_faire") == ["serveur/_scan.py"], etat.get("a_faire"))
+        c, corps, _ = s.req("POST", "/maj", "{}")
+        r = json.loads(corps or b"{}")
+        v("POST /maj : remplace et sauvegarde", c == 200
+          and r.get("faits") == ["serveur/_scan.py"]
+          and octets(os.path.join(serv, "_scan.py")) ==
+          octets(os.path.join(PROJET, "modeles", "images", "_scan.py"))
+          and any(n.startswith("_scan.py.avant-maj-") for n in os.listdir(serv)),
+          (c, r))
+        v("l ancienne version est bien dans la sauvegarde",
+          any(octets(os.path.join(serv, n)) == vieux for n in os.listdir(serv)
+              if n.startswith("_scan.py.avant-maj-")))
+    finally:
+        s.fermer()
+        os.environ.pop("LIBRARY_EDITOR_DEPOT", None)
     return banque
 
 

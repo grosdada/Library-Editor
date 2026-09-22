@@ -20,9 +20,27 @@ ICI = Path(__file__).resolve().parent
 RACINE = ICI.parent
 VERROU = threading.Lock()
 SCAN_VERROU = threading.Lock()
+VERROU_MAJ = threading.Lock()
+
+
+def _charger_maj():
+    """_maj.py, depose par Library Editor a cote de ce serveur : la mise a
+    jour du programme depuis GitHub. Absent (banque rangee dans une
+    bibliotheque generale, qui s en charge) : pas de bouton."""
+    chemin = Path(__file__).resolve().parent / "_maj.py"
+    if not chemin.is_file():
+        return None
+    try:
+        s = importlib.util.spec_from_file_location("_maj_banque", chemin)
+        m = importlib.util.module_from_spec(s)
+        s.loader.exec_module(m)
+        return m
+    except Exception:
+        return None
 spec = importlib.util.spec_from_file_location("indexeur_" + str(id(ICI)), ICI / "_scan.py")
 INDEXEUR = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(INDEXEUR)
+MAJ = _charger_maj()
 
 
 def lire(nom, defaut):
@@ -93,6 +111,14 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reponse(200, lire("_donnees.json", {"nom": RACINE.name, "items": []}))
             if u.path == "/marques":
                 return self.reponse(200, lire("_marques.json", {}))
+            if u.path == "/maj":
+                # Y a-t-il plus recent sur GitHub, pour cette banque ?
+                if not MAJ:
+                    return self.reponse(404, {"erreur": "Mise a jour indisponible."})
+                try:
+                    return self.reponse(200, MAJ.verifier_en_ligne("banque", str(RACINE)))
+                except Exception as erreur:
+                    return self.reponse(502, {"erreur": str(erreur)})
             if u.path == "/fichier":
                 return self.fichier(chemin_asset((parse_qs(u.query).get("p") or [""])[0]))
             if u.path == "/vignette":
@@ -118,6 +144,17 @@ class Handler(SimpleHTTPRequestHandler):
             if not isinstance(d, dict):
                 raise ValueError("Objet JSON attendu.")
             route = urlparse(self.path).path
+            if route == "/maj":
+                if not MAJ:
+                    return self.reponse(404, {"erreur": "Mise a jour indisponible."})
+                if not VERROU_MAJ.acquire(blocking=False):
+                    return self.reponse(409, {"erreur": "Une mise a jour est deja en cours."})
+                try:
+                    return self.reponse(200, MAJ.appliquer_en_ligne("banque", str(RACINE)))
+                except Exception as erreur:
+                    return self.reponse(502, {"erreur": str(erreur)})
+                finally:
+                    VERROU_MAJ.release()
             if route == "/scan":
                 with SCAN_VERROU:
                     resultat = INDEXEUR.enregistrer(RACINE, lire("_configuration.json", {}), ICI, forcer=True)

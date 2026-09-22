@@ -278,6 +278,10 @@ def installer(tache, racine, r, dans_racine=False, etiquette=""):
         C.ecrire_texte(os.path.join(provisoire, "_marques.json"), "{}")
         tache.ligne("_serveur.py, _scan.py, NAVIGATEUR.html, biblio.bat, "
                     "_configuration.json")
+        if not dans_racine:
+            # Son bouton « Programme » : une banque rangee dans une racine,
+            # elle, est mise a jour par la bibliotheque generale.
+            shutil.copy2(C.maj_py(), os.path.join(provisoire, "_maj.py"))
 
         # L index et les vignettes, par le _scan.py qu on vient de deposer.
         etape("Index et vignettes", controle["assets"])

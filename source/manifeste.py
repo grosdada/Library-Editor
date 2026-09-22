@@ -66,6 +66,9 @@ GENRES = {
         "serveur/_serveur.py": ("modeles/images/_serveur.py", {}),
         "serveur/_scan.py": ("modeles/images/_scan.py", {}),
         "serveur/NAVIGATEUR.html": ("modeles/images/NAVIGATEUR.html", {}),
+        # Seulement dans une banque seule : dans une racine a onglets, c est
+        # la bibliotheque generale qui porte le moteur de mise a jour.
+        "serveur/_maj.py": ("modeles/commun/_maj.py", {"si_present": True}),
         "serveur/biblio.bat": ("modeles/images/biblio.bat", L),
         "LANCER-LA-BIBLIOTHEQUE.bat": ("modeles/images/LANCER-LA-BIBLIOTHEQUE.bat",
                                        dict(LC, si_present=True)),

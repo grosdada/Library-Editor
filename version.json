@@ -1,7 +1,7 @@
 {
- "version": "1.1.0",
+ "version": "1.1.1",
  "date": "2026-09-22",
- "notes": "Racine a onglets pour les images, preparateur pose dans le dossier, lanceurs a icone, bouton de mise a jour dans les bibliotheques, Ctrl+D sur la table de montage.",
+ "notes": "",
  "genres": {
   "films": {
    "fichiers": {
@@ -23,8 +23,10 @@
     },
     "_app/_maj.py": {
      "depot": "modeles/commun/_maj.py",
-     "sha256": "491e4cbb1a724a90759306bc875cd77958b0582bba7e67e4adb8a32eb2909cd8",
-     "historique": []
+     "sha256": "961b54ecd5f676b04e9ba2c77191e2b53f098e5962ea2bd41502e85d6e20371f",
+     "historique": [
+      "491e4cbb1a724a90759306bc875cd77958b0582bba7e67e4adb8a32eb2909cd8"
+     ]
     },
     "_app/LANCER.bat": {
      "depot": "modeles/films/LANCER.bat",
@@ -69,8 +71,10 @@
     },
     "serveur/_maj.py": {
      "depot": "modeles/commun/_maj.py",
-     "sha256": "491e4cbb1a724a90759306bc875cd77958b0582bba7e67e4adb8a32eb2909cd8",
-     "historique": []
+     "sha256": "961b54ecd5f676b04e9ba2c77191e2b53f098e5962ea2bd41502e85d6e20371f",
+     "historique": [
+      "491e4cbb1a724a90759306bc875cd77958b0582bba7e67e4adb8a32eb2909cd8"
+     ]
     },
     "serveur/LISEZ-MOI.txt": {
      "depot": "modeles/racine/serveur/LISEZ-MOI.txt",
@@ -112,9 +116,10 @@
     },
     "serveur/preparateur/modeles/_serveur.py": {
      "depot": "modeles/images/_serveur.py",
-     "sha256": "2095772de574a3ad0e66124ca27620351c779a09ef5be900bf69efdf898b6577",
+     "sha256": "6ae5bef2a6d50c769183821c8182267d327151c18ba2098221a9ab2eee6114bf",
      "historique": [
-      "90a892cdb6e599ef260d3ee2fcce3d9bd399d972c4e4fa9be9c79ff2e00c3280"
+      "90a892cdb6e599ef260d3ee2fcce3d9bd399d972c4e4fa9be9c79ff2e00c3280",
+      "2095772de574a3ad0e66124ca27620351c779a09ef5be900bf69efdf898b6577"
      ]
     },
     "serveur/preparateur/modeles/_scan.py": {
@@ -127,8 +132,10 @@
     },
     "serveur/preparateur/modeles/NAVIGATEUR.html": {
      "depot": "modeles/images/NAVIGATEUR.html",
-     "sha256": "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945",
-     "historique": []
+     "sha256": "90d898b6ce53623a15ef96f66992f5e56f9e43f53848fa030cb8a0cdd7fcb04a",
+     "historique": [
+      "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945"
+     ]
     },
     "serveur/preparateur/modeles/biblio.bat": {
      "depot": "modeles/images/biblio.bat",
@@ -170,9 +177,10 @@
    "fichiers": {
     "serveur/_serveur.py": {
      "depot": "modeles/images/_serveur.py",
-     "sha256": "2095772de574a3ad0e66124ca27620351c779a09ef5be900bf69efdf898b6577",
+     "sha256": "6ae5bef2a6d50c769183821c8182267d327151c18ba2098221a9ab2eee6114bf",
      "historique": [
-      "90a892cdb6e599ef260d3ee2fcce3d9bd399d972c4e4fa9be9c79ff2e00c3280"
+      "90a892cdb6e599ef260d3ee2fcce3d9bd399d972c4e4fa9be9c79ff2e00c3280",
+      "2095772de574a3ad0e66124ca27620351c779a09ef5be900bf69efdf898b6577"
      ]
     },
     "serveur/_scan.py": {
@@ -185,8 +193,18 @@
     },
     "serveur/NAVIGATEUR.html": {
      "depot": "modeles/images/NAVIGATEUR.html",
-     "sha256": "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945",
-     "historique": []
+     "sha256": "90d898b6ce53623a15ef96f66992f5e56f9e43f53848fa030cb8a0cdd7fcb04a",
+     "historique": [
+      "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945"
+     ]
+    },
+    "serveur/_maj.py": {
+     "depot": "modeles/commun/_maj.py",
+     "sha256": "961b54ecd5f676b04e9ba2c77191e2b53f098e5962ea2bd41502e85d6e20371f",
+     "historique": [
+      "491e4cbb1a724a90759306bc875cd77958b0582bba7e67e4adb8a32eb2909cd8"
+     ],
+     "si_present": true
     },
     "serveur/biblio.bat": {
      "depot": "modeles/images/biblio.bat",
@@ -213,12 +231,5 @@
     }
    }
   }
- },
- "commit": "7051524cbd91f151f0be04b29fa04d9f478191b9",
- "installeur": {
-  "version": "1.1.0",
-  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.1.0/Library-Editor-1.1.0.zip",
-  "octets": 38348791,
-  "sha256": "ce9b2a7ef3a43a0dbad20083c4e513df62c50a031c753d00b484533bdec5dfee"
  }
 }

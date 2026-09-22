@@ -30,6 +30,7 @@ import io
 import json
 import os
 import time
+import urllib.parse
 import urllib.request
 
 DEPOT = (os.environ.get("LIBRARY_EDITOR_DEPOT")
@@ -54,8 +55,14 @@ def telecharger(url, delai=30):
 def manifeste_distant(depot=None):
     """Le version.json publie. Leve une erreur lisible sans reseau."""
     depot = depot or DEPOT
+    url = depot + "version.json"
+    # Contre les caches intermediaires — mais seulement sur le web : un depot
+    # local (file://, un miroir sur le reseau) n a pas de cache, et une
+    # interrogation collee au nom de fichier en ferait un chemin invalide.
+    if url.startswith(("http://", "https://")):
+        url += "?t=%d" % int(time.time())
     try:
-        brut = telecharger(depot + "version.json?t=%d" % int(time.time()), 15)
+        brut = telecharger(url, 15)
     except Exception as e:
         raise RuntimeError("GitHub injoignable (%s) : verifiez la connexion, "
                            "puis reessayez." % (getattr(e, "reason", "") or e))
@@ -73,7 +80,9 @@ def lecteur_distant(manifeste, depot=None):
         depot = depot[:-len("main/")] + commit + "/"
 
     def lire(chemin_depot):
-        return telecharger(depot + chemin_depot)
+        # Deux lanceurs portent un nom a espaces (« Bibliotheque generale.bat ») :
+        # sans encodage, l adresse est refusee avant meme d etre envoyee.
+        return telecharger(depot + urllib.parse.quote(chemin_depot))
     return lire
 
 
