@@ -46,26 +46,61 @@ def configuration(valeur):
     return {"type": TYPE, "vignette": suffixe(valeur.get("vignette")), "vues": resultat}
 
 
-def fichiers(root):
+def parcourir(root):
+    """Les images, chacune avec le stat que la lecture du dossier donne deja.
+
+    Sur un disque reseau, chaque appel de plus est un aller-retour : il y en
+    avait quatre par image (stat, is_symlink, resolve, existence de la
+    vignette), soit une minute rien que pour lister 1 800 images depuis un
+    NAS. os.scandir rend le nom, le type et le stat d un seul coup.
+    Les liens symboliques sont ignores, comme avant : ni is_dir ni is_file ne
+    les suit."""
     root = Path(root).resolve()
-    resultat, erreurs = [], []
-    def echec(erreur):
-        erreurs.append(str(erreur))
-    for courant, dossiers, noms in os.walk(root, followlinks=False, onerror=echec):
-        base = Path(courant)
-        dossiers[:] = sorted(d for d in dossiers if not d.startswith(".") and d.casefold() not in EXCLUS
-                            and not (base / d).is_symlink()
-                            and (base / d).resolve().parent == base.resolve())
-        for nom in sorted(noms):
-            chemin = base / nom
-            if nom.startswith(".") or chemin.suffix.lower() not in EXTENSIONS or chemin.is_symlink():
-                continue
-            try:
-                chemin.resolve().relative_to(root)
-                resultat.append(chemin)
-            except (OSError, ValueError) as erreur:
-                erreurs.append(str(erreur))
+    resultat, erreurs, piles = [], [], [root]
+    while piles:
+        courant = piles.pop()
+        fichiers_, dossiers_ = [], []
+        try:
+            with os.scandir(courant) as entrees:
+                for entree in entrees:
+                    nom = entree.name
+                    if nom.startswith("."):
+                        continue
+                    try:
+                        if entree.is_dir(follow_symlinks=False):
+                            if nom.casefold() not in EXCLUS:
+                                dossiers_.append(Path(entree.path))
+                        elif entree.is_file(follow_symlinks=False):
+                            if os.path.splitext(nom)[1].lower() in EXTENSIONS:
+                                fichiers_.append((Path(entree.path), entree.stat()))
+                    except OSError as erreur:
+                        erreurs.append(str(erreur))
+        except OSError as erreur:
+            erreurs.append(str(erreur))
+            continue
+        # Meme ordre qu avant : les fichiers du dossier, puis ses sous-dossiers,
+        # les uns et les autres par nom.
+        resultat.extend(sorted(fichiers_, key=lambda x: x[0].name))
+        piles.extend(sorted(dossiers_, key=lambda p: p.name, reverse=True))
     return resultat, erreurs
+
+
+def fichiers(root):
+    """Les chemins seuls — ce dont l analyse et le preparateur ont besoin."""
+    trouves, erreurs = parcourir(root)
+    return [chemin for chemin, _ in trouves], erreurs
+
+
+def cache_vignettes(sortie):
+    """Le dossier des vignettes et la liste de ce qu il contient : une seule
+    lecture pour toute la banque, au lieu d un « ce fichier existe-t-il ? »
+    par image."""
+    cache = Path(sortie) / "_vignettes"
+    cache.mkdir(exist_ok=True)
+    try:
+        return cache, set(os.listdir(cache))
+    except OSError:
+        return cache, set()
 
 
 
@@ -82,7 +117,7 @@ def empreinte(chemin):
 _PRECEDENT = {}
 
 
-def actualiser_images(entree, root, sortie, forcer=False):
+def actualiser_images(entree, root, sortie, forcer=False, stats=None, cache=None):
     # Le contenu est verifie au scan, meme si taille et date ont ete conservees
     # — sauf au scan AUTOMATIQUE du lancement : une image dont la taille et la
     # date n ont pas bouge depuis le dernier index garde son empreinte sans
@@ -91,7 +126,7 @@ def actualiser_images(entree, root, sortie, forcer=False):
     ancien = None if forcer else _PRECEDENT.get(entree["id"])
     versions, stamps = {}, {}
     for p in entree["fichiers"]:
-        st = (root / p).stat()
+        st = (stats or {}).get(p) or (root / p).stat()
         stamps[p] = [st.st_size, st.st_mtime_ns]
         if (ancien and (ancien.get("stamps") or {}).get(p) == stamps[p]
                 and p in (ancien.get("versions") or {})):
@@ -100,20 +135,19 @@ def actualiser_images(entree, root, sortie, forcer=False):
             versions[p] = empreinte(root / p)
     entree["versions"] = versions
     entree["stamps"] = stamps
-    cache = Path(sortie) / "_vignettes"
-    cache.mkdir(exist_ok=True)
-    cible = cache / (entree["id"] + ".jpg")
+    dossier, faites = cache if cache else cache_vignettes(sortie)
+    cible = dossier / (entree["id"] + ".jpg")
     signature = cible.with_suffix(".sha256")
     version = entree["versions"][entree["vignette"]]
     # Vignette deja faite pour cette version : elle et son empreinte restent.
     if (ancien and ancien.get("miniature") == cible.name
             and (ancien.get("versions") or {}).get(entree["vignette"]) == version
-            and ancien.get("miniature_version") and cible.exists()):
+            and ancien.get("miniature_version") and cible.name in faites):
         entree["miniature"] = cible.name
         entree["miniature_version"] = ancien["miniature_version"]
         return
-    ancienne = signature.read_text(encoding="ascii") if signature.exists() else ""
-    if forcer or not cible.exists() or ancienne != version:
+    ancienne = signature.read_text(encoding="ascii") if signature.name in faites else ""
+    if forcer or cible.name not in faites or ancienne != version:
         from PIL import Image, ImageOps
         temporaire = cible.with_suffix(".jpg.tmp")
         with Image.open(root / entree["vignette"]) as im:
@@ -122,19 +156,24 @@ def actualiser_images(entree, root, sortie, forcer=False):
             im.save(temporaire, "JPEG", quality=85)
         os.replace(temporaire, cible)
         signature.write_text(version, encoding="ascii")
+        faites.add(cible.name)
+        faites.add(signature.name)
     entree["miniature"] = cible.name
     entree["miniature_version"] = empreinte(cible)
 
 
 def analyser_dossiers(root, config, sortie=None, forcer=False):
-    chemins, erreurs = fichiers(root)
+    chemins, erreurs = parcourir(root)
+    cache = cache_vignettes(sortie) if sortie is not None else None
     par_dossier = {}
-    for chemin in chemins:
-        par_dossier.setdefault(chemin.parent, []).append(chemin)
+    for chemin, st in chemins:
+        par_dossier.setdefault(chemin.parent, []).append((chemin, st))
     items, absentes, multiples = [], [], []
     nombre_vignettes = 0
     suffixe = config["vignette"]
-    for dossier, images in sorted(par_dossier.items()):
+    for dossier, trouvees in sorted(par_dossier.items()):
+        images = [p for p, _ in trouvees]
+        stats = {p.relative_to(root).as_posix(): st for p, st in trouvees}
         relatif = dossier.relative_to(root).as_posix()
         miniatures = [p for p in images if p.stem.casefold().endswith(suffixe.casefold())]
         nombre_vignettes += len(miniatures)
@@ -153,10 +192,10 @@ def analyser_dossiers(root, config, sortie=None, forcer=False):
                   "dossier": relatif, "vignette": vignette.relative_to(root).as_posix(),
                   "vues": [{"nom": p.stem, "fichier": p.relative_to(root).as_posix()} for p in images],
                   "fichiers": [p.relative_to(root).as_posix() for p in images],
-                  "date": int(max(p.stat().st_mtime for p in images))}
+                  "date": int(max(st.st_mtime for st in stats.values()))}
         if sortie is not None:
             try:
-                actualiser_images(entree, root, sortie, forcer)
+                actualiser_images(entree, root, sortie, forcer, stats, cache)
             except ImportError:
                 pass
             except Exception as erreur:
@@ -173,18 +212,19 @@ def analyser_images(root, config, sortie=None, forcer=False):
     Meme format de fiche que le mode dossier : NAVIGATEUR.html n a rien a
     savoir. L identifiant depend du chemin de l image, il reste le meme d un
     scan a l autre tant que l image ne bouge pas."""
-    chemins, erreurs = fichiers(root)
+    chemins, erreurs = parcourir(root)
+    cache = cache_vignettes(sortie) if sortie is not None else None
     items = []
-    for chemin in chemins:
+    for chemin, st in chemins:
         relatif = chemin.relative_to(root).as_posix()
         dossier = chemin.parent.relative_to(root).as_posix()
         identifiant = hashlib.sha256(("image:" + relatif.casefold()).encode("utf-8")).hexdigest()[:24]
         entree = {"id": identifiant, "nom": chemin.stem, "dossier": dossier,
                   "vignette": relatif, "vues": [{"nom": chemin.stem, "fichier": relatif}],
-                  "fichiers": [relatif], "date": int(chemin.stat().st_mtime)}
+                  "fichiers": [relatif], "date": int(st.st_mtime)}
         if sortie is not None:
             try:
-                actualiser_images(entree, root, sortie, forcer)
+                actualiser_images(entree, root, sortie, forcer, {relatif: st}, cache)
             except ImportError:
                 pass
             except Exception as erreur:
@@ -203,11 +243,13 @@ def analyser(root, config, sortie=None, forcer=False):
         return analyser_images(root, config, sortie, forcer)
     if config.get("mode") == "dossier":
         return analyser_dossiers(root, config, sortie, forcer)
-    chemins, erreurs = fichiers(root)
+    chemins, erreurs = parcourir(root)
+    cache = cache_vignettes(sortie) if sortie is not None else None
+    stats_par_chemin = {chemin: st for chemin, st in chemins}
     groupes = {}
     suffixes = [config["vignette"]] + [v["suffixe"] for v in config["vues"]]
     correspondances = [0] * len(suffixes)
-    for chemin in chemins:
+    for chemin in stats_par_chemin:
         stem = chemin.stem
         for i, suffixe in enumerate(suffixes):
             if not stem.casefold().endswith(suffixe.casefold()):
@@ -263,10 +305,13 @@ def analyser(root, config, sortie=None, forcer=False):
         entree = {"id": identifiant, "nom": nom, "dossier": groupe["dossier"],
                   "vignette": vignette.relative_to(root).as_posix(), "vues": vues,
                   "fichiers": sorted(p.relative_to(root).as_posix() for p in tous),
-                  "date": int(max(p.stat().st_mtime for p in tous))}
+                  "date": int(max(stats_par_chemin[p].st_mtime for p in tous))}
         if sortie is not None:
             try:
-                actualiser_images(entree, root, sortie, forcer)
+                actualiser_images(
+                    entree, root, sortie, forcer,
+                    {p.relative_to(root).as_posix(): stats_par_chemin[p] for p in tous},
+                    cache)
             except ImportError:
                 pass
             except Exception as erreur:

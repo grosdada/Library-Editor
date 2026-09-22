@@ -1,7 +1,7 @@
 {
- "version": "1.1.1",
+ "version": "1.1.2",
  "date": "2026-09-22",
- "notes": "Adresses de depot encodees (lanceurs dont le nom porte un espace), bouton Programme dans les banques autonomes.",
+ "notes": "",
  "genres": {
   "films": {
    "fichiers": {
@@ -124,10 +124,11 @@
     },
     "serveur/preparateur/modeles/_scan.py": {
      "depot": "modeles/images/_scan.py",
-     "sha256": "e3998832e87e274d57105728f9d50e5003df9392ca2f78abf5cd1eba91741893",
+     "sha256": "d3fc57531149cf8f272d262c998794ad785eeb63a8f30bc2d3f05f4b709ec2f3",
      "historique": [
       "aa363d7cbcf4901cb3976509408067eb01e9434fcdc1c4a3b88b4d87827a6e7e",
-      "33c7b03bafdff1f40111d3ae401d1fdecdee93c62522370c22da564387619744"
+      "33c7b03bafdff1f40111d3ae401d1fdecdee93c62522370c22da564387619744",
+      "e3998832e87e274d57105728f9d50e5003df9392ca2f78abf5cd1eba91741893"
      ]
     },
     "serveur/preparateur/modeles/NAVIGATEUR.html": {
@@ -185,10 +186,11 @@
     },
     "serveur/_scan.py": {
      "depot": "modeles/images/_scan.py",
-     "sha256": "e3998832e87e274d57105728f9d50e5003df9392ca2f78abf5cd1eba91741893",
+     "sha256": "d3fc57531149cf8f272d262c998794ad785eeb63a8f30bc2d3f05f4b709ec2f3",
      "historique": [
       "aa363d7cbcf4901cb3976509408067eb01e9434fcdc1c4a3b88b4d87827a6e7e",
-      "33c7b03bafdff1f40111d3ae401d1fdecdee93c62522370c22da564387619744"
+      "33c7b03bafdff1f40111d3ae401d1fdecdee93c62522370c22da564387619744",
+      "e3998832e87e274d57105728f9d50e5003df9392ca2f78abf5cd1eba91741893"
      ]
     },
     "serveur/NAVIGATEUR.html": {
@@ -231,12 +233,5 @@
     }
    }
   }
- },
- "commit": "d8031440e1c8054df51cb5a7f4df1a4908489a26",
- "installeur": {
-  "version": "1.1.1",
-  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.1.1/Library-Editor-1.1.1.zip",
-  "octets": 38350327,
-  "sha256": "2ede3f43f771fdc85f2bdf113fdbce533d2bcd711a8ea39f8e57f57282acb118"
  }
 }
