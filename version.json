@@ -1,7 +1,7 @@
 {
  "version": "1.1.1",
  "date": "2026-09-22",
- "notes": "",
+ "notes": "Adresses de depot encodees (lanceurs dont le nom porte un espace), bouton Programme dans les banques autonomes.",
  "genres": {
   "films": {
    "fichiers": {
@@ -231,5 +231,12 @@
     }
    }
   }
+ },
+ "commit": "d8031440e1c8054df51cb5a7f4df1a4908489a26",
+ "installeur": {
+  "version": "1.1.1",
+  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.1.1/Library-Editor-1.1.1.zip",
+  "octets": 38350327,
+  "sha256": "2ede3f43f771fdc85f2bdf113fdbce533d2bcd711a8ea39f8e57f57282acb118"
  }
 }
