@@ -4405,9 +4405,33 @@ document.addEventListener('pointerdown', e => {
 }, true);
 document.addEventListener('scroll', fermerMenu, true);
 
+// Ce qu on propose pour une piste : pour l instant, son onde.
+function menuPiste(p) {
+  return '<div class="lbl">' + p.id + ' · ' + nomType(p.type) + '</div>' +
+    (ONDE_OK && estSon(p)
+      ? '<div class="it" data-piste-act="onde">〰 ' +
+        (p.onde ? 'Hide the waveform' : 'Show the waveform') + '</div>'
+      : '');
+}
+
 $('#lanes').addEventListener('contextmenu', e => {
   const el = e.target.closest('.clip');
-  if (!el) return;
+  if (!el) {
+    // A cote des blocs : le menu de la piste. Le clic droit tombait dans le
+    // vide, et l onde ne se trouvait que sur le petit en-tete de gauche.
+    const voie = e.target.closest('.lane');
+    const p = voie && piste(voie.dataset.piste);
+    const contenu = p ? menuPiste(p) : '';
+    if (!contenu) return;
+    e.preventDefault();
+    menu.innerHTML = contenu;
+    menu.dataset.pisteId = p.id;
+    menu.className = 'on';
+    const rp = menu.getBoundingClientRect();
+    menu.style.left = Math.min(e.clientX, innerWidth - rp.width - 8) + 'px';
+    menu.style.top = Math.min(e.clientY, innerHeight - rp.height - 8) + 'px';
+    return;
+  }
   e.preventDefault();
   const c = parUid(+el.dataset.uid);
   if (!c) return;
@@ -4460,7 +4484,15 @@ $('#lanes').addEventListener('contextmenu', e => {
     'style="color:var(--sourd);font-size:10px">Ctrl+V</span></div>' +
     '<div class="it" data-act="reinit">↺ Reset settings</div>' +
     '<div class="it" data-act="supprimer">✕ Delete <span class="pousse" ' +
-    'style="color:var(--sourd);font-size:10px">Suppr</span></div>';
+    'style="color:var(--sourd);font-size:10px">Suppr</span></div>' +
+    // Un bloc de son : l onde de sa piste se demande d ici aussi.
+    (ONDE_OK && estSon(piste(c.piste))
+      ? '<div class="sep"></div><div class="it" data-piste-act="onde">〰 ' +
+        (piste(c.piste).onde ? 'Hide the waveform' : 'Show the waveform') +
+        ' <span class="pousse" style="color:var(--sourd);font-size:10px">' +
+        c.piste + '</span></div>'
+      : '');
+  menu.dataset.pisteId = c.piste;
   menu.className = 'on';
   const r = menu.getBoundingClientRect();
   menu.style.left = Math.min(e.clientX, innerWidth - r.width - 8) + 'px';
