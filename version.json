@@ -1,7 +1,7 @@
 {
  "version": "1.1.2",
  "date": "2026-09-22",
- "notes": "",
+ "notes": "Ouverture d'une banque en une seconde au lieu de deux minutes sur un disque reseau.",
  "genres": {
   "films": {
    "fichiers": {
@@ -233,5 +233,12 @@
     }
    }
   }
+ },
+ "commit": "0ff13c81b5b17cb171024a3f1f27d0eb5fdaf9bb",
+ "installeur": {
+  "version": "1.1.2",
+  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.1.2/Library-Editor-1.1.2.zip",
+  "octets": 38350951,
+  "sha256": "45cfe1c33a611bf2871fb8b383f968d762c6fa631570cd6eaa4b653d198538de"
  }
 }
