@@ -2638,12 +2638,19 @@ let clipsSel = new Set(), presse = [], uidSuivant = 1, lienSuivant = 1;
 let projetNom = '';
 
 const HV = 56, HA = 38, HM = 38;
+// Zoom vertical : Alt + molette sur la timeline. Les pistes grandissent —
+// une onde se lit bien mieux sur 100 px que sur 38 — et le reglage reste
+// d une session a l autre.
+const ZOOM_V_MIN = 0.7, ZOOM_V_MAX = 3;
+let zoomV = Math.min(ZOOM_V_MAX, Math.max(ZOOM_V_MIN,
+  parseFloat(pref.lire('zoomV', '1')) || 1));
 // Trois familles de pistes : image, son et MUSIQUE. La musique est separee
 // des bruitages pour de bon — un bloc ne passe jamais d une famille a l autre,
 // et la musique se mixe au rendu sans etre liee a un plan.
 const estSon = p => !!p && (p.type === 'a' || p.type === 'm');
 const nomType = t => t === 'v' ? 'video' : t === 'm' ? 'music' : 'audio';
-const hauteurPiste = p => p.type === 'v' ? HV : (p.type === 'm' ? HM : HA);
+const hauteurPiste = p => Math.round(
+  (p.type === 'v' ? HV : (p.type === 'm' ? HM : HA)) * zoomV);
 const classePiste = p => p.type === 'v' ? 'va' : (p.type === 'm' ? 'ma' : 'aa');
 
 // Echappement HTML, partage par tout ce qui compose du balisage a la main.
@@ -3244,6 +3251,18 @@ $('#bZoomT').onclick = () => {
 };
 $('#tlDefile').addEventListener('scroll', majVue, {passive: true});
 $('#tlDefile').addEventListener('wheel', e => {
+  // Alt : la hauteur des pistes. Ctrl : le temps. Rien : on defile.
+  if (e.altKey) {
+    e.preventDefault();
+    const avant = zoomV;
+    zoomV = Math.min(ZOOM_V_MAX, Math.max(ZOOM_V_MIN,
+      zoomV * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+    if (Math.abs(zoomV - avant) < 0.0005) return;
+    pref.ecrire('zoomV', zoomV.toFixed(3));
+    rendreEntetes(); rendreLanes();
+    dire('track height ' + Math.round(zoomV * 100) + '%');
+    return;
+  }
   if (!e.ctrlKey) return;
   e.preventDefault();
   const r = $('#tlContenu').getBoundingClientRect();
@@ -4748,6 +4767,7 @@ function rendreReglages() {
       'Space play · Del delete<br>Ctrl+C / Ctrl+V copy-paste<br>' +
       'Ctrl+D duplicate<br>' +
       'Ctrl+Z undo<br>Ctrl+wheel zoom<br>' +
+      'Alt+wheel track height<br>' +
       'Arrows ← →: frame by frame<br>' +
       'Arrows ↑ ↓: previous / next range<br>' +
       'I and O: in and out points,<br>draggable on the ruler<br>' +
