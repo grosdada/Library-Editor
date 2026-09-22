@@ -254,6 +254,8 @@ def maj_editeur(tache):
                            "publiee (empreinte). Rien n a ete change.")
     os.replace(zip_ + ".part", zip_)
     tache.etape_suivante("Verification et preparation")
+    tache.ligne("Archive téléchargée (%s), empreinte vérifiée : %s…"
+                % (C.taille_humaine(os.path.getsize(zip_)), h.hexdigest()[:16]), "ok")
     cible = os.path.join(dossier, version)
     if os.path.isdir(cible):
         import shutil
@@ -266,10 +268,18 @@ def maj_editeur(tache):
     actuel = os.path.dirname(sys.executable)
     if not os.path.isfile(os.path.join(actuel, C.NOM + ".exe")):
         raise RuntimeError("Dossier de l application introuvable.")
+    tache.ligne("Version %s dépliée dans %s" % (version, cible))
+    # Le remplacement n a lieu que quand cette application est FERMEE : ses
+    # fichiers sont verrouilles tant qu elle tourne, et recopier par-dessus
+    # en laisserait la moitie. Si elle reste ouverte, on ne remplace rien.
     script = os.path.join(dossier, "remplacer.ps1")
     C.ecrire_texte(script, "\r\n".join([
         "param([int]$Attendre, [string]$Source, [string]$Cible, [string]$Exe)",
-        "try { Wait-Process -Id $Attendre -Timeout 90 -ErrorAction Stop } catch {}",
+        "$fin = (Get-Date).AddMinutes(20)",
+        "while (Get-Process -Id $Attendre -ErrorAction SilentlyContinue) {",
+        "  if ((Get-Date) -gt $fin) { exit 1 }",
+        "  Start-Sleep -Seconds 1",
+        "}",
         "Start-Sleep -Milliseconds 700",
         "robocopy $Source $Cible /E /R:6 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null",
         "Start-Process -FilePath $Exe",
