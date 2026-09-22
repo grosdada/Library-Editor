@@ -1,7 +1,7 @@
 {
  "version": "1.1.0",
  "date": "2026-09-22",
- "notes": "",
+ "notes": "Racine a onglets pour les images, preparateur pose dans le dossier, lanceurs a icone, bouton de mise a jour dans les bibliotheques, Ctrl+D sur la table de montage.",
  "genres": {
   "films": {
    "fichiers": {
@@ -213,5 +213,12 @@
     }
    }
   }
+ },
+ "commit": "7051524cbd91f151f0be04b29fa04d9f478191b9",
+ "installeur": {
+  "version": "1.1.0",
+  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.1.0/Library-Editor-1.1.0.zip",
+  "octets": 38348791,
+  "sha256": "ce9b2a7ef3a43a0dbad20083c4e513df62c50a031c753d00b484533bdec5dfee"
  }
 }
