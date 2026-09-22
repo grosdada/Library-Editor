@@ -309,6 +309,9 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
 .clip .vign{position:absolute;inset:0;background-size:auto 100%;
  background-repeat:repeat-x;opacity:.5}
 .clip .teinte{position:absolute;inset:0;opacity:.28}
+/* L onde du son : dessinee dans le bloc, sous son nom et ses attaches. */
+.clip canvas.onde{position:absolute;left:0;top:0;width:100%;height:100%;
+ z-index:1;pointer-events:none}
 .clip .nom{position:relative;font-size:10px;padding:2px 6px;white-space:nowrap;
  overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 2px #000}
 .clip .info{position:absolute;right:4px;bottom:1px;font:9px/1.4 ui-monospace,monospace;
@@ -745,6 +748,13 @@ let RANGEABLE = false, LECTURE_SEULE = false, TITRE = '';
 // Le serveur sait retirer les fiches manquantes (champ « purge » annonce par
 // /api/projets). Absent — vieux serveur, version en ligne — : pas de bouton.
 let PURGE = false;
+// Le serveur sait-il fabriquer l onde d un son (/api/onde) ? Sans ce champ —
+// ancien serveur, version en ligne — le menu ne la propose pas.
+let ONDE_OK = false;
+// Le serveur sait-il lister TOUS les dossiers (/api/dossiers) et en ouvrir un
+// (/api/projet/ajouter) ? Sans ce champ, « Open project » s en tient aux
+// projets declares, comme avant.
+let DOSSIERS_OK = false;
 // Le serveur sait se mettre a jour depuis GitHub (champ « maj »).
 let MAJ_DISPO = false;
 // Le faux dossier qui recueille ce qui n a pas encore ete range. Il n est
@@ -1766,10 +1776,30 @@ async function boiteComptes() {
   });
 }
 
+// Ce qu un dossier contient, en clair : « 12 videos · 3 sounds · 40 images ».
+function contenuDossier(x) {
+  const bouts = [];
+  if (x.videos) bouts.push(x.videos + (x.videos > 1 ? ' videos' : ' video'));
+  if (x.sons) bouts.push(x.sons + (x.sons > 1 ? ' sounds' : ' sound'));
+  if (x.images) bouts.push(x.images + (x.images > 1 ? ' images' : ' image'));
+  if (!bouts.length) return 'no media';
+  return (x.beaucoup ? 'over ' : '') + bouts.join(' · ');
+}
+
 async function boiteProjets() {
   let l = [];
   try { l = (await api('/api/projets')).projets || []; }
   catch (err) { dire('project list unavailable — ' + err.message, true); return; }
+  // Les autres dossiers de la bibliotheque : ceux qu aucune liste ne cite
+  // encore. Un clic les ouvre — rien n est cree, rien n est deplace.
+  let autres = [];
+  if (DOSSIERS_OK) {
+    try {
+      const d = await api('/api/dossiers', null, 120000);
+      const connus = new Set(l.map(p => p.nom));
+      autres = (d.dossiers || []).filter(x => !x.projet && !connus.has(x.nom));
+    } catch (err) { autres = []; }
+  }
   const b = $('#boite');
   b.innerHTML = '<h3>Projects in ' + (TITRE || 'this library') + '</h3>' +
     (l.length ? l.map(p => {
@@ -1780,6 +1810,15 @@ async function boiteProjets() {
         '" style="' + (ouv ? 'opacity:.55' : '') + '"><b>' + p.nom + '</b><i>' +
         info + (ouv ? ' · already open' : '') + '</i></div>';
     }).join('') : '<div style="color:var(--sourd)">no project</div>') +
+    (autres.length
+      ? '<div style="margin:13px 0 5px;color:var(--sourd);font-size:11px;' +
+        'letter-spacing:.06em;text-transform:uppercase">Other folders ' +
+        'in this library</div>' +
+        autres.map(x =>
+          '<div class="ligne" data-dos="' + x.nom.replace(/"/g, '&quot;') +
+          '"><b>' + echapHtml(x.nom) + '</b><i>' + contenuDossier(x) +
+          ' · open it</i></div>').join('')
+      : '') +
     '<div style="margin-top:14px;display:flex;gap:7px">' +
     '<input id="pjNeuf" placeholder="name of a new project" style="flex:1">' +
     '<button id="bPjCreer">Create</button>' +
@@ -1801,6 +1840,19 @@ async function boiteProjets() {
     $('#voile').className = '';
     try { await ouvrirProjetDisque(el.dataset.pj); }
     catch (err) { dire('could not open — ' + err.message, true); }
+  });
+  // Un dossier qui n etait pas encore un projet : on l inscrit, on l ouvre,
+  // et son scan se propose comme pour tout projet neuf.
+  b.querySelectorAll('[data-dos]').forEach(el => el.onclick = async () => {
+    const nom = el.dataset.dos;
+    $('#voile').className = '';
+    try {
+      await api('/api/projet/ajouter', {nom: nom});
+      const p = await ouvrirProjetDisque(nom, true);
+      dire('“' + nom + '” opened' +
+        (p && p.besoinScan ? ' — click Scan to catalogue its ' +
+          (p.aScanner || 0) + ' media files' : ''), true);
+    } catch (err) { dire('could not open — ' + err.message, true); }
   });
 }
 
@@ -2972,6 +3024,8 @@ function blocClip(c) {
            : '<div class="vign" style="background-image:url(' +
              posterDe(c.film) + ')"></div>') +
     '<div class="teinte" style="background:' + coul + '"></div>' +
+    (aud && p.onde && !estSynth(c)
+      ? '<canvas class="onde" data-onde="' + c.uid + '"></canvas>' : '') +
     (fonduIn(c) > 0.02 ? '<div class="fondu g" style="width:' +
       (fonduIn(c) * PPS) + 'px"></div>' : '') +
     (fonduOut(c) > 0.02 ? '<div class="fondu d" style="right:0;width:' +
@@ -3021,6 +3075,64 @@ function rendreLanes() {
     '<div class="lane ' + classePiste(p) + '" data-piste="' + p.id +
     '" style="height:' + hauteurPiste(p) + 'px">' +
     clipsDe(p.id).map(blocClip).join('') + '</div>').join('');
+  dessinerOndes();
+}
+
+// ---- l onde du son ---------------------------------------------------------
+// Les pics d un media, fabriques par le serveur une fois pour toutes. Trois
+// etats : absent (jamais demande), null (demande en cours), false (pas d onde
+// pour ce fichier — pas de son, ou ffmpeg absent).
+const ONDES = {};
+
+function basculerOnde(id) {
+  const p = piste(id);
+  if (!p || !estSon(p)) return;
+  p.onde = !p.onde;
+  modifie = true;
+  rendreTimeline();
+  dire(p.onde ? 'waveform shown on ' + id : 'waveform hidden on ' + id);
+}
+
+async function chargerOnde(film) {
+  const f = PAR_ID[film];
+  if (!f || ONDES[film] !== undefined) return;
+  ONDES[film] = null;
+  try {
+    const d = await api('/api/onde?projet=' + encodeURIComponent(f.pj || PROJET.nom) +
+                        '&id=' + encodeURIComponent(film), null, 600000);
+    ONDES[film] = (d && d.pics && d.pics.length) ? d : false;
+  } catch (e) {
+    ONDES[film] = false;
+  }
+  if (ONDES[film]) dessinerOndes();
+}
+
+function dessinerOndes() {
+  $$('#lanes canvas.onde').forEach(cv => {
+    const c = parUid(+cv.dataset.onde);
+    if (!c) return;
+    const d = ONDES[c.film];
+    if (d === undefined) { chargerOnde(c.film); return; }
+    if (!d) return;
+    const L = Math.max(1, Math.round(dur(c) * PPS));
+    const H = Math.max(6, cv.parentNode.clientHeight || 0);
+    if (cv.width !== L || cv.height !== H) { cv.width = L; cv.height = H; }
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, L, H);
+    ctx.fillStyle = '#f0e6c8bf';
+    const mi = H / 2, amp = (H - 4) / 2;
+    // Chaque colonne de pixels lit la source a l instant qu elle montre :
+    // la vitesse et la lecture inversee suivent toutes seules (srcA).
+    for (let x = 0; x < L; x++) {
+      const s = srcA(c, c.t0 + x / PPS);
+      const i = Math.round(s / d.pas);
+      const v = (i >= 0 && i < d.pics.length) ? d.pics[i] / 255 : 0;
+      // Echelle adoucie (racine) : un son a -18 dB reste lisible au lieu de
+      // se reduire a un trait, sans que les forts saturent la piste.
+      const h = Math.max(1, Math.sqrt(v) * amp);
+      ctx.fillRect(x, mi - h, 1, h * 2);
+    }
+  });
 }
 
 function majTete() {
@@ -3477,8 +3589,14 @@ $('#entetes').addEventListener('contextmenu', e => {
   e.preventDefault();
   const m = $('#menu');
   const nb = CLIPS.filter(c => c.piste === id).length;
-  m.innerHTML = '<div class="lbl">' + id + ' · ' + nomType(piste(id).type) +
+  const p = piste(id);
+  m.innerHTML = '<div class="lbl">' + id + ' · ' + nomType(p.type) +
     (nb ? ' · ' + nb + ' block' + (nb > 1 ? 's' : '') : ' · empty') + '</div>' +
+    (ONDE_OK && estSon(p)
+      ? '<div class="it" data-piste-act="onde">' +
+        (p.onde ? '〰 Hide the waveform' : '〰 Show the waveform') + '</div>' +
+        '<div class="sep"></div>'
+      : '') +
     '<div class="it" data-piste-act="effacer">✕ Delete track</div>';
   m.dataset.pisteId = id;
   m.className = 'on';
@@ -3493,6 +3611,7 @@ $('#menu').addEventListener('click', e => {
   const id = $('#menu').dataset.pisteId;
   $('#menu').className = '';
   if (it.dataset.pisteAct === 'effacer' && id) retirerPiste(id);
+  else if (it.dataset.pisteAct === 'onde' && id) basculerOnde(id);
 });
 // Pendant le geste on ne rend PAS les en-tetes : cela detruirait le curseur
 // qu on est en train de tirer. On touche seulement la valeur et son affichage.
@@ -5740,6 +5859,9 @@ function boucle() {
  font:bold 10px/21px ui-monospace,monospace;text-align:center}
 .marqueIO.in{border-radius:3px 0 0 3px}
 .marqueIO.out{border-radius:0 3px 3px 0}
+/* La poignee du milieu : elle emmene l entree ET la sortie, d un bloc. */
+.marqueIO.duo{width:20px;border-radius:3px;cursor:grab;font-size:11px}
+.marqueIO.duo:active{cursor:grabbing}
 .marqueIO:hover{box-shadow:0 0 7px #e8b93a}
 </style>
 <script>
@@ -5786,6 +5908,17 @@ function majIO() {
   };
   if (tIn !== null) marque('in', tIn, 0);
   if (tOut !== null) marque('out', tOut, 12);
+  // Les deux points poses : une poignee au milieu les deplace ensemble.
+  if (tIn !== null && tOut !== null) {
+    const d = document.createElement('div');
+    d.className = 'marqueIO duo';
+    d.dataset.io = 'duo';
+    d.textContent = '↔';
+    d.title = 'in and out — drag to move both, keeping the same length (' +
+      (tOut - tIn).toFixed(2) + 's)';
+    d.style.left = ((a + b) / 2 * PPS - 10) + 'px';
+    cont.appendChild(d);
+  }
 }
 
 $('#tlContenu').addEventListener('pointerdown', e => {
@@ -5793,12 +5926,21 @@ $('#tlContenu').addEventListener('pointerdown', e => {
   if (!m || e.button === 2) return;
   e.preventDefault(); e.stopPropagation();
   const quel = m.dataset.io;
+  const duo = quel === 'duo';
   const r = $('#tlContenu').getBoundingClientRect();
+  // La poignee du milieu garde l ecart entre les deux points : on la suit
+  // par son centre, et l ecart ne change pas d un pixel.
+  const demi = duo ? (tOut - tIn) / 2 : 0;
+  const repere = duo ? (tIn + tOut) / 2 : (quel === 'in' ? tIn : tOut);
   // on garde l ecart entre le point de saisie et le repere, sinon il saute
-  const dec = (e.clientX - r.left) - (quel === 'in' ? tIn : tOut) * PPS;
+  const dec = (e.clientX - r.left) - repere * PPS;
   const bouger = ev => {
     const t = Math.max(0, Math.min(etendue(), (ev.clientX - r.left - dec) / PPS));
-    if (quel === 'in') tIn = (tOut !== null) ? Math.min(t, tOut - 0.1) : t;
+    if (duo) {
+      const centre = Math.max(demi, Math.min(etendue() - demi, t));
+      tIn = centre - demi;
+      tOut = centre + demi;
+    } else if (quel === 'in') tIn = (tOut !== null) ? Math.min(t, tOut - 0.1) : t;
     else tOut = (tIn !== null) ? Math.max(t, tIn + 0.1) : t;
     majIO();
   };
@@ -5822,13 +5964,18 @@ $('#tlContenu').addEventListener('contextmenu', e => {
   const quel = m.dataset.io;
   const deux = tIn !== null && tOut !== null;
   ioMenu.innerHTML = '<div class="lbl">' +
-    (quel === 'in' ? 'Enter · ' + tc(tIn) : 'Output · ' + tc(tOut)) +
+    (quel === 'duo'
+      ? 'in ' + tc(tIn) + ' → out ' + tc(tOut) +
+        ' · ' + (tOut - tIn).toFixed(2) + 's'
+      : quel === 'in' ? 'Enter · ' + tc(tIn) : 'Output · ' + tc(tOut)) +
     '</div>' +
-    '<div class="it" data-io-ote="' + quel + '">✕ Remove this point</div>' +
+    (quel === 'duo' ? ''
+      : '<div class="it" data-io-ote="' + quel + '">✕ Remove this point</div>') +
     (deux ? '<div class="it" data-io-ote="tout">✕ Remove both</div>' : '') +
     '<div class="sep"></div>' +
-    '<div class="it" data-io-tete="' + quel +
-    '">↦ Bring to playhead</div>';
+    '<div class="it" data-io-tete="' + quel + '">↦ ' +
+    (quel === 'duo' ? 'Bring the range to playhead' : 'Bring to playhead') +
+    '</div>';
   ioMenu.className = 'on';
   const r = ioMenu.getBoundingClientRect();
   ioMenu.style.left = Math.min(e.clientX, innerWidth - r.width - 8) + 'px';
@@ -5841,7 +5988,17 @@ ioMenu.addEventListener('click', e => {
   if (!ote && !tete) return;
   ioMenu.className = '';
   if (tete) {
-    if (tete.dataset.ioTete === 'in') poserIn(); else poserOut();
+    const q = tete.dataset.ioTete;
+    if (q === 'duo') {
+      // La zone entiere vient se poser sous la tete de lecture, longueur
+      // inchangee.
+      const ecart = tOut - tIn;
+      tIn = Math.max(0, tLect);
+      tOut = tIn + ecart;
+      majIO();
+      dire('in ' + tc(tIn) + '   out ' + tc(tOut));
+    } else if (q === 'in') poserIn();
+    else poserOut();
     return;
   }
   const q = ote.dataset.ioOte;
@@ -7164,6 +7321,8 @@ async function suivreRendu() {
     ENLIGNE = !!l.enligne;
     RANGEABLE = ENLIGNE || !!l.rangement;
     PURGE = !ENLIGNE && !!l.purge;
+    ONDE_OK = !ENLIGNE && !!l.onde;
+    DOSSIERS_OK = !ENLIGNE && !!l.dossiers;
     MAJ_DISPO = !ENLIGNE && !!l.maj;
     if (MAJ_DISPO) {
       // Le bouton apparait tout de suite ; la verification aupres de GitHub

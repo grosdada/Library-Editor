@@ -15,6 +15,7 @@ ffmpeg/ffprobe sont utilises s'ils sont dans le PATH ; sinon le navigateur
 prend le relais pour les posters.
 """
 
+import array
 import base64
 import io
 import json
@@ -113,6 +114,15 @@ EXT_VIDEO = (".mp4", ".mov", ".m4v", ".webm")
 # musique d atterrir sur une piste.
 EXT_AUDIO = (".wav", ".m4a", ".mp3", ".aac", ".flac", ".ogg", ".aif", ".aiff")
 EXT_MEDIA = EXT_VIDEO + EXT_AUDIO
+# Les images ne font pas de fiches (le catalogue ne connait que les medias),
+# mais on les compte : un dossier qui n a que des images doit pouvoir se dire.
+EXT_IMAGE = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif",
+             ".tiff", ".avif")
+# L onde d un son : un pic (0 a 255) toutes les 20 ms, lu a 4 kHz en mono.
+# Assez fin pour caler une coupe a l oeil, assez leger pour voyager : une
+# minute de son fait 3 000 nombres.
+ONDE_HZ = 4000
+ONDE_PAR_SEC = 50
 # Les bibliotheques ne sont plus nommees ici : tout dossier depose dans
 # bibliotheques/ en devient une. Voir biblis_disque().
 FFMPEG = shutil.which("ffmpeg")
@@ -341,10 +351,12 @@ def purger_absents(pr):
         cat["films"] = [f for f in films if f["id"] not in partis]
         ecrire_catalogue(pr, cat)
         for i in partis:
-            try:
-                os.remove(os.path.join(posters_de(pr), i + ".jpg"))
-            except OSError:
-                pass
+            for mort in (os.path.join(posters_de(pr), i + ".jpg"),
+                         os.path.join(ondes_de(pr), i + ".json")):
+                try:
+                    os.remove(mort)
+                except OSError:
+                    pass
         r = lire_rangement(pr)
         if any(i in r["ou"] for i in partis):
             r["ou"] = {k: v for k, v in r["ou"].items() if k not in partis}
@@ -363,7 +375,9 @@ def purger_absents(pr):
             "dossiers": lister_dossiers(pr)}
 
 
-def _dossiers(racine):
+def _dossiers(racine, liste_blanche=True):
+    """Les dossiers d une racine. `liste_blanche` False : tous, meme ceux
+    que « projets » ne cite pas — c est ce que montre « Open project »."""
     out = []
     try:
         noms = os.listdir(racine)
@@ -372,11 +386,56 @@ def _dossiers(racine):
     for n in sorted(noms, key=lambda x: x.lower()):
         if n.startswith((".", "_")) or n in PAS_PROJET:
             continue
-        if racine == RACINE_PROJETS and SEULS and n not in SEULS:
+        if (liste_blanche and racine == RACINE_PROJETS and SEULS
+                and n not in SEULS):
             continue
         if os.path.isdir(os.path.join(racine, n)):
             out.append(n)
     return out
+
+
+def compter_medias(chemin, plafond=6000):
+    """Ce qu un dossier contient, sans rien sonder : videos, sons, images.
+    On s arrete au plafond — inutile de parcourir 20 000 images pour dire
+    qu il y en a beaucoup."""
+    videos = sons = images = 0
+    vus = 0
+    for dossier, sous, noms in os.walk(chemin):
+        sous[:] = [x for x in sous if not x.startswith((".", "_"))]
+        for n in noms:
+            if n.startswith("._"):
+                continue
+            bas = n.lower()
+            if bas.endswith(EXT_VIDEO):
+                videos += 1
+            elif bas.endswith(EXT_AUDIO):
+                sons += 1
+            elif bas.endswith(EXT_IMAGE):
+                images += 1
+            else:
+                continue
+            vus += 1
+        if vus >= plafond:
+            return videos, sons, images, True
+    return videos, sons, images, False
+
+
+def inscrire_projet(nom):
+    """Fait entrer un dossier dans la liste blanche de bibliotheque.json,
+    apres sauvegarde du fichier. Sans liste blanche, il n y a rien a faire :
+    tous les dossiers sont deja des projets."""
+    if not SEULS or nom in SEULS:
+        return False
+    try:
+        if os.path.isfile(FICHIER_REGLAGES):
+            shutil.copy2(FICHIER_REGLAGES, FICHIER_REGLAGES + ".avant-ajout")
+    except OSError:
+        pass
+    SEULS.append(nom)
+    REGLAGES["projets"] = SEULS
+    with io.open(FICHIER_REGLAGES, "w", encoding="utf-8") as fr:
+        json.dump(REGLAGES, fr, ensure_ascii=False, indent=1)
+    return True
 
 
 def projets_disque():
@@ -647,6 +706,59 @@ def lister_dossiers(pr):
 
 def poster_de(pr, fiche):
     return os.path.join(posters_de(pr), fiche["id"] + ".jpg")
+
+
+def ondes_de(pr):
+    return os.path.join(data_de(pr), "_ondes")
+
+
+_verrou_onde = threading.Lock()
+
+
+def onde_de(pr, fiche):
+    """Les pics du son d un media, pour les dessiner sur la timeline.
+
+    Fabriques une fois par ffmpeg, puis gardes dans _donnees/<projet>/_ondes :
+    la source n est jamais touchee, et une piste rouverte s affiche aussitot.
+    """
+    cible = os.path.join(ondes_de(pr), fiche["id"] + ".json")
+    if os.path.isfile(cible):
+        try:
+            with io.open(cible, encoding="utf-8") as fh:
+                d = json.load(fh)
+            if d.get("pics"):
+                return d
+        except (OSError, ValueError):
+            pass
+    if not FFMPEG:
+        raise RuntimeError("ffmpeg is missing: no waveform")
+    src = sur(pr, fiche.get("rel") or "")
+    if not src or not os.path.isfile(src):
+        raise RuntimeError("file not found: %s" % fiche.get("rel"))
+    r = subprocess.run([FFMPEG, "-nostdin", "-v", "error", "-i", src, "-vn",
+                        "-ac", "1", "-ar", str(ONDE_HZ), "-f", "s16le", "-"],
+                       capture_output=True, timeout=600)
+    brut = r.stdout or b""
+    if len(brut) < 2:
+        raise RuntimeError((r.stderr or b"").decode("utf-8", "replace")[-160:]
+                           or "no sound in this file")
+    ech = array.array("h")
+    ech.frombytes(brut[:len(brut) - (len(brut) % 2)])
+    largeur = ONDE_HZ // ONDE_PAR_SEC
+    pics = []
+    for i in range(0, len(ech), largeur):
+        bout = ech[i:i + largeur]
+        if not bout:
+            break
+        pics.append(min(255, max(max(bout), -min(bout)) * 255 // 32768))
+    d = {"id": fiche["id"], "pas": 1.0 / ONDE_PAR_SEC, "pics": pics,
+         "s": round(len(ech) / float(ONDE_HZ), 3)}
+    os.makedirs(ondes_de(pr), exist_ok=True)
+    tmp = cible + ".tmp"
+    with io.open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(d, fh)
+    os.replace(tmp, cible)
+    return d
 
 
 def fabriquer_posters(pr, budget=None, bavard=True):
@@ -2078,6 +2190,39 @@ class Poste(BaseHTTPRequestHandler):
             VEILLE["adieu"] = 0.0
             return self._json({"ok": True})
 
+        # --- l onde d un son, pour la dessiner sur sa piste ---------------
+        if chemin == "/api/onde":
+            pr = nom_projet((req.get("projet") or [""])[0])
+            if not pr:
+                return self._erreur("unknown project", 404)
+            ident = (req.get("id") or [""])[0]
+            f = None
+            for x in lire_catalogue(pr).get("films", []):
+                if x.get("id") == ident:
+                    f = x
+                    break
+            if not f:
+                return self._erreur("unknown entry", 404)
+            try:
+                # Un ffmpeg a la fois : dix pistes affichees d un coup ne
+                # doivent pas lancer dix decodages en parallele.
+                with _verrou_onde:
+                    return self._json(onde_de(pr, f))
+            except Exception as e:
+                return self._erreur(str(e) or "waveform unavailable", 502)
+
+        # --- tous les dossiers de la bibliotheque, projets ou non ---------
+        if chemin == "/api/dossiers":
+            connus = set(projets_disque())
+            out = []
+            for n in _dossiers(RACINE_PROJETS, liste_blanche=False):
+                v, s, im, beaucoup = compter_medias(
+                    os.path.join(RACINE_PROJETS, n))
+                out.append({"nom": n, "projet": n in connus, "videos": v,
+                            "sons": s, "images": im, "beaucoup": beaucoup})
+            return self._json({"dossiers": out, "racine": RACINE_PROJETS,
+                               "liste_blanche": bool(SEULS)})
+
         if chemin == "/api/scan_etat":
             return self._json(SCAN)
 
@@ -2124,6 +2269,12 @@ class Poste(BaseHTTPRequestHandler):
                                # sait se mettre a jour depuis GitHub
                                # (/api/maj) : sans ce champ, pas de bouton.
                                "maj": bool(MAJ),
+                               # sait dessiner l onde d un son (/api/onde) :
+                               # sans ce champ, le menu ne la propose pas.
+                               "onde": bool(FFMPEG),
+                               # sait lister TOUS les dossiers (/api/dossiers)
+                               # et en ouvrir un (/api/projet/ajouter).
+                               "dossiers": True,
                                "version": version_installee(),
                                "format": REGLAGES.get("format") or None})
 
@@ -2377,6 +2528,19 @@ class Poste(BaseHTTPRequestHandler):
                     pass
             ecrire_catalogue(nom, {"maj": None, "films": [], "racine": nom})
             return self._json({"ok": True, "nom": nom, "chemin": plein,
+                               "projets": projets_disque()})
+
+        if chemin == "/api/projet/ajouter":
+            # Un dossier qui existe deja dans la bibliotheque devient un
+            # projet : rien n est cree, rien n est deplace, on l inscrit.
+            nom = nom_projet(d.get("nom"), doit_exister=False)
+            if not nom or not os.path.isdir(os.path.join(RACINE_PROJETS, nom)):
+                return self._erreur("unknown folder", 404)
+            neuf = inscrire_projet(nom)
+            # Pas de catalogue vide : le dossier reste « jamais scanne », et
+            # l application propose son scan comme pour tout projet neuf.
+            return self._json({"ok": True, "nom": nom, "ajoute": neuf,
+                               "chemin": media_de(nom),
                                "projets": projets_disque()})
 
         if chemin == "/api/presets":

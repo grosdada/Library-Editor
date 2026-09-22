@@ -76,6 +76,24 @@ v("projets = ceux du disque", [p["nom"] for p in l["projets"]] == projets
 print("    titre=%r lecture_seule=%r format=%r" % (
     l.get("titre"), l.get("lecture_seule"), l.get("format")))
 
+print("--- l onde d un son (/api/onde) ---")
+v("onde annoncee quand ffmpeg est la",
+  l.get("onde") == bool(serveur.FFMPEG), l.get("onde"))
+v("liste de tous les dossiers annoncee", l.get("dossiers") is True,
+  l.get("dossiers"))
+
+print("--- tous les dossiers (/api/dossiers) ---")
+c, dos = req("/api/dossiers")
+v("repond", c == 200, c)
+noms = [x["nom"] for x in dos.get("dossiers", [])]
+v("les projets du disque y sont, marques comme tels",
+  all(n in noms for n in projets)
+  and all(x["projet"] for x in dos.get("dossiers", []) if x["nom"] in projets),
+  noms[:8])
+v("un dossier non declare n est pas marque projet",
+  all(not x["projet"] for x in dos.get("dossiers", [])
+      if x["nom"] not in projets + serveur.biblis_disque()), noms[:8])
+
 if projets:
     PR = projets[0]
     c, cat = req("/api/catalogue?projet=" + PR)
@@ -86,6 +104,46 @@ if projets:
       os.path.normcase(serveur.media_de(PR)), cat.get("racine_abs"))
     v("identifiants de 12 caracteres hexadecimaux",
       all(len(f["id"]) == 12 for f in films))
+
+    print("--- onde d un media sonore ---")
+    # Le premier projet n a pas forcement du son : on cherche dans tous.
+    pr_son, sonore = PR, next(
+        (f for f in films if f.get("son_seul") or f.get("a")), None)
+    if not sonore:
+        for autre in projets:
+            if autre == PR:
+                continue
+            _, c_autre = req("/api/catalogue?projet=" + autre)
+            sonore = next((f for f in (c_autre.get("films") or [])
+                           if f.get("son_seul") or f.get("a")), None)
+            if sonore:
+                pr_son = autre
+                break
+    if not serveur.FFMPEG:
+        print("    ffmpeg absent : onde non eprouvee")
+    elif not sonore:
+        print("    aucun media sonore dans ce projet : onde non eprouvee")
+    else:
+        cache = os.path.join(serveur.ondes_de(pr_son), sonore["id"] + ".json")
+        deja = os.path.isfile(cache)
+        c, o = req("/api/onde?projet=%s&id=%s" % (pr_son, sonore["id"]))
+        v("l onde arrive", c == 200 and len(o.get("pics") or []) > 3, (c, o))
+        v("un pic toutes les 20 ms", abs((o.get("pas") or 0) - 0.02) < 1e-9,
+          o.get("pas"))
+        v("autant de pics que de secondes de son",
+          abs(len(o.get("pics") or []) / 50.0 - (o.get("s") or 0)) < 0.5,
+          (len(o.get("pics") or []), o.get("s")))
+        v("gardee en cache dans _donnees", os.path.isfile(cache), cache)
+        c2, o2 = req("/api/onde?projet=%s&id=%s" % (pr_son, sonore["id"]))
+        v("relue sans refaire le travail", c2 == 200
+          and o2.get("pics") == o.get("pics"))
+        c3, _ = req("/api/onde?projet=%s&id=%s" % (pr_son, "0" * 12))
+        v("identifiant inconnu : 404", c3 == 404, c3)
+        if not deja:
+            try:
+                os.remove(cache)          # rien de durable : on remet en etat
+            except OSError:
+                pass
 
     print("--- rangement virtuel ---")
     c, sauve = req("/api/rangement?projet=" + PR)
