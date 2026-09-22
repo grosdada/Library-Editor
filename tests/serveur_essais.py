@@ -145,6 +145,38 @@ if projets:
             except OSError:
                 pass
 
+    print("--- une image fixe se rend comme un plan ---")
+    fixe = next((f for f in films if f.get("image")), None)
+    if not serveur.FFMPEG:
+        print("    ffmpeg absent : rendu d image non eprouve")
+    elif not fixe:
+        print("    aucune image dans ce projet : rendu non eprouve")
+    else:
+        import shutil as _sh
+        import subprocess as _sp
+        import tempfile as _tf
+        d = _tf.mkdtemp(prefix="essai-image-")
+        try:
+            plan = {"projet": PR, "fichier": fixe["rel"], "entree": 0.0,
+                    "sortie": 2.5, "vitesse": 1, "rev": False,
+                    "cadrage": {"mode": "contain", "echelle": 1}}
+            chemin, duree = serveur._segment(plan, d, 0, False)
+            v("segment fabrique, a la duree du bloc",
+              bool(chemin) and abs(duree - 2.5) < 0.01,
+              (chemin, duree, serveur.RENDU.get("message")))
+            if chemin:
+                r = _sp.run([serveur.FFPROBE or "ffprobe", "-v", "error",
+                             "-show_entries", "format=duration", "-of",
+                             "default=nw=1:nk=1", chemin],
+                            capture_output=True, text=True)
+                try:
+                    vraie = float((r.stdout or "0").strip())
+                except ValueError:
+                    vraie = 0.0
+                v("le fichier dure vraiment 2,5 s", abs(vraie - 2.5) < 0.15, vraie)
+        finally:
+            _sh.rmtree(d, ignore_errors=True)
+
     print("--- rangement virtuel ---")
     c, sauve = req("/api/rangement?projet=" + PR)
     v("lecture", c == 200, sauve)

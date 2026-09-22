@@ -111,6 +111,10 @@ def donnees():
            os.path.join(F_, "Rushes-B", "jour 2", "prise_%d.mp4" % i))
     ff("-f", "lavfi", "-i", "sine=frequency=440:duration=3",
        os.path.join(F_, "Rushes-B", "ambiance.wav"))
+    # Une image fixe au milieu des rushes : elle fait une fiche comme les
+    # autres, sans son et sans duree propre.
+    ff("-f", "lavfi", "-i", "color=c=0x3366aa:s=800x600", "-frames:v", "1",
+       os.path.join(F_, "Rushes-A", "photo 01.jpg"))
     ff("-f", "lavfi", "-i", "testsrc=size=320x240:rate=24:duration=1",
        "-c:v", "libx264", "-pix_fmt", "yuv422p", os.path.join(F_, "Rushes-B", "422.mp4"))
     for i in (1, 2):
@@ -208,7 +212,7 @@ def essais_films(racine):
     v("moteur embarque present", os.path.isfile(os.path.join(app, "_python", "python.exe")))
     v("aucun dossier provisoire restant", not [n for n in os.listdir(racine)
                                              if n.startswith(".installation")])
-    for p, n in (("Rushes-A", 3), ("Rushes-B", 4)):
+    for p, n in (("Rushes-A", 4), ("Rushes-B", 4)):
         cat = C.lire_json(os.path.join(app, "_donnees", p, "catalogue.json"), {})
         films = cat.get("films", [])
         v("%s : %d fiches" % (p, n), len(films) == n, len(films))
@@ -221,6 +225,14 @@ def essais_films(racine):
             app, "_donnees", p, "_posters", f["id"] + ".jpg"))]
         v("%s : %d vignettes" % (p, len(videos)), len(faits) == len(videos),
           (len(faits), len(videos)))
+    cat_a = C.lire_json(os.path.join(app, "_donnees", "Rushes-A", "catalogue.json"), {})
+    photo = next((f for f in cat_a.get("films", []) if f["nom"] == "photo 01"), None)
+    v("l image fixe fait une fiche : pas de son, duree par defaut",
+      photo and photo.get("image") is True and photo.get("a") is False
+      and photo.get("s") == 5.0 and photo.get("w") == 800, photo)
+    v("l image fixe a sa vignette",
+      bool(photo) and os.path.isfile(os.path.join(
+          app, "_donnees", "Rushes-A", "_posters", photo["id"] + ".jpg")))
     v("rien d ecrit dans les rushes (pas de _projet)",
       not os.path.exists(os.path.join(racine, "Rushes-A", "_projet")))
     v("preuve : 2 dossiers identiques", len(r["preuve"]) == 2 and
@@ -391,8 +403,8 @@ def essais_purge(racine, app):
           c == 200 and r["retires"] == 1 and [g["id"] for g in r["gardes"]] == [f2["id"]]
           and r["gardes"][0]["sequences"] == ["Rushes-A/essai"], (c, r))
         ids = [f["id"] for f in C.lire_json(catf)["films"]]
-        v("catalogue : f3 parti, f2 garde, plan 01 intact",
-          f3["id"] not in ids and f2["id"] in ids and len(ids) == 2, ids)
+        v("catalogue : f3 parti, f2 garde, plan 01 et la photo intacts",
+          f3["id"] not in ids and f2["id"] in ids and len(ids) == 3, ids)
         v("reponse : les fiches restantes, pour l application",
           sorted(f["id"] for f in r["films"]) == sorted(ids))
         v("vignette de la fiche retiree effacee",
@@ -795,8 +807,10 @@ def essais_enligne(film, banque):
     presentes = {p: [f for f in C.lire_json(os.path.join(donnees, p, "catalogue.json"))["films"]
                      if not f.get("absent")]
                  for p in ("Rushes-A", "Rushes-B", "Rushes-C")}
-    v("catalogue en ligne : proxy .mp4, seulement les fiches presentes",
-      all(f["proxy"].endswith(".mp4") for f in cat["films"])
+    v("catalogue en ligne : proxy .mp4 (.jpg pour une image), seulement les "
+      "fiches presentes",
+      all(f["proxy"].endswith(".jpg" if f.get("image") else ".mp4")
+          for f in cat["films"])
       and sorted(f["id"] for f in cat["films"]) == sorted(f["id"] for f in presentes["Rushes-A"]),
       [f["rel"] for f in cat["films"]])
     v("aucun chemin absolu en ligne", ":\\" not in json.dumps(cat) and

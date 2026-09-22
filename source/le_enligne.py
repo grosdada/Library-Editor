@@ -42,6 +42,10 @@ VIDEO = ["-map", "0:v:0", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23"
 VIDEO_SON = ["-map", "0:a:0?", "-c:a", "aac", "-b:a", "128k", "-ac", "2"]
 AUDIO = ["-vn", "-map", "0:a:0", "-c:a", "aac", "-b:a", "192k",
          "-movflags", "+faststart"]
+# Une image fixe reste une image : la publier en petit film la rendrait
+# illisible pour l application, qui la charge comme une image.
+IMAGE = ["-map", "0:v:0", "-frames:v", "1",
+         "-vf", "scale='min(1280,iw)':-2:flags=lanczos", "-q:v", "4"]
 
 
 def dossier_enligne(racine, genre):
@@ -132,14 +136,15 @@ def duree(fichier):
         return None
 
 
-def fabriquer_proxy(source, cible, son_seul):
+def fabriquer_proxy(source, cible, son_seul, image=False):
     """Un proxy ; on ne le garde que s il dure comme l original (un proxy plus
-    court decalerait tout le montage, et ca ne se verrait qu a la lecture)."""
+    court decalerait tout le montage, et ca ne se verrait qu a la lecture).
+    Une image fixe, elle, n a pas de duree : on la redimensionne, c est tout."""
     os.makedirs(os.path.dirname(cible), exist_ok=True)
     base, ext = os.path.splitext(cible)
     tmp = base + ".part" + ext      # ffmpeg devine le conteneur par l extension
     cmd = [shutil.which("ffmpeg"), "-nostdin", "-y", "-v", "error", "-i", source]
-    cmd += AUDIO if son_seul else (VIDEO + VIDEO_SON)
+    cmd += IMAGE if image else (AUDIO if son_seul else (VIDEO + VIDEO_SON))
     cmd += [tmp]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800,
@@ -148,6 +153,9 @@ def fabriquer_proxy(source, cible, son_seul):
         return False, "trop long (30 mn)"
     if r.returncode != 0 or not os.path.isfile(tmp):
         return False, (r.stderr or "").strip()[:160] or "ffmpeg a échoué"
+    if image:
+        os.replace(tmp, cible)
+        return True, "%.1f Mo" % (os.path.getsize(cible) / 1e6)
     d1, d2 = duree(source), duree(tmp)
     if d1 and d2 and abs(d1 - d2) > 0.15:
         os.remove(tmp)
@@ -157,6 +165,10 @@ def fabriquer_proxy(source, cible, son_seul):
 
 
 def rel_proxy(f):
+    if f.get("image"):
+        # Les JPEG restent des JPEG ; tout le reste (PNG, WebP, TIFF...) part
+        # en JPEG aussi : c est ce que l application affichera.
+        return os.path.splitext(f["rel"])[0] + ".jpg"
     return os.path.splitext(f["rel"])[0] + (".m4a" if f.get("son_seul") else ".mp4")
 
 
@@ -192,7 +204,7 @@ def proxys(tache, racine, mod, base):
         p, f, src, dst = t
         if tache.annulee():
             return
-        ok, msg = fabriquer_proxy(src, dst, f.get("son_seul"))
+        ok, msg = fabriquer_proxy(src, dst, f.get("son_seul"), f.get("image"))
         with verrou:
             compte["n"] += 1
             tache.progres(compte["n"])

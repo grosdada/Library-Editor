@@ -113,11 +113,13 @@ EXT_VIDEO = (".mp4", ".mov", ".m4v", ".webm")
 # meme identifiant stable, mais ni image ni poster. C est ce qui permet a une
 # musique d atterrir sur une piste.
 EXT_AUDIO = (".wav", ".m4a", ".mp3", ".aac", ".flac", ".ogg", ".aif", ".aiff")
-EXT_MEDIA = EXT_VIDEO + EXT_AUDIO
-# Les images ne font pas de fiches (le catalogue ne connait que les medias),
-# mais on les compte : un dossier qui n a que des images doit pouvoir se dire.
+# Les images fixes font des fiches, comme les videos et les sons. Une image
+# n a pas de duree : on lui donne celle-ci, et le bloc s etire ensuite
+# librement sur la timeline, comme un calque de couleur.
 EXT_IMAGE = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif",
              ".tiff", ".avif")
+DUREE_IMAGE = 5.0
+EXT_MEDIA = EXT_VIDEO + EXT_AUDIO + EXT_IMAGE
 # L onde d un son : un pic (0 a 255) toutes les 20 ms, lu a 4 kHz en mono.
 # Assez fin pour caler une coupe a l oeil, assez leger pour voyager : une
 # minute de son fait 3 000 nombres.
@@ -579,8 +581,10 @@ def journal_retirer(pr, restantes):
 
 def sonder(chemin):
     taille = os.path.getsize(chemin)
+    image = chemin.lower().endswith(EXT_IMAGE)
     base = {"m": round(taille / 1048576, 2), "octets": taille,
-            "w": None, "h": None, "fps": 0, "s": 0.0, "a": False}
+            "w": None, "h": None, "fps": 0,
+            "s": DUREE_IMAGE if image else 0.0, "a": False, "image": image}
     if not FFPROBE:
         return base
     try:
@@ -596,6 +600,11 @@ def sonder(chemin):
     v = next((s for s in flux if s.get("codec_type") == "video"), {})
     base["a"] = any(s.get("codec_type") == "audio" for s in flux)
     base["w"], base["h"] = v.get("width"), v.get("height")
+    if image:
+        # ffprobe donne bien une « duree » a une image (une image a 25 i/s) :
+        # elle n a aucun sens ici. La duree d une image, c est celle qu on lui
+        # donnera sur la timeline.
+        return base
     try:
         num, den = v.get("r_frame_rate", "0/1").split("/")
         base["fps"] = round(int(num) / int(den), 3) if int(den) else 0
@@ -609,8 +618,12 @@ def sonder(chemin):
 
 
 def cle_contenu(f):
-    """Empreinte stable a travers les renommages : taille + duree."""
-    return "%d:%.1f" % (f.get("octets") or 0, f.get("s") or 0)
+    """Empreinte stable a travers les renommages : taille + duree.
+
+    Toutes les images ont la meme duree par defaut : on marque les leurs,
+    sinon deux images de meme poids se prendraient l une pour l autre."""
+    cle = "%d:%.1f" % (f.get("octets") or 0, f.get("s") or 0)
+    return cle + ":i" if f.get("image") else cle
 
 
 SCAN = {"etat": "repos", "projet": "", "fait": 0, "total": 0}
@@ -669,6 +682,10 @@ def scanner(pr, bavard=True):
             # Un fichier de son seul n a pas de poster a fabriquer et sa
             # carte s affiche autrement : on le dit une bonne fois.
             "son_seul": ext.lower() in EXT_AUDIO,
+            # Une image fixe : ni son, ni duree propre. Le champ voyage
+            # jusqu a l application, qui la traite comme un calque avec une
+            # image dedans.
+            "image": ext.lower() in EXT_IMAGE,
         }
         fiche.update(infos)
         films.append(fiche)
@@ -782,10 +799,15 @@ def fabriquer_posters(pr, budget=None, bavard=True):
         src = sur(pr, f["rel"])
         if not src or not os.path.isfile(src):
             continue
-        t = max(0.1, (f.get("s") or 1) * 0.35)
-        subprocess.run([FFMPEG, "-nostdin", "-v", "error", "-ss", "%.2f" % t,
-                        "-i", src, "-frames:v", "1", "-vf", "scale=480:-2",
-                        "-q:v", "4", "-y", cible],
+        if f.get("image"):
+            # Pas de « -ss » sur une image fixe : il n y a rien a chercher.
+            cmd = [FFMPEG, "-nostdin", "-v", "error", "-i", src]
+        else:
+            t = max(0.1, (f.get("s") or 1) * 0.35)
+            cmd = [FFMPEG, "-nostdin", "-v", "error", "-ss", "%.2f" % t,
+                   "-i", src]
+        subprocess.run(cmd + ["-frames:v", "1", "-vf", "scale=480:-2",
+                              "-q:v", "4", "-y", cible],
                        capture_output=True, timeout=60)
         faits += 1
     if bavard:
@@ -1051,6 +1073,12 @@ def _segment(plan, dossier, i, avec_son, fi=0.0, fo=0.0, pr_defaut=""):
     vit = abs(float(plan.get("vitesse", 1) or 1)) or 1.0
     rev = bool(plan.get("rev"))
     duree = max(0.05, (o - e) / vit)
+    # Une image fixe : ffmpeg la boucle le temps du bloc. Ni vitesse ni
+    # lecture inversee — il n y a qu une image, et sa duree est deja celle
+    # qu on veut.
+    image = src.lower().endswith(EXT_IMAGE)
+    if image:
+        rev = False
     if rev and MODE != "audio" and (o - e) > LIMITE_INVERSE:
         RENDU["message"] = (
             "un plan inverse de %.0f s depasse la limite de %.0f s : "
@@ -1093,15 +1121,19 @@ def _segment(plan, dossier, i, avec_son, fi=0.0, fo=0.0, pr_defaut=""):
         return cible, duree
 
     cible = os.path.join(dossier, "seg%03d.mp4" % i)
-    cmd = [FFMPEG, "-nostdin", "-v", "error", "-ss", "%.3f" % e, "-to", "%.3f" % o,
-           "-i", src]
+    if image:
+        cmd = [FFMPEG, "-nostdin", "-v", "error", "-loop", "1",
+               "-framerate", str(FPS_SORTIE), "-t", "%.3f" % duree, "-i", src]
+    else:
+        cmd = [FFMPEG, "-nostdin", "-v", "error", "-ss", "%.3f" % e,
+               "-to", "%.3f" % o, "-i", src]
     if MODE == "video":
         avec_son = False
     if not avec_son and MODE != "video":
         cmd += ["-f", "lavfi", "-t", "%.3f" % duree,
                 "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"]
     cmd += ["-filter_complex"]
-    vf = _seg_filtre(plan.get("cadrage"), vit,
+    vf = _seg_filtre(plan.get("cadrage"), 1.0 if image else vit,
                      float(plan.get("opacite", 1) or 1), duree, rev)
     if fi > 0.02:
         vf += ",fade=t=in:st=0:d=%.3f" % min(fi, duree)

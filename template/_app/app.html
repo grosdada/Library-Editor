@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GARY-ALL — library & edit table</title>
+<title>library &amp; edit table</title>
 <style>
 :root{--fond:#1a1917;--carte:#232220;--haut:#2c2a27;--encre:#e9e4da;
  --sourd:#8c877e;--orange:#d9532b;--trait:#34322e;--vert:#6a9b4a;--or:#e8b93a;
@@ -40,6 +40,11 @@ h1{margin:0;font-size:13px;letter-spacing:.14em;text-transform:uppercase;
  white-space:nowrap}
 h1 small{color:var(--sourd);letter-spacing:.05em;font-weight:400;
  text-transform:none;margin-left:7px;font-size:11px}
+/* Le nom de la bibliotheque — le dossier ou elle a ete creee — au-dessus des
+   projets ouverts : on sait toujours dans quelle bibliotheque on travaille. */
+#biblio{display:block;font-size:11px;letter-spacing:.18em;color:var(--or);
+ margin-bottom:2px}
+#biblio:empty{display:none}
 .modes{display:flex;border:1px solid var(--trait);border-radius:5px;overflow:hidden}
 .modes button{border:0;border-radius:0;padding:5px 13px}
 #selDossier{display:none;max-width:190px}
@@ -581,7 +586,7 @@ body.enligne #qui { display: flex; }
 </div></div>
 
 <header>
-  <h1><span id="titre">Coulisses du Cosmos</span>
+  <h1><span id="biblio"></span><span id="titre">Coulisses du Cosmos</span>
     <small id="entete">loading…</small></h1>
   <div class="modes">
     <button id="mRush" class="on">Rushes</button>
@@ -1141,10 +1146,18 @@ function rendreDossiers() {
 // Bandeau de titre : ce que contiennent les projets ouverts.
 function majEntete() {
   const vivants = FILMS.filter(f => !f.absent);
-  const duree = vivants.reduce((s, f) => s + (f.s || 0), 0);
+  // Une image n a pas de duree : elle ne compte pas dans celle du projet.
+  const duree = vivants.reduce((s, f) => s + (f.image ? 0 : (f.s || 0)), 0);
   const poids = vivants.reduce((s, f) => s + (f.m || 0), 0);
+  // Le nom de la bibliotheque vient de bibliotheque.json (le dossier ou
+  // elle a ete creee) ; l onglet du navigateur le porte aussi.
+  const bib = $('#biblio');
+  if (bib) bib.textContent = TITRE || '';
+  const voulu = TITRE ? TITRE + ' — library & edit table'
+                      : 'library & edit table';
+  if (document.title !== voulu) document.title = voulu;
   $('#titre').textContent = OUVERTS.length
-    ? OUVERTS.map(p => p.nom).join(' + ') : 'Coulisses du Cosmos';
+    ? OUVERTS.map(p => p.nom).join(' + ') : 'no project open';
   $('#entete').textContent = OUVERTS.length
     ? (vivants.length + ' clips · ' + DOSSIERS.length + ' folders · ' +
        (duree / 60).toFixed(0) + ' min · ' + (poids / 1024).toFixed(1) + ' Go')
@@ -1182,10 +1195,12 @@ function carte(f) {
     '<div class="bas"><div class="nom" data-nom="' + f.id +
     '" title="' + f.nom + ' — double-click to rename">' +
     f.nom.replace(/</g, '&lt;') + '</div>' +
-    '<div class="meta"><span class="b">' +
-    (f.s || 0).toFixed(1) + 's</span>' +
+    '<div class="meta">' +
+    (f.image ? '<span class="b">still</span>'
+             : '<span class="b">' + (f.s || 0).toFixed(1) + 's</span>') +
     (fmt ? '<span class="b ' + fmt.cls + '">' + fmt.code + '</span>' : '') +
-    (f.son_seul ? '<span class="b son">SOUND</span>'
+    (f.image ? '<span class="b son">IMAGE</span>'
+             : f.son_seul ? '<span class="b son">SOUND</span>'
                 : (f.a ? '' : '<span class="b muet">MUTE</span>')) +
     (f.absent ? '<span class="b abs">MISSING</span>' : '') +
     '</div></div></div>';
@@ -1348,6 +1363,11 @@ function agrandir(id) {
     ? '<div class="pochette" style="--t:' + (tonSon(f.nom) | 0) + 'deg">' +
       '<span>♪</span></div><audio src="' + urlMedia(f) +
       '" controls autoplay loop preload="auto"></audio>'
+    : f.image
+    ? '<div class="scene" style="--ar:' + w + '/' + h + ';--arn:' +
+      (w / h).toFixed(4) + '"><img src="' + urlMedia(f) + '" alt="' +
+      esc(f.nom) + '" style="width:100%;height:100%;object-fit:contain">' +
+      '</div>'
     : '<div class="scene" style="--ar:' + w + '/' + h + ';--arn:' +
       (w / h).toFixed(4) + '"><video src="' + urlMedia(f) + '" poster="' +
       urlPoster(f) + '" controls autoplay loop playsinline preload="auto">' +
@@ -2693,6 +2713,11 @@ async function chargerPolices() {
 const TEINTES = ['#000000', '#ffffff', '#d9532b', '#e8b93a', '#6a9b4a',
                  '#4a7fa8', '#7a5a9b', '#a8302f', '#2c2a27', '#e9e4da'];
 const estSynth = c => !!(c && c.genre);
+// Une image fixe : une fiche comme les autres, mais sans duree propre. Elle
+// se comporte comme un calque — on l etire autant qu on veut — avec une
+// image dedans au lieu d une couleur.
+const estImage = c => !!(c && !c.genre && PAR_ID[c.film] &&
+                         PAR_ID[c.film].image);
 
 // La piste ou poser un calque : la premiere piste video au-dessus de tout ce
 // qui occupe deja cet instant, et libre elle-meme. On n empile donc pas une
@@ -3981,9 +4006,10 @@ $('#lanes').addEventListener('pointerdown', e => {
       const d = dTl * vAbs(c);
       dep.forEach(s => {
         const vit = vAbs(s.c);
-        if (estSynth(s.c)) {
-          // Rien ne borne la duree d un calque ou d un texte : ni point
-          // d entree ni point de sortie, il n y a pas de fichier derriere.
+        if (estSynth(s.c) || estImage(s.c)) {
+          // Rien ne borne la duree d un calque, d un texte ou d une image
+          // fixe : il n y a pas de duree derriere, seulement celle qu on
+          // decide ici.
           // Le bord gauche deplace donc le debut et rallonge d autant, au
           // lieu de grignoter un point d entree qui n existe pas.
           const bout = s.t0 + (s.o - s.e) / vit;
@@ -5297,9 +5323,28 @@ let horloge0 = 0, t0Lect = 0;
 
 const actifs = t => CLIPS.filter(c => t >= c.t0 - 0.001 && t < fin(c) - 0.001);
 
+// Les images fixes, une par fiche : rien a decoder, rien a synchroniser,
+// et deux blocs de la meme image partagent la meme balise.
+const IMAGES = new Map();
+function imageDe(c) {
+  const f = PAR_ID[c.film];
+  if (!f) return null;
+  let im = IMAGES.get(c.film);
+  if (!im) {
+    im = new Image();
+    im.decoding = 'async';
+    // Chargee, elle se montre sans attendre le prochain mouvement.
+    im.onload = () => { try { dessiner(); } catch (e) {} };
+    im.src = urlMedia(f);
+    IMAGES.set(c.film, im);
+  }
+  return im;
+}
+
 function media(c) {
-  // Un calque ou un texte n a rien a lire : il est dessine a chaque image.
-  if (estSynth(c)) return null;
+  // Un calque, un texte ou une image fixe n a rien a lire : ils sont
+  // dessines a chaque image, sans lecteur ni synchronisation.
+  if (estSynth(c) || estImage(c)) return null;
   let v = POOL.get(c.uid);
   if (!v) {
     const f = PAR_ID[c.film];
@@ -5634,6 +5679,10 @@ function dessiner() {
   // introuvable ne doit pas figer le moniteur pour toujours.
   const pasPret = aDessiner.filter(c => {
     if (estSynth(c)) return false;
+    if (estImage(c)) {
+      const im = imageDe(c);
+      return !im || !im.naturalWidth;
+    }
     const v = POOL.get(c.uid);
     return !v || !v.videoWidth || v.readyState < 2;
   }).map(c => c.uid);
@@ -5648,12 +5697,16 @@ function dessiner() {
   const cw = moni.width, ch = moni.height;
   aDessiner.forEach(c => {
     if (estSynth(c)) { dessinerSynth(c, cw, ch); return; }
-    const v = POOL.get(c.uid);
-    if (!v || !v.videoWidth) return;
+    const v = estImage(c) ? imageDe(c) : POOL.get(c.uid);
+    if (!v) return;
+    // Une balise image donne « naturalWidth », un lecteur « videoWidth » :
+    // tout le reste du dessin est identique.
+    const vw = v.videoWidth || v.naturalWidth,
+          vh = v.videoHeight || v.naturalHeight;
+    if (!vw || !vh) return;
     const a = alpha(c, tLect) * valAnim(c, 'opac', tLect);
     if (a <= 0.005) return;
     ctx.globalAlpha = a;
-    const vw = v.videoWidth, vh = v.videoHeight;
     const base = c.mode === 'cover' ? Math.max(cw / vw, ch / vh)
                                     : Math.min(cw / vw, ch / vh);
     const [sx, sy] = secousse(c, tLect);
@@ -7028,6 +7081,11 @@ function versXml() {
     '</timebase><ntsc>FALSE</ntsc></rate>';
   const vus = {};
   let nf = 0;
+  // Une image fixe n a pas de duree : pour Premiere, sa « source » dure
+  // autant que le plus long bloc qui la montre — sinon il la couperait.
+  const dureeSource = f => f.image
+    ? Math.max(1, ...CLIPS.filter(x => x.film === f.id).map(x => dur(x)))
+    : (f.s || 0);
   const fichier = c => {
     const f = PAR_ID[c.film];
     if (!f) return '<file id="f0"/>';
@@ -7040,7 +7098,7 @@ function versXml() {
       : encodeURI(f.rel);
     return '<file id="' + fid + '"><name>' + esc(f.nom + f.ext) + '</name>' +
       '<pathurl>' + chemin + '</pathurl>' + rate +
-      '<duration>' + img(f.s || 0) + '</duration><media><video>' +
+      '<duration>' + img(dureeSource(f)) + '</duration><media><video>' +
       '<samplecharacteristics><width>' + (f.w || 1280) + '</width><height>' +
       (f.h || 720) + '</height></samplecharacteristics></video>' +
       (f.a ? '<audio><channelcount>2</channelcount></audio>' : '') + '</media></file>';
@@ -7050,7 +7108,7 @@ function versXml() {
     const f = PAR_ID[c.film] || {};
     const v = vSignee(c);
     return '<clipitem id="clip' + i + '"><name>' + esc(f.nom || 'shot') + '</name>' +
-      '<duration>' + img(f.s || 0) + '</duration>' + rate +
+      '<duration>' + img(dureeSource(f)) + '</duration>' + rate +
       '<start>' + img(c.t0 - bA) + '</start><end>' + img(fin(c) - bA) + '</end>' +
       '<in>' + img(c.e) + '</in><out>' + img(c.o) + '</out>' +
       (v !== 1 ? '<filter><effect><name>Time Remap</name><effectid>timeremap</effectid>' +
@@ -7333,6 +7391,9 @@ async function suivreRendu() {
     }
     LECTURE_SEULE = !!l.lecture_seule;
     TITRE = l.titre || '';
+    // Le nom de la bibliotheque est connu : l en-tete et l onglet le portent
+    // tout de suite, meme avant qu un projet soit ouvert.
+    try { majEntete(); } catch (e) {}
     document.body.classList.toggle('rangeable', RANGEABLE);
     document.body.classList.toggle('lectureseule', LECTURE_SEULE);
     // Le format de la bibliotheque, pour une timeline encore vide. Une
