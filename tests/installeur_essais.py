@@ -574,6 +574,25 @@ def essais_images(banque, vrac):
       and octets(os.path.join(serv, "_donnees.json")) == donnees_avant)
     v("tout est a jour ensuite", I.etat_mise_a_jour(banque)["a_jour"])
 
+    # Une bibliotheque plus recente que le manifeste ne recule JAMAIS : le
+    # cache de GitHub sert parfois l ancien version.json apres une publication.
+    vieille_version(serv, os.path.join(serv, "_scan.py"), "serveur/_scan.py")
+    vj = os.path.join(serv, "_version.json")
+    enregistre = C.lire_json(vj, {})
+    C.ecrire_json(vj, dict(enregistre, version="99.0.0"))
+    e = I.etat_mise_a_jour(banque)
+    v("plus recente que le manifeste : rien a faire", not e["a_faire"]
+      and e["plus_recent"] and any(x["etat"] == "plus_recent" for x in e["fichiers"]),
+      (e["a_faire"], e.get("plus_recent")))
+    garde = octets(os.path.join(serv, "_scan.py"))
+    I.mettre_a_jour(tache(), banque, {"moteur": False, "forcer": True})
+    v("meme en forcant, aucun fichier ne recule",
+      octets(os.path.join(serv, "_scan.py")) == garde)
+    C.ecrire_json(vj, dict(enregistre, version=C.VERSION))
+    I.mettre_a_jour(tache(), banque, {"moteur": False})
+    v("et la mise a jour normale reprend son cours",
+      I.etat_mise_a_jour(banque)["a_jour"])
+
     print("\n=== IMAGES : le bouton « Programme » de la banque ===")
     v("_maj.py depose dans une banque seule",
       os.path.isfile(os.path.join(serv, "_maj.py")))

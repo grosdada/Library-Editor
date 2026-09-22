@@ -1,7 +1,7 @@
 {
- "version": "1.1.2",
+ "version": "1.1.3",
  "date": "2026-09-22",
- "notes": "Ouverture d'une banque en une seconde au lieu de deux minutes sur un disque reseau.",
+ "notes": "",
  "genres": {
   "films": {
    "fichiers": {
@@ -23,9 +23,10 @@
     },
     "_app/_maj.py": {
      "depot": "modeles/commun/_maj.py",
-     "sha256": "961b54ecd5f676b04e9ba2c77191e2b53f098e5962ea2bd41502e85d6e20371f",
+     "sha256": "0f9c840306846ee17e2e674121e56a54b33bd680491e6913ff447989b75217b6",
      "historique": [
-      "491e4cbb1a724a90759306bc875cd77958b0582bba7e67e4adb8a32eb2909cd8"
+      "491e4cbb1a724a90759306bc875cd77958b0582bba7e67e4adb8a32eb2909cd8",
+      "961b54ecd5f676b04e9ba2c77191e2b53f098e5962ea2bd41502e85d6e20371f"
      ]
     },
     "_app/LANCER.bat": {
@@ -71,9 +72,10 @@
     },
     "serveur/_maj.py": {
      "depot": "modeles/commun/_maj.py",
-     "sha256": "961b54ecd5f676b04e9ba2c77191e2b53f098e5962ea2bd41502e85d6e20371f",
+     "sha256": "0f9c840306846ee17e2e674121e56a54b33bd680491e6913ff447989b75217b6",
      "historique": [
-      "491e4cbb1a724a90759306bc875cd77958b0582bba7e67e4adb8a32eb2909cd8"
+      "491e4cbb1a724a90759306bc875cd77958b0582bba7e67e4adb8a32eb2909cd8",
+      "961b54ecd5f676b04e9ba2c77191e2b53f098e5962ea2bd41502e85d6e20371f"
      ]
     },
     "serveur/LISEZ-MOI.txt": {
@@ -202,9 +204,10 @@
     },
     "serveur/_maj.py": {
      "depot": "modeles/commun/_maj.py",
-     "sha256": "961b54ecd5f676b04e9ba2c77191e2b53f098e5962ea2bd41502e85d6e20371f",
+     "sha256": "0f9c840306846ee17e2e674121e56a54b33bd680491e6913ff447989b75217b6",
      "historique": [
-      "491e4cbb1a724a90759306bc875cd77958b0582bba7e67e4adb8a32eb2909cd8"
+      "491e4cbb1a724a90759306bc875cd77958b0582bba7e67e4adb8a32eb2909cd8",
+      "961b54ecd5f676b04e9ba2c77191e2b53f098e5962ea2bd41502e85d6e20371f"
      ],
      "si_present": true
     },
@@ -233,12 +236,5 @@
     }
    }
   }
- },
- "commit": "0ff13c81b5b17cb171024a3f1f27d0eb5fdaf9bb",
- "installeur": {
-  "version": "1.1.2",
-  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.1.2/Library-Editor-1.1.2.zip",
-  "octets": 38350951,
-  "sha256": "45cfe1c33a611bf2871fb8b383f968d762c6fa631570cd6eaa4b653d198538de"
  }
 }

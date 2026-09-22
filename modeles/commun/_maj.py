@@ -46,30 +46,58 @@ def sha256(chemin):
     return h.hexdigest()
 
 
-def telecharger(url, delai=30):
-    req = urllib.request.Request(url, headers={"User-Agent": "Library-Editor"})
+def telecharger(url, delai=30, entetes=None):
+    h = {"User-Agent": "Library-Editor"}
+    h.update(entetes or {})
+    req = urllib.request.Request(url, headers=h)
     with urllib.request.urlopen(req, timeout=delai) as r:
         return r.read()
+
+
+def adresses_du_manifeste(depot):
+    """Ou lire version.json, dans l ordre a essayer.
+
+    raw.githubusercontent passe par un cache qui sert encore l ancien fichier
+    plusieurs minutes apres une publication — assez pour qu une bibliotheque
+    fraichement mise a jour se croie en retard. L API, elle, rend toujours
+    l etat du depot ; on la demande d abord, et raw reste le filet (l API est
+    limitee a 60 appels par heure et par adresse IP)."""
+    adresses = []
+    marque = "https://raw.githubusercontent.com/"
+    if depot.startswith(marque):
+        morceaux = depot[len(marque):].strip("/").split("/")
+        if len(morceaux) >= 3:
+            proprietaire, nom, branche = morceaux[0], morceaux[1], morceaux[2]
+            adresses.append((
+                "https://api.github.com/repos/%s/%s/contents/version.json?ref=%s"
+                % (proprietaire, nom, branche),
+                {"Accept": "application/vnd.github.raw"}))
+    url = depot + "version.json"
+    if url.startswith(("http://", "https://")):
+        # Un depot local (file://, un miroir sur le reseau) n a pas de cache,
+        # et une interrogation collee au nom de fichier en ferait un chemin
+        # invalide.
+        url += "?t=%d" % int(time.time())
+    adresses.append((url, {}))
+    return adresses
 
 
 def manifeste_distant(depot=None):
     """Le version.json publie. Leve une erreur lisible sans reseau."""
     depot = depot or DEPOT
-    url = depot + "version.json"
-    # Contre les caches intermediaires — mais seulement sur le web : un depot
-    # local (file://, un miroir sur le reseau) n a pas de cache, et une
-    # interrogation collee au nom de fichier en ferait un chemin invalide.
-    if url.startswith(("http://", "https://")):
-        url += "?t=%d" % int(time.time())
-    try:
-        brut = telecharger(url, 15)
-    except Exception as e:
-        raise RuntimeError("GitHub injoignable (%s) : verifiez la connexion, "
-                           "puis reessayez." % (getattr(e, "reason", "") or e))
-    try:
-        return json.loads(brut.decode("utf-8"))
-    except Exception:
-        raise RuntimeError("Manifeste illisible sur GitHub.")
+    dernier = None
+    for url, entetes in adresses_du_manifeste(depot):
+        try:
+            brut = telecharger(url, 15, entetes)
+        except Exception as e:
+            dernier = getattr(e, "reason", "") or e
+            continue
+        try:
+            return json.loads(brut.decode("utf-8"))
+        except Exception:
+            dernier = "manifeste illisible"
+    raise RuntimeError("GitHub injoignable (%s) : verifiez la connexion, puis "
+                       "reessayez." % dernier)
 
 
 def lecteur_distant(manifeste, depot=None):
@@ -113,13 +141,26 @@ def banques(racine):
     return out
 
 
+def numero(version):
+    """« 1.1.10 » -> (1, 1, 10), pour comparer deux versions."""
+    try:
+        return tuple(int(x) for x in str(version or "0").split("."))
+    except Exception:
+        return (0,)
+
+
 def plan(manifeste, genre, racine, installe=None, prefixe=""):
     """Ce qu il faudrait faire, fichier par fichier, sans rien faire.
 
     etat : « a_jour », « a_installer » (absent), « a_remplacer » (version
-    officielle ou connue), « modifie » (inconnu : garde).
+    officielle ou connue), « modifie » (inconnu : garde), « plus_recent »
+    (la bibliotheque est en avance sur le manifeste : on ne recule pas).
     """
     installe = installe or {}
+    # Le cache de GitHub peut servir un ancien version.json quelques minutes
+    # apres une publication : sans ce garde-fou, une bibliotheque a jour se
+    # ferait remplacer ses fichiers par ceux de la version precedente.
+    plus_recent = numero(installe.get("version")) > numero(manifeste.get("version"))
     connus_installes = (installe.get("fichiers") or {})
     g = (manifeste.get("genres") or {}).get(genre)
     if not g:
@@ -150,6 +191,8 @@ def plan(manifeste, genre, racine, installe=None, prefixe=""):
                 ligne["etat"] = "a_remplacer"
             else:
                 ligne["etat"] = "modifie"
+        if plus_recent and ligne["etat"] in ("a_installer", "a_remplacer"):
+            ligne["etat"] = "plus_recent"
         lignes.append(ligne)
     return lignes
 
@@ -175,6 +218,7 @@ def resume(manifeste, lignes, installe, avec_lanceurs):
     a_faire = [l for l in lignes if l["etat"] in ("a_installer", "a_remplacer")
                and (avec_lanceurs or not l["lanceur"])]
     return {"version_distante": manifeste.get("version"),
+            "plus_recent": any(l["etat"] == "plus_recent" for l in lignes),
             "version_locale": installe.get("version") or "inconnue",
             "a_faire": [l["fichier"] for l in a_faire],
             "modifies": [l["fichier"] for l in lignes if l["etat"] == "modifie"],

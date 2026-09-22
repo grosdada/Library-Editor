@@ -1053,11 +1053,13 @@ async function choisirMaj(chemin) {
       a_installer: ['<span class="badge accent">sera ajouté</span>', 1],
       a_remplacer: ['<span class="badge accent">sera remplacé (sauvegardé avant)</span>', 1],
       modifie: ['<span class="badge alerte">modifié à la main — gardé tel quel</span>', 0],
+      plus_recent: ['<span class="badge">plus récent ici — laissé tel quel</span>', 0],
       sans_objet: ['<span class="faible">—</span>', 0],
     };
     const lignes = e.fichiers.filter(f => f.etat !== "sans_objet");
     h += `<div class="tableau"><table><thead><tr><th>Fichier</th><th>État</th></tr></thead><tbody>${
       lignes.map(f => `<tr><td><code>${esc(f.fichier)}</code></td><td>${(ETATS[f.etat] || ETATS.sans_objet)[0]}${f.lanceur && e.ouverte && f.etat !== "a_jour" ? ' <span class="faible">lanceur : attendra la fermeture</span>' : ""}</td></tr>`).join("")}</tbody></table></div>`;
+    if (e.plus_recent) h += encart("info", `<p><b>Cette bibliothèque est plus récente que la version publiée</b> (${esc(e.version_locale)} installée, ${esc(e.version_distante)} publiée) : rien n'est remplacé. On ne revient jamais en arrière — juste après une publication, GitHub peut encore servir l'ancienne pendant quelques minutes.</p>`);
     if (e.modifies.length) h += encart("alerte", `<p><b>${nb(e.modifies.length)} fichier(s) ne viennent d'aucune version connue</b> — ils ont été retouchés à la main (les banques « 3d » de LDR, par exemple). Ils sont gardés tels quels. Cochez l'option ci-dessous pour les remplacer quand même : une sauvegarde <code>.avant-maj-…</code> est faite d'abord.</p>`);
     if (e.candidats.length) h += `<h3>Dossiers de rushes</h3><p class="petit" style="margin:-4px 0 10px">Cochez un dossier pour l'ajouter comme projet : il sera scanné, et son empreinte vérifiée avant et après.</p>
       <div class="tableau"><table><tbody>${e.candidats.map(c => `<tr class="${c.coche ? "" : "coche-non"}"><td style="width:36px"><input type="checkbox" data-p="${esc(c.nom)}" ${c.coche ? "checked disabled" : ""}></td><td class="nom">${esc(c.nom)}</td><td>${c.coche ? '<span class="badge">déjà projet</span>' : ""}</td></tr>`).join("")}</tbody></table></div>`;
