@@ -598,7 +598,10 @@ def installer_racine(tache, racine, r):
     apres = C.empreinte(racine, exclure=ajoutes)
     p = C.comparer(avant, apres)
     p["projet"] = os.path.basename(racine)
-    preuve.insert(0, p)
+    if p["entrees"] or not p["identiques"]:
+        # Rien d autre que les banques dans ce dossier : leurs propres
+        # empreintes disent deja tout, « 0 entrees » n apprendrait rien.
+        preuve.insert(0, p)
     tache.ligne("%d entrées, %s" % (p["entrees"], "identiques" if p["identiques"]
                                     else "DIFFERENCES"),
                 "ok" if p["identiques"] else "erreur")
