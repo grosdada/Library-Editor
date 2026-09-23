@@ -1,7 +1,7 @@
 {
  "version": "1.2.4",
  "date": "2026-09-23",
- "notes": "",
+ "notes": "Monter sans la page (sequences « claude - »), et la ligne Sequences retiree des dossiers de son.",
  "genres": {
   "films": {
    "fichiers": {
@@ -246,5 +246,12 @@
     }
    }
   }
+ },
+ "commit": "d50e3b97524c328fc5c3aae63765474d597f40af",
+ "installeur": {
+  "version": "1.2.4",
+  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.2.4/Library-Editor-1.2.4.zip",
+  "octets": 38364392,
+  "sha256": "dcfa9805c3489ade360cdfece79c9ffc1205d5cddd1e3e2aa52f385bc5547888"
  }
 }
