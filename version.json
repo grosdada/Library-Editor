@@ -1,7 +1,7 @@
 {
- "version": "1.2.3",
+ "version": "1.2.4",
  "date": "2026-09-23",
- "notes": "Au clic droit : « Show in project » et « Show in computer ». Tab maintenue : les reglages du bloc en pop-up.",
+ "notes": "",
  "genres": {
   "films": {
    "fichiers": {
@@ -19,7 +19,7 @@
     },
     "_app/app.html": {
      "depot": "template/_app/app.html",
-     "sha256": "f3e75275a5e5d9d2ad8d6cf1b09702968a1fc06272c4e4cc17dfb3cea6f1cfb5",
+     "sha256": "c65848fdef00a83b87067b6f969c96bea78df553d50ab2cd30b73521aef9361c",
      "historique": [
       "bcaee501fc23d322034fee64afde7dff827884ddb7139dd4c370ed07d4fc2410",
       "5fdf04c279c4c900a3a202b2b3c5310bee53684a032f7c965e8f466684eae5d9",
@@ -27,7 +27,8 @@
       "5d27cd78e30b27dd34d755cb93abab387ef1a43b4fcd78a7c84e831bdeeed264",
       "134e3455e1fc9063443dbe2824cc2e76550437c29ed5379473134326d3c41634",
       "cef859093ee57381cad80093b7405a78a4d1fc87a9dd4010b353d52014ba7008",
-      "ff50be85ca1effb9d7f0c60faccb2c00618e7f35083a9e25f2bbadc7efed5ea9"
+      "ff50be85ca1effb9d7f0c60faccb2c00618e7f35083a9e25f2bbadc7efed5ea9",
+      "f3e75275a5e5d9d2ad8d6cf1b09702968a1fc06272c4e4cc17dfb3cea6f1cfb5"
      ]
     },
     "_app/_maj.py": {
@@ -245,12 +246,5 @@
     }
    }
   }
- },
- "commit": "90496597a7a7a7cb33f51f1e9185f76f3f83523c",
- "installeur": {
-  "version": "1.2.3",
-  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.2.3/Library-Editor-1.2.3.zip",
-  "octets": 38363242,
-  "sha256": "db4330138c99be538ea42cadf9a909e0ade6a80090dc7fdb91cd256534415ba2"
  }
 }

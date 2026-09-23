@@ -276,6 +276,9 @@ def essais_films(racine):
     print("\n=== FILMS : essais node sur l app.html installe ===")
     lancer_essai_node(os.path.join(app, "app.html"))
 
+    print("\n=== FILMS : monteur (sequences « claude - ») ===")
+    essais_monteur(racine)
+
     print("\n=== FILMS : mise a jour ===")
     cat_a = octets(os.path.join(app, "_donnees", "Rushes-A", "catalogue.json"))
     v("_version.json ecrit a l installation",
@@ -354,6 +357,100 @@ def essais_films(racine):
     v("le serveur y voit le projet Rushes", mod.projets_disque() == ["Rushes"],
       mod.projets_disque())
     return racine
+
+
+def essais_monteur(racine):
+    """Le monteur ecrit une sequence sans passer par la page : on verifie le
+    prefixe impose, le melange des projets, les temps calcules, et les
+    refus."""
+    import importlib.util
+    src = os.path.join(PROJET, "outils", "monteur.py")
+    spec = importlib.util.spec_from_file_location("monteur_essai", src)
+    M = importlib.util.module_from_spec(spec)
+    sys.modules["monteur_essai"] = M
+    spec.loader.exec_module(M)
+
+    b = M.trouver(racine)
+    v("le monteur reconnait la bibliotheque par son chemin",
+      b["chemin"] == os.path.abspath(racine), b)
+    pr = {p["nom"]: p for p in M.projets(b)}
+    v("il voit les deux projets et leurs clips",
+      pr.get("Rushes-A", {}).get("clips") == 4
+      and pr.get("Rushes-B", {}).get("clips") == 4, pr)
+
+    cat = M.catalogue(b, cherche="ambiance")
+    v("il cherche dans toute la bibliotheque (le son est dans Rushes-B)",
+      cat["total"] == 1 and cat["fiches"][0]["projet"] == "Rushes-B", cat)
+
+    plan = {"theme": "essai", "plans": [
+        {"rush": "plan 01", "piste": "V1", "sortie": 1.2, "fondu_in": 0.3},
+        {"rush": "plan 02", "piste": "V1", "duree": 0.8, "vitesse": 0.5},
+        {"rush": "photo 01", "piste": "V1", "duree": 2.0},
+        {"rush": "ambiance", "piste": "A1", "debut": 0.0, "duree": 2.0,
+         "gain": 0.5}]}
+    r = M.ecrire(b, "essai monte", plan)
+    v("le prefixe est impose", r["nom"] == "claude - essai monte", r["nom"])
+    v("la sequence s enregistre dans un vrai projet, pas dans une reserve",
+      r["projet"] in ("Rushes-A", "Rushes-B"), r["projet"])
+    v("le fichier est ecrit", os.path.isfile(r["fichier"]), r["fichier"])
+    v("4 blocs, 4 secondes", r["blocs"] == 4 and abs(r["duree"] - 4.0) < 0.01, r)
+
+    mo = C.lire_json(r["fichier"], {})
+    v("format de montage 5, signe", mo.get("version") == 5
+      and mo.get("auteur") == "claude", {k: mo.get(k) for k in
+                                         ("version", "auteur", "hote")})
+    v("chaque bloc porte son projet et son fichier",
+      all(c.get("pj") and c.get("fichier") for c in mo["clips"]
+          if c.get("film")), mo["clips"][0])
+    v("le son vient de son propre projet",
+      [c["pj"] for c in mo["clips"] if c["piste"] == "A1"] == ["Rushes-B"],
+      [(c["piste"], c["pj"]) for c in mo["clips"]])
+    v("la vitesse 0,5 raccourcit la source, pas le bloc",
+      abs(mo["clips"][1]["o"] - 0.4) < 1e-6, mo["clips"][1])
+    v("une image s etire librement (2 s sur une source de %ds)" % M.moteur(b).DUREE_IMAGE,
+      abs(mo["clips"][2]["o"] - 2.0) < 1e-6, mo["clips"][2])
+
+    lu = M.lire_montage(b, None, "claude - essai monte")
+    v("relue sans dire dans quel projet elle est",
+      lu["projet"] == r["projet"] and len(lu["blocs"]) == 4, lu["projet"])
+    v("les blocs s enchainent", [x["debut"] for x in lu["blocs"]
+                                 if x["piste"] == "V1"] == [0.0, 1.2, 2.0],
+      lu["blocs"])
+
+    def refuse(quoi, f):
+        try:
+            f()
+        except M.Refus as e:
+            v("refuse : " + quoi, True)
+            return
+        except Exception as e:                                   # noqa: BLE001
+            v("refuse : " + quoi, False, "%s : %s" % (type(e).__name__, e))
+            return
+        v("refuse : " + quoi, False, "aucun refus")
+
+    refuse("un rush qui n existe pas",
+           lambda: M.ecrire(b, "x", {"plans": [{"rush": "nexistepas"}]}))
+    refuse("un son sur une piste image",
+           lambda: M.ecrire(b, "x", {"plans": [{"rush": "ambiance",
+                                                "piste": "V1"}]}))
+    refuse("une image sur une piste son",
+           lambda: M.ecrire(b, "x", {"plans": [{"rush": "photo 01",
+                                                "piste": "A1"}]}))
+    refuse("une sequence qui existe deja",
+           lambda: M.ecrire(b, "essai monte", plan))
+    refuse("une sequence sans le moindre bloc",
+           lambda: M.ecrire(b, "vide", {"plans": []}))
+
+    r2 = M.ecrire(b, "claude - essai monte", plan, ecraser=True)
+    v("le prefixe n est jamais double", r2["nom"] == "claude - essai monte",
+      r2["nom"])
+    v("l ancienne version est gardee",
+      os.path.isfile(r["fichier"] + ".avant-claude"), r2["avertissements"])
+
+    # Le fichier ecrit se relit par le serveur de la bibliotheque : c est
+    # l application qui l ouvrira.
+    os.remove(r["fichier"] + ".avant-claude")
+    os.remove(r["fichier"])
 
 
 def essais_purge(racine, app):

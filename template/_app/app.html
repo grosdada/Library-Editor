@@ -1121,7 +1121,11 @@ function rendreDossiers() {
       const om = MONT_OUVERTS.has(p.nom);
     // Une bibliotheque n a pas de montages a elle : les musiques sont
     // enregistrees avec le montage qui les utilise, dans son projet.
-    if (!bibli) {
+    // Un dossier qui ne contient que du son non plus : on ne monte pas DANS
+    // sa musique. La ligne reste si des sequences y dorment deja — on ne
+    // cache jamais du travail existant.
+    const aDeLImage = (p.films || []).some(f => !f.absent && !f.son_seul);
+    if (!bibli && (aDeLImage || mm.length)) {
       h += '<div class="dos montages" data-montages="' + ech(p.nom) +
         '" title="sequences in this project"><span class="chev">' +
         (om ? '▼' : '▶') + '</span><b>Sequences</b><i>' + mm.length +
