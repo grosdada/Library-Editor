@@ -1,7 +1,7 @@
 {
  "version": "1.2.3",
  "date": "2026-09-23",
- "notes": "",
+ "notes": "Au clic droit : « Show in project » et « Show in computer ». Tab maintenue : les reglages du bloc en pop-up.",
  "genres": {
   "films": {
    "fichiers": {
@@ -19,7 +19,7 @@
     },
     "_app/app.html": {
      "depot": "template/_app/app.html",
-     "sha256": "31b8215e3cc043cfd6d8b74efbe20a0284d1e32deb4b71389cdd28cff0f1053b",
+     "sha256": "f3e75275a5e5d9d2ad8d6cf1b09702968a1fc06272c4e4cc17dfb3cea6f1cfb5",
      "historique": [
       "bcaee501fc23d322034fee64afde7dff827884ddb7139dd4c370ed07d4fc2410",
       "5fdf04c279c4c900a3a202b2b3c5310bee53684a032f7c965e8f466684eae5d9",
@@ -245,5 +245,12 @@
     }
    }
   }
+ },
+ "commit": "90496597a7a7a7cb33f51f1e9185f76f3f83523c",
+ "installeur": {
+  "version": "1.2.3",
+  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.2.3/Library-Editor-1.2.3.zip",
+  "octets": 38363242,
+  "sha256": "db4330138c99be538ea42cadf9a909e0ade6a80090dc7fdb91cd256534415ba2"
  }
 }
