@@ -119,6 +119,11 @@ body.edit #grille{flex:0 0 var(--wDeck);border-right:1px solid var(--trait)}
 .c:hover{border-color:var(--sourd)}
 .c.sel{border-color:var(--orange);box-shadow:0 0 0 1px var(--orange)}
 .c.absent{opacity:.4}
+/* « Show in project » : la carte rejointe bat trois fois, sinon on ne sait
+   pas laquelle des cent vignettes on vient de montrer. */
+@keyframes visee{0%,100%{box-shadow:0 0 0 1px var(--orange)}
+ 50%{box-shadow:0 0 0 5px var(--orange)}}
+.c.visee{border-color:var(--orange);animation:visee .55s ease-in-out 3}
 #bMaj.dispo{background:var(--orange);border-color:var(--orange);color:#fff}
 /* Hauteur en pixels, jamais en aspect-ratio : dans une grille, une hauteur
    deduite d un ratio ne participe pas au calcul de la ligne tant que l image
@@ -371,8 +376,25 @@ body.outilA .clip .poi,body.outilA .clip .att{display:none}
  z-index:5;pointer-events:none}
 .tete::before{content:"";position:absolute;top:0;left:-5px;border:5px solid transparent;
  border-top-color:var(--orange);border-bottom:0;height:0}
-.reglages{flex:0 0 var(--wRegl);border-left:1px solid var(--trait);padding:9px 10px;
- overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-width:150px}
+/* La case garde la largeur ; le panneau la remplit. En pop-up, le panneau
+   s en detache et la case reste en place : la timeline ne bouge pas d un
+   pixel pendant qu on tient Tab. */
+.colReg{flex:0 0 var(--wRegl);min-width:150px;display:flex;min-height:0}
+.reglages{flex:1 1 auto;min-width:0;border-left:1px solid var(--trait);
+ padding:9px 10px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+/* Tab maintenue : les reglages du bloc sortent au milieu de l ecran, en
+   grand. Le panneau reste le meme element : ses curseurs repondent toujours
+   a la souris pendant qu on tient la touche. */
+body.regPop .reglages{position:fixed;z-index:60;left:50%;top:50%;
+ transform:translate(-50%,-50%);width:min(580px,92vw);max-height:84vh;
+ background:var(--fond);border:1px solid var(--or);border-radius:10px;
+ box-shadow:0 22px 70px #000c;padding:16px 18px;gap:10px;
+ animation:regPop .12s ease-out}
+@keyframes regPop{from{opacity:0;transform:translate(-50%,-50%) scale(.965)}
+ to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+/* La case vide, le temps du pop-up : un cadre en pointilles dit d ou il
+   vient, et qu il y retournera. */
+body.regPop .colReg{border-left:1px dashed var(--trait)}
 .reglages label{font-size:11px;color:var(--sourd);display:flex;
  align-items:center;gap:6px;margin-bottom:3px}
 /* Images-clés : une flèche par curseur déplie son panneau d animation. */
@@ -699,7 +721,7 @@ here and change nothing to the files">My folders</button>
       </div>
     </div>
     <div class="rz vert" data-rz="regl"></div>
-    <div class="reglages" id="reglages"></div>
+    <div class="colReg"><div class="reglages" id="reglages"></div></div>
   </div>
 </footer>
 
@@ -760,6 +782,9 @@ let ONDE_OK = false;
 // (/api/projet/ajouter) ? Sans ce champ, « Open project » s en tient aux
 // projets declares, comme avant.
 let DOSSIERS_OK = false;
+// Le serveur sait-il montrer un fichier dans l explorateur du systeme
+// (/api/reveler) ? En ligne il n y a pas d explorateur : pas d entree.
+let REVELER_OK = false;
 // Le serveur sait se mettre a jour depuis GitHub (champ « maj »).
 let MAJ_DISPO = false;
 // Le faux dossier qui recueille ce qui n a pas encore ete range. Il n est
@@ -1469,6 +1494,9 @@ grille.addEventListener('contextmenu', e => {
     (cibles.length > 1 ? ' · ' + cibles.length + ' clips' : '') +
     '</div><div class="it" data-carte-act="usages">' +
     '⌕ Used in which sequences…</div>' +
+    (REVELER_OK
+      ? '<div class="it" data-carte-act="disque">⊞ Show in computer</div>'
+      : '') +
     '<div class="sep"></div><div class="lbl">Colour</div><div class="couls">' +
     COULS.map((v, i) => '<span data-carte-coul="' + i + '" style="background:var(' +
       v + ')' + (i === (f.coul || 0) ? ';outline:2px solid var(--encre)' +
@@ -1493,7 +1521,9 @@ $('#menu').addEventListener('click', e => {
   if (!it) return;
   const id = $('#menu').dataset.carteId;
   $('#menu').className = '';
-  if (it.dataset.carteAct === 'usages' && id) boiteUsages(id);
+  if (!id) return;
+  if (it.dataset.carteAct === 'usages') boiteUsages(id);
+  if (it.dataset.carteAct === 'disque') montrerSurLeDisque(id);
 });
 
 // La couleur d un rush vit dans le catalogue, pas dans le navigateur : elle
@@ -1514,6 +1544,51 @@ async function couleurRush(ids, i) {
   }
   if (rate) { rendreGrille(); dire(rate + ' colour(s) not saved', true); }
   else dire(ids.length > 1 ? ids.length + ' clips coloured' : 'clip coloured');
+}
+
+// Retrouver une fiche dans la bibliotheque : on ne touche aux filtres que
+// s ils la cachent, on va a son dossier, et la carte bat le temps qu on la
+// repere. Depuis la timeline, le projet ferme se rouvre tout seul.
+async function montrerDansLeProjet(id, pj) {
+  if (!PAR_ID[id] && pj && !projetOuvert(pj)) {
+    dire('opening “' + pj + '”…');
+    try { await ouvrirProjetDisque(pj, true); } catch (err) {}
+  }
+  const f = PAR_ID[id];
+  if (!f) {
+    dire(pj ? 'not found in “' + pj + '” — rescan the project'
+            : 'this block comes from a project that is not open', true);
+    return;
+  }
+  if (!correspond(f)) {
+    if (q) { q = ''; $('#q').value = ''; }
+    if (favSeul) { favSeul = false; $('#bFav').classList.remove('on'); }
+    dossierActif = clefDossier(f);
+    appliquerProfil();
+    rendreDossiers();
+  }
+  selection.clear();
+  selection.add(f.id);
+  rendreGrille();
+  const el = grille.querySelector('[data-id="' + f.id + '"]');
+  if (!el) { dire('“' + f.nom + '” is in the library', true); return; }
+  el.scrollIntoView({block: 'center', inline: 'nearest'});
+  el.classList.add('visee');
+  setTimeout(() => el.classList.remove('visee'), 1800);
+  dire('“' + f.nom + '” · ' + f.pj + (f.dossier ? ' / ' + f.dossier : ''));
+}
+
+// L explorateur du systeme, sur le fichier, deja selectionne. C est le
+// serveur qui l ouvre : lui seul connait le chemin reel du rush.
+async function montrerSurLeDisque(id, pj) {
+  const f = PAR_ID[id];
+  const projet = (f && f.pj) || pj || '';
+  if (!projet) { dire('unknown project for this block', true); return; }
+  try {
+    const d = await api('/api/reveler', {projet: projet, id: id});
+    dire(d.manquant ? 'the file is gone — its folder is open'
+                    : 'shown in the file browser');
+  } catch (err) { dire(err.message, true); }
 }
 
 // ===========================================================================
@@ -1552,6 +1627,13 @@ async function ouvrirProjetDisque(nom, discret) {
 // timeline restent la, marques « ? » : on ne detruit pas un montage parce
 // qu on a ferme un projet.
 function fermerVraiment(nom) {
+  // Les blocs gardent le projet et le fichier d ou ils viennent : c est ce
+  // qu un montage enregistre contient deja, et c est ce qui permet de les
+  // retrouver — « Show in project » — apres avoir referme leur projet.
+  CLIPS.forEach(c => {
+    const f = PAR_ID[c.film];
+    if (f && f.pj === nom) { c.pj = nom; c.fichier = f.rel; }
+  });
   OUVERTS = OUVERTS.filter(x => x.nom !== nom);
   if (dossierActif && dossierActif.split('/')[0] === nom) dossierActif = null;
   selection.clear();
@@ -4479,7 +4561,11 @@ $('#lanes').addEventListener('contextmenu', e => {
          ? '<div class="it" data-act="modifier">✎ Change colour…</div>'
          : '<div class="it" data-act="renommer">✎ Rename rush…</div>') +
     (estSynth(c) ? ''
-     : '<div class="it" data-act="usages">⌕ Used in which sequences…</div>') +
+     : '<div class="it" data-act="usages">⌕ Used in which sequences…</div>' +
+       '<div class="it" data-act="voirProjet">⌖ Show in project</div>' +
+       (REVELER_OK
+         ? '<div class="it" data-act="voirDisque">⊞ Show in computer</div>'
+         : '')) +
     (estSynth(c) ? ''
      : '<div class="sep"></div><div class="lbl">Framing</div>' +
        '<div class="couls">' +
@@ -4512,6 +4598,7 @@ $('#lanes').addEventListener('contextmenu', e => {
         c.piste + '</span></div>'
       : '');
   menu.dataset.pisteId = c.piste;
+  menu.dataset.uid = c.uid;
   menu.className = 'on';
   const r = menu.getBoundingClientRect();
   menu.style.left = Math.min(e.clientX, innerWidth - r.width - 8) + 'px';
@@ -4552,6 +4639,17 @@ menu.addEventListener('click', async e => {
   if (a === 'usages') {
     const c = CLIPS.find(x => clipsSel.has(x.uid) && !estSynth(x));
     if (c) boiteUsages(c.film);
+    return;
+  }
+  if (a === 'voirProjet' || a === 'voirDisque') {
+    const c = parUid(+menu.dataset.uid) ||
+              CLIPS.find(x => clipsSel.has(x.uid) && !estSynth(x));
+    if (!c || estSynth(c)) return;
+    // Un bloc garde le projet et le fichier d ou il vient : on sait donc le
+    // montrer meme quand son projet a ete referme.
+    const pj = (PAR_ID[c.film] || {}).pj || c.pj || '';
+    if (a === 'voirProjet') montrerDansLeProjet(c.film, pj);
+    else montrerSurLeDisque(c.film, pj);
     return;
   }
   if (a === 'dupliquer') dupliquerBlocs();
@@ -4768,6 +4866,7 @@ function rendreReglages() {
       'Ctrl+D duplicate<br>' +
       'Ctrl+Z undo<br>Ctrl+wheel zoom<br>' +
       'Alt+wheel track height<br>' +
+      'Tab held: the settings of the<br>selected block pop up<br>' +
       'Arrows ← →: frame by frame<br>' +
       'Arrows ↑ ↓: previous / next range<br>' +
       'I and O: in and out points,<br>draggable on the ruler<br>' +
@@ -4777,7 +4876,8 @@ function rendreReglages() {
       '<b style="color:var(--encre)">Shift held</b>: snapping,<br>' +
       'and lasso adds to the selection.<br>' +
       'Blocks, cut and playhead<br>snap to nearby edges.<br>' +
-      'Right-click a block: colour,<br>speed, linking, renaming<br><br>' +
+      'Right-click a block: colour,<br>speed, linking, renaming,<br>' +
+      'and where its file is<br><br>' +
       'Two overlapping blocks<br>make an automatic dissolve.</div>';
     return;
   }
@@ -6274,6 +6374,24 @@ function saisieActive(el) {
   return !SANS_SAISIE.has((el.type || 'text').toLowerCase());
 }
 
+// Tab maintenue : les reglages du bloc selectionne sortent en pop-up, et y
+// restent tant qu on tient la touche. On ne deplace rien dans le DOM — c est
+// la meme colonne qui devient flottante —, donc les curseurs, les onglets et
+// les images-cles continuent de repondre a la souris.
+let regPop = false;
+function popReglages(on) {
+  on = !!on && clipsSel.size > 0;
+  if (on === regPop) return;
+  regPop = on;
+  document.body.classList.toggle('regPop', on);
+}
+// Alt+Tab, un clic dans une autre fenetre : la touche ne sera jamais relachee
+// ici. Sans cela, le pop-up resterait ouvert pour de bon.
+addEventListener('blur', () => popReglages(false));
+document.addEventListener('keyup', e => {
+  if (e.key === 'Tab') popReglages(false);
+});
+
 document.addEventListener('keydown', e => {
   const t = e.target || {};
   // Échap passe toujours : c est la sortie de secours, y compris depuis un
@@ -6293,6 +6411,14 @@ document.addEventListener('keydown', e => {
   }
   const k = e.key.toLowerCase();
   const ctrl = e.ctrlKey || e.metaKey;
+  // Tab maintenue sur une selection : le panneau de reglages sort en pop-up.
+  // Sans selection, la touche garde son role habituel (passer d un champ a
+  // l autre) : on ne la confisque que lorsqu elle a quelque chose a montrer.
+  if (e.key === 'Tab' && !ctrl && !e.altKey && clipsSel.size) {
+    e.preventDefault();
+    if (!e.repeat) popReglages(true);
+    return;
+  }
   if (ctrl && k === 'z') { e.preventDefault(); annulerMontage(); return; }
   if (ctrl && k === 'c') { e.preventDefault(); copierBlocs(); return; }
   if (ctrl && k === 'v') { e.preventDefault(); collerBlocs(); return; }
@@ -6340,7 +6466,7 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.key === 'Escape') {
-    fermerMenu(); $('#voile').className = '';
+    fermerMenu(); $('#voile').className = ''; popReglages(false);
     if (reduire()) return;
     selection.clear(); clipsSel.clear(); rendreGrille(); rendreTimeline();
   }
@@ -7433,6 +7559,7 @@ async function suivreRendu() {
     PURGE = !ENLIGNE && !!l.purge;
     ONDE_OK = !ENLIGNE && !!l.onde;
     DOSSIERS_OK = !ENLIGNE && !!l.dossiers;
+    REVELER_OK = !ENLIGNE && !!l.reveler;
     MAJ_DISPO = !ENLIGNE && !!l.maj;
     if (MAJ_DISPO) {
       // Le bouton apparait tout de suite ; la verification aupres de GitHub

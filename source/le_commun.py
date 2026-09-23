@@ -16,7 +16,7 @@ import time
 import traceback
 import uuid
 
-VERSION = "1.2.2"
+VERSION = "1.2.3"
 DEPOT_GITHUB = "https://github.com/grosdada/Library-Editor"
 NOM = "Library Editor"
 GELE = bool(getattr(sys, "frozen", False))

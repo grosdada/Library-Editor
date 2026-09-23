@@ -487,6 +487,31 @@ def sous_projet(pr, rel):
     return plein
 
 
+def montrer_sur_le_disque(chemin):
+    """Ouvre l explorateur du systeme sur ce fichier, deja selectionne.
+
+    Windows veut sa ligne de commande telle quelle : « explorer /select,"..." »
+    sans espace apres la virgule. Passee en liste, subprocess entoure tout l
+    argument de guillemets et l explorateur ouvre Mes documents (verifie).
+    Si le fichier a disparu, on ouvre au moins son dossier."""
+    chemin = os.path.abspath(chemin)
+    fichier = os.path.isfile(chemin)
+    dossier = chemin if os.path.isdir(chemin) else os.path.dirname(chemin)
+    if sys.platform == "win32":
+        # Un nom de fichier ne peut pas porter de guillemet sous Windows ;
+        # s il en portait un, on se rabat sur le dossier.
+        if fichier and '"' not in chemin:
+            subprocess.Popen('explorer /select,"%s"' % os.path.normpath(chemin))
+        else:
+            os.startfile(dossier)                                      # noqa
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", chemin] if fichier
+                         else ["open", dossier])
+    else:
+        subprocess.Popen(["xdg-open", dossier])
+    return chemin if fichier else dossier
+
+
 def compter_fichiers(chemin):
     n = 0
     for _, _, noms in os.walk(chemin):
@@ -2348,6 +2373,10 @@ class Poste(BaseHTTPRequestHandler):
                                # sait lister TOUS les dossiers (/api/dossiers)
                                # et en ouvrir un (/api/projet/ajouter).
                                "dossiers": True,
+                               # sait montrer un fichier dans l explorateur
+                               # du systeme (/api/reveler) : en ligne, il n y
+                               # a pas d explorateur, donc pas d entree.
+                               "reveler": True,
                                "version": version_installee(),
                                "format": REGLAGES.get("format") or None})
 
@@ -2952,6 +2981,27 @@ class Poste(BaseHTTPRequestHandler):
                     f[cle] = d[cle]
             ecrire_catalogue(pr, cat)
             return self._json({"ok": True, "film": f})
+
+        # Montrer le fichier d une fiche dans l explorateur du systeme.
+        # N ecrit rien : permise en lecture seule.
+        if chemin == "/api/reveler":
+            f = index.get(d.get("id"))
+            if not f:
+                return self._erreur("unknown entry", 404)
+            src = sur(pr, f.get("rel") or "")
+            if not src:
+                return self._erreur("path outside the project", 400)
+            if not os.path.exists(src) and not os.path.isdir(
+                    os.path.dirname(src)):
+                return self._erreur("neither the file nor its folder is "
+                                    "on disk any more", 404)
+            try:
+                montre = montrer_sur_le_disque(src)
+            except Exception as e:
+                return self._erreur("could not open the file browser: %s" % e,
+                                    500)
+            return self._json({"ok": True, "chemin": montre,
+                               "manquant": not os.path.isfile(src)})
 
         if chemin == "/api/poster":
             f = index.get(d.get("id"))

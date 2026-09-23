@@ -145,6 +145,28 @@ if projets:
             except OSError:
                 pass
 
+    print("--- montrer un fichier dans l explorateur (/api/reveler) ---")
+    v("le serveur annonce savoir le faire", l.get("reveler") is True,
+      l.get("reveler"))
+    # On remplace le geste : un essai n ouvre pas de fenetre sur le poste.
+    vrai_montrer, montres = serveur.montrer_sur_le_disque, []
+    serveur.montrer_sur_le_disque = lambda p: (montres.append(p) or p)
+    try:
+        f0 = films[0]
+        attendu = serveur.sur(PR, f0["rel"])
+        c, d = req("/api/reveler", {"projet": PR, "id": f0["id"]})
+        v("la route rend le chemin du fichier", c == 200 and
+          os.path.normcase(d.get("chemin") or "") == os.path.normcase(attendu),
+          (c, d, attendu))
+        v("c est ce fichier qui a ete montre", len(montres) == 1 and
+          os.path.normcase(montres[0]) == os.path.normcase(attendu), montres)
+        v("il n est pas annonce manquant", d.get("manquant") is False, d)
+        c2, _ = req("/api/reveler", {"projet": PR, "id": "0" * 12})
+        v("identifiant inconnu : 404", c2 == 404, c2)
+        v("et rien n a ete montre pour lui", len(montres) == 1, montres)
+    finally:
+        serveur.montrer_sur_le_disque = vrai_montrer
+
     print("--- une image fixe se rend comme un plan ---")
     fixe = next((f for f in films if f.get("image")), None)
     if not serveur.FFMPEG:
