@@ -143,26 +143,17 @@ body.forme-carre .c .media{border-radius:4px 4px 0 0}
 body.forme-rond .c.sel .media{border-color:var(--orange);
  box-shadow:0 0 0 2px var(--orange)}
 body.forme-rond .c .nom{text-align:center}
-/* Double-clic sur une vignette : la carte prend trois colonnes et trois
-   rangees, a sa place dans la grille, et le clip part. On ne redessine rien —
-   une classe suffit, les autres cartes s ecartent autour ; avec trois cents
-   vignettes, un rendu complet se verrait. La largeur vaut 3 colonnes plus les
-   deux gouttieres de 9px, d ou le « + 18px » qui garde le rapport. */
-.c.gros{grid-column:span 3;grid-row:span 3}
-.c.gros .media{height:calc((var(--vign)*3 + 18px)*9/16)}
-body.forme-carre .c.gros .media{height:calc(var(--vign)*3 + 18px)}
-body.forme-rond .c.gros .media{height:calc(var(--vign)*3 + 18px)}
-.c.gros .nom{font-size:14px}
-.c.gros .lire{opacity:1}
 /* Double-clic sur une vignette : la carte passe au double, sur deux colonnes,
    et le clip demarre. Hauteur en calc(), jamais en aspect-ratio — meme regle
    que plus haut : un ratio ne participe pas au calcul de la ligne. La largeur
    double vaut 2 colonnes plus la gouttiere, d ou le « + 5px » qui garde le
    16:9 (2V+9)*9/16 = V*9/8 + 5,06. */
-/* Loupe : le rush en grand PAR-DESSUS la grille, qui ne bouge plus d un
-   pixel. L ancienne version agrandissait la carte sur place : elle
-   redessinait les 349 vignettes et reorganisait toute la grille derriere —
-   lent, et pas tres chic. */
+/* Loupe : le rush QUATRE FOIS la vignette, par-dessus la bibliotheque
+   assombrie, qui ne bouge pas d un pixel. Deux essais ont ete faits avant :
+   la carte qui double sur place (elle redessinait les 349 vignettes et
+   reorganisait la grille) et la carte qui prend trois colonnes (instantanee,
+   mais elle pousse ses voisines — « la case se fait de la place parmi les
+   autres, j aime pas »). C est un pop-up, et rien d autre ne bouge. */
 #loupe{position:fixed;inset:0;z-index:88;background:#000000dc;display:none;
  align-items:center;justify-content:center;padding:24px}
 #loupe.on{display:flex}
@@ -173,7 +164,7 @@ body.forme-rond .c.gros .media{height:calc(var(--vign)*3 + 18px)}
    tant que la video n est pas chargee, puis saute. On calcule donc la boite :
    largeur = min(92vw, 80vh x rapport), hauteur deduite. Aucun saut, aucune
    deformation, et c est bon des la premiere image. */
-#loupe .scene{width:min(calc(var(--vign)*3 + 18px), 92vw,
+#loupe .scene{width:min(calc(var(--vign)*4), 92vw,
  calc(80vh * var(--arn,1.7778)));
  aspect-ratio:var(--ar,16/9);margin:0 auto;background:#000;border-radius:6px}
 #loupe .scene video,#loupe .scene img{width:100%;height:100%;
@@ -764,10 +755,9 @@ let FILMS = [], DOSSIERS = [], PAR_ID = {};
 let dossierActif = null, q = '', favSeul = false;
 let selection = new Set();
 
-// Carte agrandie par un double-clic : une seule a la fois, elle garde son
-// rang dans la grille et son etat d un rendu a l autre. « enLoupe » est autre
-// chose : le rush par-dessus tout, en plein ecran, par le bouton ⤢.
-let agrandi = null, enLoupe = null;
+// Carte agrandie par un double-clic : une seule a la fois, et elle garde son
+// lecteur d une regeneration de la grille a l autre.
+let agrandi = null;
 
 const projetOuvert = n => OUVERTS.find(p => p.nom === n);
 // ---- rangement virtuel (en ligne seulement) -----------------------------
@@ -1215,8 +1205,7 @@ function majEntete() {
 function carte(f) {
   const fmt = format(f);
   const cls = ['c', selection.has(f.id) ? 'sel' : '',
-               f.absent ? 'absent' : '',
-               agrandi === f.id ? 'gros' : ''].filter(Boolean).join(' ');
+               f.absent ? 'absent' : ''].filter(Boolean).join(' ');
   return '<div class="' + cls + '" data-id="' + f.id + '">' +
     '<button class="etoile ' + (f.fav ? 'on' : '') + '" data-fav="' + f.id +
     '" title="favourite">' + (f.fav ? '★' : '☆') + '</button>' +
@@ -1234,14 +1223,6 @@ function carte(f) {
     (f.coul ? '<div class="etiq" style="background:var(' +
       (COULS[f.coul] || '--c0') + ')"></div>' : '') +
     '</div>' +
-    // Agrandie, la carte porte de quoi la refermer et de quoi passer en
-    // plein ecran.
-    (agrandi === f.id
-      ? '<button class="reduire" data-reduire="1" ' +
-        'title="back to size (Esc)">⤡</button>' +
-        '<button class="reduire" data-loupe-id="' + f.id +
-        '" style="right:34px" title="full screen">⤢</button>'
-      : '') +
     '<div class="bas"><div class="nom" data-nom="' + f.id +
     '" title="' + f.nom + ' — double-click to rename">' +
     f.nom.replace(/</g, '&lt;') + '</div>' +
@@ -1258,8 +1239,6 @@ function carte(f) {
 
 function rendreGrille() {
   const l = FILMS.filter(correspond);
-  // Un filtre qui emporte la carte agrandie emporte son etat avec elle.
-  if (agrandi && !l.some(f => f.id === agrandi)) agrandi = null;
   grille.innerHTML = l.length ? l.map(carte).join('')
     : '<div class="vide">no clip matches</div>';
   $('#cpt').textContent = l.length + ' / ' + FILMS.length;
@@ -1357,8 +1336,6 @@ grille.addEventListener('click', async e => {
   }
   const red = e.target.closest('[data-reduire]');
   if (red) { e.stopPropagation(); reduire(); return; }
-  const lp = e.target.closest('[data-loupe-id]');
-  if (lp) { e.stopPropagation(); ouvrirLoupe(lp.dataset.loupeId); return; }
   const lire = e.target.closest('[data-lire]');
   if (lire) { e.stopPropagation(); visionner(lire.dataset.lire); return; }
   if (e.target.closest('video') || e.target.tagName === 'INPUT') return;
@@ -1387,70 +1364,28 @@ grille.addEventListener('click', async e => {
 grille.addEventListener('dblclick', e => {
   const n = e.target.closest('[data-nom]');
   if (n) { editerNom(n); return; }
-  // Toute la carte repond, pas seulement la vignette : on double-clique « sur
-  // le rush », pas sur une zone.
+  // Toute la carte repond : on double-clique « sur le rush », pas sur une
+  // zone. Le nom reste au renommage, lui.
   const c = e.target.closest('.c');
   if (!c) return;
   // preventDefault coupe le plein ecran natif que Chrome declenche sur un
   // double-clic dans une video a controles.
   e.preventDefault(); e.stopPropagation();
-  grossir(c.dataset.id);
+  agrandir(c.dataset.id);
 });
 
-// La carte passe a trois colonnes, a sa place dans la grille, et le clip
-// demarre. Une seule a la fois : la grille reste lisible. On pose une classe
-// sur la carte concernee — aucune autre vignette n est redessinee.
-function grossir(id) {
+// Double-clic sur un rush : il s ouvre en pop-up, quatre fois la vignette,
+// par-dessus la bibliotheque assombrie, et le clip part tout seul. Un
+// deuxieme double-clic, la croix, un clic a cote ou Échap le referment.
+function agrandir(id) {
   const f = PAR_ID[id];
   if (!f || f.absent) return;
-  if (agrandi === id) { retrecir(); return; }
-  retrecir();
-  agrandi = id;
-  const el = grille.querySelector('[data-id="' + id + '"]');
-  if (!el) return;
-  el.classList.add('gros');
-  const media = el.querySelector('.media');
-  if (media && !el.querySelector('[data-reduire]'))
-    media.insertAdjacentHTML('afterend',
-      '<button class="reduire" data-reduire="1" ' +
-      'title="back to size (Esc)">⤡</button>' +
-      '<button class="reduire" data-loupe-id="' + id +
-      '" style="right:34px" title="full screen">⤢</button>');
-  // Une image n a rien a jouer ; elle est deja a l ecran, en grand.
-  if (!f.image) visionner(id);
-  el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
-}
-
-// La remettre a sa taille : la classe s en va, le lecteur rend la vignette.
-function retrecir() {
-  if (!agrandi) return false;
-  const id = agrandi;
-  agrandi = null;
-  const el = grille.querySelector('[data-id="' + id + '"]');
-  if (el) {
-    el.classList.remove('gros');
-    el.querySelectorAll('.reduire').forEach(b => b.remove());
-    if (el.querySelector('video')) visionner(id);
-  }
-  return true;
-}
-
-// Échap et le bouton ⤡ referment ce qui est ouvert : la loupe d abord,
-// sinon la carte agrandie.
-function reduire() {
-  return fermerLoupe() || retrecir();
-}
-
-// Le rush par-dessus la grille, plein ecran, sans rien bouger derriere.
-function ouvrirLoupe(id) {
-  const f = PAR_ID[id];
-  if (!f || f.absent) return;
-  if (enLoupe === id) { fermerLoupe(); return; }
+  if (agrandi === id) { reduire(); return; }
   // Un seul lecteur a la fois : on coupe ceux qui jouent dans la grille.
   $$('.media video, .media audio').forEach(v => {
     v.pause(); v.removeAttribute('src'); v.load();
   });
-  enLoupe = id;
+  agrandi = id;
   const esc = x => String(x === undefined || x === null ? '' : x)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   // « poster » affiche la vignette AVANT le premier octet de video : le
@@ -1481,9 +1416,9 @@ function ouvrirLoupe(id) {
   l.className = 'on';
 }
 
-function fermerLoupe() {
-  if (!enLoupe) return false;
-  enLoupe = null;
+function reduire() {
+  if (!agrandi) return false;
+  agrandi = null;
   const l = $('#loupe');
   $$('#loupe video, #loupe audio').forEach(v => {
     v.pause(); v.removeAttribute('src'); v.load();
@@ -1496,8 +1431,7 @@ function fermerLoupe() {
 // Le fond et la croix referment. Un clic DANS le cadre ne doit rien faire :
 // on manipule les controles du lecteur.
 $('#loupe').addEventListener('click', e => {
-  if (e.target.closest('[data-loupe-x]') || e.target.id === 'loupe')
-    fermerLoupe();
+  if (e.target.closest('[data-loupe-x]') || e.target.id === 'loupe') reduire();
 });
 
 function editerNom(el) {
@@ -4952,7 +4886,7 @@ function rendreReglages() {
       'Blocks, cut and playhead<br>snap to nearby edges.<br>' +
       'Right-click a block: colour,<br>speed, linking, renaming,<br>' +
       'and where its file is<br>' +
-      'Double-click a rush: it grows<br>three times, in place<br><br>' +
+      'Double-click a rush: it opens<br>four times bigger<br><br>' +
       'Two overlapping blocks<br>make an automatic dissolve.</div>';
     return;
   }
