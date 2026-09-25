@@ -148,7 +148,7 @@ body.forme-rond .c .nom{text-align:center}
    que plus haut : un ratio ne participe pas au calcul de la ligne. La largeur
    double vaut 2 colonnes plus la gouttiere, d ou le « + 5px » qui garde le
    16:9 (2V+9)*9/16 = V*9/8 + 5,06. */
-/* Loupe : le rush QUATRE FOIS la vignette, par-dessus la bibliotheque
+/* Loupe : le rush SIX FOIS la vignette, par-dessus la bibliotheque
    assombrie, qui ne bouge pas d un pixel. Deux essais ont ete faits avant :
    la carte qui double sur place (elle redessinait les 349 vignettes et
    reorganisait la grille) et la carte qui prend trois colonnes (instantanee,
@@ -164,7 +164,7 @@ body.forme-rond .c .nom{text-align:center}
    tant que la video n est pas chargee, puis saute. On calcule donc la boite :
    largeur = min(92vw, 80vh x rapport), hauteur deduite. Aucun saut, aucune
    deformation, et c est bon des la premiere image. */
-#loupe .scene{width:min(calc(var(--vign)*4), 92vw,
+#loupe .scene{width:min(calc(var(--vign)*6), 92vw,
  calc(80vh * var(--arn,1.7778)));
  aspect-ratio:var(--ar,16/9);margin:0 auto;background:#000;border-radius:6px}
 #loupe .scene video,#loupe .scene img{width:100%;height:100%;
@@ -1374,7 +1374,7 @@ grille.addEventListener('dblclick', e => {
   agrandir(c.dataset.id);
 });
 
-// Double-clic sur un rush : il s ouvre en pop-up, quatre fois la vignette,
+// Double-clic sur un rush : il s ouvre en pop-up, six fois la vignette,
 // par-dessus la bibliotheque assombrie, et le clip part tout seul. Un
 // deuxieme double-clic, la croix, un clic a cote ou Échap le referment.
 function agrandir(id) {
@@ -4886,7 +4886,7 @@ function rendreReglages() {
       'Blocks, cut and playhead<br>snap to nearby edges.<br>' +
       'Right-click a block: colour,<br>speed, linking, renaming,<br>' +
       'and where its file is<br>' +
-      'Double-click a rush: it opens<br>four times bigger<br><br>' +
+      'Double-click a rush: it opens<br>six times bigger<br><br>' +
       'Two overlapping blocks<br>make an automatic dissolve.</div>';
     return;
   }
