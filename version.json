@@ -1,7 +1,7 @@
 {
- "version": "1.2.4",
- "date": "2026-09-23",
- "notes": "Monter sans la page (sequences « claude - »), et la ligne Sequences retiree des dossiers de son.",
+ "version": "1.2.5",
+ "date": "2026-09-25",
+ "notes": "",
  "genres": {
   "films": {
    "fichiers": {
@@ -19,7 +19,7 @@
     },
     "_app/app.html": {
      "depot": "template/_app/app.html",
-     "sha256": "c65848fdef00a83b87067b6f969c96bea78df553d50ab2cd30b73521aef9361c",
+     "sha256": "9d61233f506071f71efb70f65a7010b494231a1afa14684d0c0c9204902615c3",
      "historique": [
       "bcaee501fc23d322034fee64afde7dff827884ddb7139dd4c370ed07d4fc2410",
       "5fdf04c279c4c900a3a202b2b3c5310bee53684a032f7c965e8f466684eae5d9",
@@ -28,7 +28,8 @@
       "134e3455e1fc9063443dbe2824cc2e76550437c29ed5379473134326d3c41634",
       "cef859093ee57381cad80093b7405a78a4d1fc87a9dd4010b353d52014ba7008",
       "ff50be85ca1effb9d7f0c60faccb2c00618e7f35083a9e25f2bbadc7efed5ea9",
-      "f3e75275a5e5d9d2ad8d6cf1b09702968a1fc06272c4e4cc17dfb3cea6f1cfb5"
+      "f3e75275a5e5d9d2ad8d6cf1b09702968a1fc06272c4e4cc17dfb3cea6f1cfb5",
+      "c65848fdef00a83b87067b6f969c96bea78df553d50ab2cd30b73521aef9361c"
      ]
     },
     "_app/_maj.py": {
@@ -246,12 +247,5 @@
     }
    }
   }
- },
- "commit": "d50e3b97524c328fc5c3aae63765474d597f40af",
- "installeur": {
-  "version": "1.2.4",
-  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.2.4/Library-Editor-1.2.4.zip",
-  "octets": 38364392,
-  "sha256": "dcfa9805c3489ade360cdfece79c9ffc1205d5cddd1e3e2aa52f385bc5547888"
  }
 }
