@@ -5516,17 +5516,37 @@ function media(c) {
   // Un calque, un texte ou une image fixe n a rien a lire : ils sont
   // dessines a chaque image, sans lecteur ni synchronisation.
   if (estSynth(c) || estImage(c)) return null;
+  const f = PAR_ID[c.film];
+  if (!f) return null;
   let v = POOL.get(c.uid);
+  // Le pool est range par NUMERO DE BLOC, et deux sequences emploient les
+  // memes numeros : sans cette verification, un bloc reprenait le lecteur
+  // laisse par le bloc de meme numero de la sequence precedente, et le
+  // moniteur montrait un autre rush que celui annonce par la timeline
+  // (signale par David le 26/09 : 14 blocs sur 42 apres un changement de
+  // sequence). Le lecteur porte donc le rush qu il a charge.
+  if (v && v.dataset.film !== c.film) {
+    try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {}
+    POOL.delete(c.uid);
+    v = null;
+  }
   if (!v) {
-    const f = PAR_ID[c.film];
-    if (!f) return null;
     v = document.createElement('video');
     v.preload = 'auto'; v.playsInline = true;
+    v.dataset.film = c.film;
     v.src = urlMedia(f);
     v.load();
     POOL.set(c.uid, v);
   }
   return v;
+}
+
+// Les lecteurs de la sequence qu on quitte n ont plus rien a lire.
+function viderPool() {
+  for (const v of POOL.values()) {
+    try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {}
+  }
+  POOL.clear();
 }
 // Combien de temps a l avance un plan est prepare, et combien de lecteurs on
 // garde sous la main.
@@ -6554,6 +6574,9 @@ async function listerMontages() {
 
 async function chargerProjet(p, nom, hote) {
   if (!p || !p.clips) { dire('unreadable sequence', true); return; }
+  // On change de sequence : les lecteurs en place appartiennent a l ancienne,
+  // et leurs numeros de bloc vont etre repris par d autres plans.
+  if (typeof viderPool === 'function') viderPool();
   // Un montage se souvient des projets dont il a besoin : on les rouvre avant
   // de replacer les plans, sinon la moitie du montage arriverait vide.
   const besoins = [...new Set((p.projets || [])
