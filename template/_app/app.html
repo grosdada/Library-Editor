@@ -79,11 +79,22 @@ body.edit [data-rz="aside"]{display:none}
  text-overflow:ellipsis;white-space:nowrap}
 .pjt i{font-style:normal;color:var(--sourd);font-size:11px;flex:0 0 auto}
 .pjt.on i{color:#fff9}
-.pjt .x{background:none;border:0;color:var(--sourd);cursor:pointer;
+.pjt .x,.pjt .plus{background:none;border:0;color:var(--sourd);cursor:pointer;
  font-size:15px;line-height:1;padding:0 1px;flex:0 0 auto}
 .pjt .x:hover{color:var(--rouge)}
 .pjt.on .x{color:#fff9}
 .pjt.on .x:hover{color:#fff}
+/* Le « + » du projet : un dossier DANS ce projet-la. Sur le disque en vue
+   Source, virtuel en vue « My folders » — il n apparait donc que quand l un
+   ou l autre est possible, aux memes conditions que les anciens boutons du
+   bas de colonne, qui ont disparu. */
+.pjt .plus{display:none;font-size:16px}
+body:not(.enligne):not(.lectureseule):not(.rangement) .pjt .plus,
+body.rangement.enligne .pjt .plus,
+body.rangement.rangeable .pjt .plus{display:block}
+.pjt .plus:hover{color:var(--vert)}
+.pjt.on .plus{color:#fff9}
+.pjt.on .plus:hover{color:#fff}
 .pjt.survol{outline:2px dashed var(--orange);outline-offset:-2px}
 .dos{margin-left:12px}
 /* Les montages du projet : premiere ligne sous l en-tete, couleur a part. */
@@ -573,7 +584,6 @@ body.enligne #vueBar, body.rangeable #vueBar { display: flex; }
 /* En vue « My folders », le « + New folder » des dossiers REELS s efface
    devant celui des dossiers virtuels : deux boutons au meme nom qui ne font
    pas la meme chose, c est une erreur qui attend son heure. */
-body.rangement #bNouveau { display: none !important; }
 /* Lecture seule : rien de ce qui ecrit dans un dossier de rushes n est
    propose. Le serveur le refuse de toute facon — ceci evite seulement de
    tendre un bouton qui dira non. */
@@ -649,10 +659,6 @@ here and change nothing to the files">My folders</button>
     <button id="bProjets" class="addPj">+ Open / create a project</button>
     <button id="bComptes" class="adminSeul"
       style="width:100%;margin-top:7px">⚙ Accounts…</button>
-    <button id="bNouveau" class="bureauSeul ecritRushes"
-      style="width:100%;margin-top:7px">+ New folder</button>
-    <button id="bNouveauV" class="rangementSeul"
-      style="width:100%;margin-top:7px">+ New folder</button>
     <div class="titre-col" style="margin-top:16px">Select</div>
     <div id="selInfo" style="padding:0 9px;color:var(--sourd);font-size:12px">
       no clip</div>
@@ -1115,6 +1121,8 @@ function rendreDossiers() {
         : '<span class="chev" style="visibility:hidden">▼</span>') +
       '<b>' + (bibli ? '♪ ' : '') + ech(p.nom) + '</b><i>' +
       (n[p.nom] || 0) + '</i>' +
+      '<button class="plus" data-nouveau="' + ech(p.nom) +
+      '" title="add a new folder">+</button>' +
       (bibli ? '' : '<button class="x" data-fermer="' + ech(p.nom) +
         '" title="close this project">×</button>') + '</div>';
     if (!plie) {
@@ -1975,6 +1983,8 @@ colDos.addEventListener('click', async e => {
   if (ch) { e.stopPropagation(); plierProjet(ch.dataset.plier); return; }
   const x = e.target.closest('[data-fermer]');
   if (x) { e.stopPropagation(); fermerProjet(x.dataset.fermer); return; }
+  const pl = e.target.closest('[data-nouveau]');
+  if (pl) { e.stopPropagation(); nouveauDossier(pl.dataset.nouveau); return; }
   const sc = e.target.closest('[data-scanner]');
   if (sc) { e.stopPropagation(); scannerProjet(sc.dataset.scanner); return; }
   const mt = e.target.closest('[data-montages]');
@@ -2516,33 +2526,33 @@ colDos.addEventListener('drop', async e => {
 $('#selDossier').onchange = e => {
   dossierActif = e.target.value || null; appliquerProfil(); rendre();
 };
-$('#bNouveau').onclick = async () => {
-  const pj = projetCourant();
-  if (!pj) { dire('pick a project in the column first', true); return; }
-  const nom = prompt('New folder in “' + pj + '” :');
-  if (!nom) return;
-  const parent = dossierActif && dossierActif.indexOf('/') > 0
+// Le « + » de la ligne du projet. Il vise CE projet : si le dossier ouvert
+// appartient a un autre, il ne sert pas de parent — l ancien bouton du bas,
+// lui, melangeait « projet courant » et « dossier actif ».
+async function nouveauDossier(pj) {
+  if (!pj) return;
+  const dedans = dossierActif && dossierActif.indexOf('/') > 0 &&
+    dossierActif.slice(0, dossierActif.indexOf('/')) === pj
     ? dossierActif.slice(pj.length + 1) : '';
+  if (VUE === 'rangement') {
+    const parent = dedans === NONRANGE ? '' : dedans;
+    const nom = prompt('New folder in “' + (parent || pj) + '” :');
+    if (nom) creerDossierVirtuel(pj, parent, nom);
+    return;
+  }
+  const nom = prompt('New folder in “' + (dedans || pj) + '” :');
+  if (!nom) return;
   try {
     const r = await api('/api/dossier/creer',
-      {projet: pj, nom: nom, parent: parent});
+      {projet: pj, nom: nom, parent: dedans});
     const p = projetOuvert(pj);
     if (p) { p.dossiers = r.dossiers; refondre(); }
     rendre(); dire('folder created: ' + nom);
   } catch (err) { dire('create refused — ' + err.message, true); }
-};
+}
 $('#bProjets').onclick = boiteProjets;
 $('#bComptes').onclick = boiteComptes;
 $$('[data-vue]').forEach(b => b.onclick = () => basculerVue(b.dataset.vue));
-$('#bNouveauV').onclick = () => {
-  const pj = projetCourant();
-  if (!pj) { dire('pick a project in the column first', true); return; }
-  let parent = dossierActif && dossierActif.indexOf('/') > 0
-    ? dossierActif.slice(pj.length + 1) : '';
-  if (parent === NONRANGE) parent = '';
-  const nom = prompt('New folder in “' + (parent || pj) + '” :');
-  if (nom) creerDossierVirtuel(pj, parent, nom);
-};
 $('#porteId').onkeydown = e => { if (e.key === 'Enter') $('#porteMp').focus(); };
 $('#porteMp').onkeydown = e => { if (e.key === 'Enter') $('#porteOk').click(); };
 $('#porteOk').onclick = async () => {
