@@ -199,6 +199,66 @@ if projets:
         finally:
             _sh.rmtree(d, ignore_errors=True)
 
+    print("--- rack d effets : chaque effet se rend ---")
+    video = next((f for f in films if not f.get("image")
+                  and not f.get("son_seul") and not f.get("absent")), None)
+    if not serveur.FFMPEG:
+        print("    ffmpeg absent : rack non eprouve")
+    elif not video:
+        print("    aucune video dans ce projet : rack non eprouve")
+    else:
+        import shutil as _sh
+        import tempfile as _tf
+        d = _tf.mkdtemp(prefix="essai-rack-")
+        # Le rendu lit ces dimensions dans le montage ; ici on les pose.
+        serveur.LARGE, serveur.HAUT, serveur.FPS_SORTIE = 320, 240, 24
+        serveur.MODE = "video"
+        piles = [
+            ("flou gaussien", [{"t": "flou", "mode": "gauss", "force": 1}]),
+            ("flou directionnel", [{"t": "flou", "mode": "dir", "force": 1.5,
+                                    "angle": 30}]),
+            ("tilt-shift", [{"t": "flou", "mode": "tilt", "force": 2,
+                             "centre": 40, "largeur": 20, "fondu": 15,
+                             "angle": 20}]),
+            ("couleur", [{"t": "etal", "expo": 0.5, "contraste": 20,
+                          "satu": -30, "temp": 40}]),
+            ("N&B, sepia, virage", [{"t": "nb", "mode": "nb"},
+                                    {"t": "nb", "mode": "sepia", "dose": 50},
+                                    {"t": "nb", "mode": "virage",
+                                     "teinte": "#3a7bd5", "dose": 60}]),
+            ("vignette et grain", [{"t": "vignette", "force": 60},
+                                   {"t": "grain", "force": 40}]),
+            ("halation et aberration", [{"t": "halation", "force": 50},
+                                        {"t": "aberration", "force": 0.6}]),
+            ("effet eteint : ignore", [{"t": "flou", "on": False, "force": 3}]),
+        ]
+        try:
+            for i, (nom, fx) in enumerate(piles):
+                plan = {"projet": PR, "fichier": video["rel"], "entree": 0.0,
+                        "sortie": 1.0, "vitesse": 1, "rev": False,
+                        "opacite": 0.8, "cadrage": {"mode": "contain",
+                                                    "echelle": 1}, "fx": fx}
+                chemin, duree = serveur._segment(plan, d, i, False, 0.2, 0.2)
+                v("rack « %s » : le segment se fabrique" % nom,
+                  bool(chemin) and abs(duree - 1.0) < 0.01,
+                  serveur.RENDU.get("message"))
+            base, _ = serveur._segment(
+                {"projet": PR, "fichier": video["rel"], "entree": 0.0,
+                 "sortie": 2.0, "vitesse": 1, "rev": False,
+                 "cadrage": {"mode": "contain", "echelle": 1}},
+                d, 90, False)
+            sortie = os.path.join(d, "incruste.mp4")
+            calque = {"genre": "reglage", "position": 0.5, "duree": 1.0,
+                      "opacite": 0.9, "fondu_entree": 0.2,
+                      "fx": [{"t": "nb", "mode": "sepia"},
+                             {"t": "flou", "mode": "tilt", "force": 1.5}]}
+            ok_inc = bool(base) and serveur._incruster(base, sortie, [calque],
+                                                      0.0, 2.0, d)
+            v("calque d effet incruste sur le montage", ok_inc
+              and os.path.isfile(sortie), serveur.RENDU.get("message"))
+        finally:
+            _sh.rmtree(d, ignore_errors=True)
+
     print("--- rangement virtuel ---")
     c, sauve = req("/api/rangement?projet=" + PR)
     v("lecture", c == 200, sauve)

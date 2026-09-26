@@ -1080,6 +1080,204 @@ def _seg_filtre(cadrage, vitesse, opacite=1.0, duree=0.0, rev=False):
     return v
 
 
+# ---------------------------------------------------------------------------
+#  Rack d effets
+# ---------------------------------------------------------------------------
+# Chaque plan porte sa pile d effets (« fx »), appliques dans l ordre, APRES
+# le cadrage et la secousse, AVANT la transparence et les fondus — l ordre du
+# moniteur (app.html, appliquerFx). Les tailles sont en % de la largeur du
+# cadre ; la couleur suit les memes etapes que la page, bornees a [0,1] apres
+# chacune. Les ecarts de ffmpeg ont ete MESURES, pas supposes :
+#   gblur  : l ecart-type obtenu vaut ~0,93 x sigma (steps=3) -> on compense ;
+#   dblur  : l ecart-type obtenu vaut ~1,1 x radius ;
+#   noise  : c0s=S donne un ecart-type de 0,33 x S ;
+#   vignette (rgb24) : exactement cos^4(angle x distance/demi-diagonale).
+FX_CONNUS = ("flou", "etal", "nb", "vignette", "grain", "halation",
+             "aberration")
+
+
+def _fx_actifs(plan):
+    return [x for x in (plan.get("fx") or [])
+            if isinstance(x, dict) and x.get("on", True) is not False
+            and x.get("t") in FX_CONNUS]
+
+
+def _fx_num(x, cle, defaut):
+    try:
+        v = float(x.get(cle, defaut))
+    except (TypeError, ValueError):
+        return float(defaut)
+    return v if math.isfinite(v) else float(defaut)
+
+
+def _etapes_couleur(x):
+    """Le MEME calcul que etapesCouleur() dans app.html."""
+    e = []
+    ident = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+
+    def melange(m, d):
+        return [(1 - d) * ident[i] + d * m[i] for i in range(9)]
+    if x.get("t") == "etal":
+        expo = _fx_num(x, "expo", 0)
+        temp = _fx_num(x, "temp", 0) / 100.0
+        satu = _fx_num(x, "satu", 0) / 100.0
+        con = _fx_num(x, "contraste", 0) / 100.0
+        if abs(expo) > 1e-4:
+            e.append(("pente", 2 ** expo, 0.0))
+        if abs(temp) > 1e-4:
+            e.append(("m", [1 + 0.25 * temp, 0, 0, 0, 1, 0, 0, 0,
+                            1 - 0.25 * temp]))
+        if abs(satu) > 1e-4:
+            s = 1 + satu
+            e.append(("m", [0.213 + 0.787 * s, 0.715 - 0.715 * s, 0.072 - 0.072 * s,
+                            0.213 - 0.213 * s, 0.715 + 0.285 * s, 0.072 - 0.072 * s,
+                            0.213 - 0.213 * s, 0.715 - 0.715 * s, 0.072 + 0.928 * s]))
+        if abs(con) > 1e-4:
+            c = 1 + con
+            e.append(("pente", c, 0.5 - 0.5 * c))
+    elif x.get("t") == "nb":
+        d = max(0.0, min(1.0, _fx_num(x, "dose", 100) / 100.0))
+        if d <= 1e-4:
+            return e
+        mode = x.get("mode") or "nb"
+        if mode == "sepia":
+            m = [0.393, 0.769, 0.189, 0.349, 0.686, 0.168, 0.272, 0.534, 0.131]
+        elif mode == "virage":
+            h = str(x.get("teinte") or "")
+            if not re.fullmatch(r"#[0-9a-fA-F]{6}", h):
+                h = "#d9a066"
+            r, g, b = (int(h[i:i + 2], 16) / 255.0 for i in (1, 3, 5))
+            k = max(r, g, b, 1e-3)
+            L = (0.2126, 0.7152, 0.0722)
+            m = [r / k * L[0], r / k * L[1], r / k * L[2],
+                 g / k * L[0], g / k * L[1], g / k * L[2],
+                 b / k * L[0], b / k * L[1], b / k * L[2]]
+        else:
+            m = [0.2126, 0.7152, 0.0722] * 3
+        e.append(("m", melange(m, d)))
+    return e
+
+
+def _etapes_halo(x):
+    """Le MEME calcul que etapesHalo() dans app.html : seuil, puis luminance
+    teintee."""
+    s = max(0.0, min(95.0, _fx_num(x, "seuil", 72))) / 100.0
+    h = str(x.get("teinte") or "")
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", h):
+        h = "#ff5a1e"
+    r, g, b = (int(h[i:i + 2], 16) / 255.0 for i in (1, 3, 5))
+    L = (0.2126, 0.7152, 0.0722)
+    return [("pente", 1 / (1 - s), -s / (1 - s)),
+            ("m", [r * L[0], r * L[1], r * L[2], g * L[0], g * L[1], g * L[2],
+                   b * L[0], b * L[1], b * L[2]])]
+
+
+def _ff_etape(e):
+    if e[0] == "pente":
+        p, o = e[1], e[2] * 255.0
+        f = "clip(val*%.6f%+.4f,0,255)" % (p, o)
+        return "lutrgb=r='%s':g='%s':b='%s'" % (f, f, f)
+    noms = ("rr", "rg", "rb", "gr", "gg", "gb", "br", "bg", "bb")
+    return "colorchannelmixer=" + ":".join(
+        "%s=%.6f" % (n, max(-2.0, min(2.0, v))) for n, v in zip(noms, e[1]))
+
+
+def _graphe_fx(fx, entree, sortie, duree, prefixe=""):
+    """La pile d effets d un plan en graphe ffmpeg, de [entree] a [sortie].
+    None si aucun effet n a rien a faire. « prefixe » rend les etiquettes
+    uniques quand plusieurs graphes partagent un meme filter_complex."""
+    morceaux, cur, n = [], entree, 0
+    for x in fx:
+        n += 1
+        nxt = "%sfx%d" % (prefixe, n)
+        t = x.get("t")
+        if t in ("etal", "nb"):
+            etapes = _etapes_couleur(x)
+            if not etapes:
+                continue
+            morceaux.append("[%s]format=rgb24,%s[%s]"
+                            % (cur, ",".join(_ff_etape(e) for e in etapes), nxt))
+        elif t == "vignette":
+            f = max(0.0, min(100.0, _fx_num(x, "force", 40)))
+            if f <= 0:
+                continue
+            morceaux.append("[%s]format=rgb24,vignette=angle=%.6f:eval=init[%s]"
+                            % (cur, f / 100.0 * math.pi / 2, nxt))
+        elif t == "grain":
+            s = int(round(max(0.0, min(100.0, _fx_num(x, "force", 25))) * 0.6))
+            if s <= 0:
+                continue
+            # Sur la luminance seule : un grain de pellicule, pas des
+            # confettis colores.
+            morceaux.append("[%s]format=yuv420p,noise=c0s=%d:c0f=t+u[%s]"
+                            % (cur, s, nxt))
+        elif t == "flou":
+            mode = x.get("mode") or "gauss"
+            sig = max(0.0, _fx_num(x, "force", 1)) / 100.0 * LARGE
+            if mode == "dir":
+                if sig < 0.3:
+                    continue
+                # En RVB, comme le navigateur : en yuv420p la couleur est a
+                # demi-resolution, et elle s etalait deux fois plus que la
+                # lumiere (ecart mesure 10/255 au lieu de 1).
+                morceaux.append("[%s]format=gbrp,dblur=angle=%.3f:radius=%.3f[%s]"
+                                % (cur, _fx_num(x, "angle", 0) % 360,
+                                   sig / 1.1, nxt))
+            elif mode == "tilt":
+                if sig < 0.05:
+                    continue
+                th = math.radians(_fx_num(x, "angle", 0))
+                nx, ny = -math.sin(th), math.cos(th)
+                cx, cy = LARGE / 2.0, HAUT * _fx_num(x, "centre", 50) / 100.0
+                demi = max(0.0, _fx_num(x, "largeur", 30)) / 200.0
+                fondu = max(0.001, _fx_num(x, "fondu", 20) / 100.0)
+                masque = ("255*clip(1-(abs(((X-%.3f)*(%.6f)+(Y-%.3f)*(%.6f))/%d)"
+                          "-%.6f)/%.6f,0,1)"
+                          % (cx, nx, cy, ny, HAUT, demi, fondu))
+                morceaux.append(
+                    "[{c}]format=gbrp,split[{p}ta{n}][{p}tb{n}];"
+                    "[{p}tb{n}]gblur=sigma={s:.3f}:steps=3[{p}tc{n}];"
+                    "color=c=black:s={w}x{h}:r={r}:d={d:.3f},format=gray,"
+                    "geq=lum='{m}',format=gbrp[{p}tm{n}];"
+                    "[{p}tc{n}][{p}ta{n}][{p}tm{n}]maskedmerge[{x}]".format(
+                        c=cur, n=n, p=prefixe, s=sig / 0.93, w=LARGE, h=HAUT,
+                        r=FPS_SORTIE, d=duree + 0.2, m=masque, x=nxt))
+            else:
+                if sig < 0.05:
+                    continue
+                morceaux.append("[%s]format=gbrp,gblur=sigma=%.3f:steps=3[%s]"
+                                % (cur, sig / 0.93, nxt))
+        elif t == "halation":
+            a = max(0.0, min(100.0, _fx_num(x, "force", 45))) / 100.0
+            if a <= 0.001:
+                continue
+            sig = max(0.0, _fx_num(x, "taille", 1.1)) / 100.0 * LARGE
+            flou = (",format=gbrp,gblur=sigma=%.3f:steps=3" % (sig / 0.93)
+                    if sig > 0.05 else ",format=gbrp")
+            # « screen » dose par « all_opacity » : le melange du moniteur
+            # (globalCompositeOperation « screen » avec son alpha).
+            morceaux.append(
+                "[{c}]format=gbrp,split[{p}ha{n}][{p}hb{n}];"
+                "[{p}hb{n}]format=rgb24,{e}{f}[{p}hc{n}];"
+                "[{p}ha{n}][{p}hc{n}]blend=all_mode=screen:all_opacity={a:.4f}[{x}]"
+                .format(c=cur, p=prefixe, n=n, a=a, x=nxt, f=flou,
+                        e=",".join(_ff_etape(e) for e in _etapes_halo(x))))
+        elif t == "aberration":
+            d = int(round(max(0.0, _fx_num(x, "force", 0.25)) / 100.0 * LARGE))
+            if d <= 0:
+                continue
+            # Rouge a droite, bleu a gauche — le sens du moniteur (mesure).
+            morceaux.append("[%s]format=gbrp,rgbashift=rh=%d:bh=%d:edge=smear[%s]"
+                            % (cur, d, -d, nxt))
+        else:
+            continue
+        cur = nxt
+    if not morceaux:
+        return None
+    morceaux.append("[%s]format=yuv420p,setsar=1[%s]" % (cur, sortie))
+    return ";".join(morceaux)
+
+
 def _expr_vol(cles, echelle, decalage):
     """Expression ffmpeg pour un volume anime.
 
@@ -1199,13 +1397,26 @@ def _segment(plan, dossier, i, avec_son, fi=0.0, fo=0.0, pr_defaut=""):
         cmd += ["-f", "lavfi", "-t", "%.3f" % duree,
                 "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"]
     cmd += ["-filter_complex"]
+    fx = _fx_actifs(plan)
+    opac = float(plan.get("opacite", 1) or 1)
+    # Avec des effets, la transparence passe APRES eux, comme sur le moniteur
+    # (qui pose le plan traite avec son alpha).
     vf = _seg_filtre(plan.get("cadrage"), 1.0 if image else vit,
-                     float(plan.get("opacite", 1) or 1), duree, rev)
+                     1.0 if fx else opac, duree, rev)
+    fin = ""
+    if fx and opac < 0.995:
+        o = max(0.0, min(1.0, opac))
+        fin += ",colorchannelmixer=rr=%.3f:gg=%.3f:bb=%.3f" % (o, o, o)
     if fi > 0.02:
-        vf += ",fade=t=in:st=0:d=%.3f" % min(fi, duree)
+        fin += ",fade=t=in:st=0:d=%.3f" % min(fi, duree)
     if fo > 0.02:
-        vf += ",fade=t=out:st=%.3f:d=%.3f" % (max(0, duree - fo), min(fo, duree))
-    fv = "[0:v]" + vf + "[v]"
+        fin += ",fade=t=out:st=%.3f:d=%.3f" % (max(0, duree - fo), min(fo, duree))
+    graphe = _graphe_fx(fx, "p", "q", duree) if fx else None
+    if graphe:
+        fv = ("[0:v]" + vf + "[p];" + graphe + ";[q]" +
+              (fin.lstrip(",") or "null") + "[v]")
+    else:
+        fv = "[0:v]" + vf + fin + "[v]"
     if avec_son:
         af = "[0:a]aresample=48000,aformat=channel_layouts=stereo"
         if rev:
@@ -1523,6 +1734,32 @@ def _incruster(base, sortie, calques, a0, b0, travail):
         # montage assemble, et le calque entre a « pos ».
         sx, sy = _secousse(cad, pos, d)
         sr = _rotation_secousse(cad, pos, d)
+        if genre == "reglage":
+            # Sa pile s applique a TOUT ce qui est deja assemble dessous : on
+            # dedouble le montage, on traite la copie sur la duree du calque,
+            # et on la pose par-dessus, dosee par sa transparence et ses
+            # fondus — le melange du moniteur (reglageSur).
+            graphe = _graphe_fx(_fx_actifs(plan), "rs%d" % n, "rq%d" % n, d,
+                                "r%d" % n)
+            if not graphe:
+                n -= 1
+                continue
+            chaine.append("[%s]split[rb%d][ra%d]" % (etiq, n, n))
+            chaine.append("[ra%d]trim=start=%.3f:duration=%.3f,"
+                          "setpts=PTS-STARTPTS[rs%d]" % (n, pos, d, n))
+            chaine.append(graphe)
+            f = "[rq%d]format=rgba,colorchannelmixer=aa=%.3f" % (n, opac)
+            f += _fondus_alpha(fi, fo, d)
+            if pos > 0.001:
+                f += (",tpad=start_duration=%.3f:start_mode=add:color=black@0.0"
+                      % pos)
+            f += "[c%d]" % n
+            chaine.append(f)
+            suivante = "b%d" % n
+            chaine.append("[rb%d][c%d]overlay=x=0:y=0:eof_action=pass[%s]"
+                          % (n, n, suivante))
+            etiq = suivante
+            continue
         if genre == "couleur":
             # Le calque de couleur est agrandi comme un rush, sinon la
             # secousse decouvrirait le bord du montage.
@@ -1937,7 +2174,10 @@ def rendre(montage, nom, pr, cible=None, mode="mp4"):
             # plus basse qui en porte fait l affaire.
             for p in plans:
                 pid = p.get("piste", "")
-                if (p.get("genre") and pistes.get(pid, {}).get("type") == "v"
+                # Un calque d effet ne porte aucune image : il ne peut pas
+                # faire la piste principale.
+                if (p.get("genre") and p.get("genre") != "reglage"
+                        and pistes.get(pid, {}).get("type") == "v"
                         and not pistes[pid].get("mute")):
                     compte[pid] = compte.get(pid, 0) + 1
         if not compte:
@@ -1948,7 +2188,8 @@ def rendre(montage, nom, pr, cible=None, mode="mp4"):
         # sur le montage assemble, dans une seconde passe.
         calques = sorted(
             [p for p in plans
-             if p.get("genre") and p.get("piste") != pv
+             if p.get("genre")
+             and (p.get("piste") != pv or p.get("genre") == "reglage")
              and pistes.get(p.get("piste", ""), {}).get("type") == "v"
              and not pistes[p["piste"]].get("mute")],
             key=lambda p: (p.get("piste", ""), float(p.get("position", 0) or 0)))
@@ -1985,7 +2226,8 @@ def rendre(montage, nom, pr, cible=None, mode="mp4"):
                 q["gain"] = float(p.get("gain", 1) or 1) * tr
             libres.append(q)
 
-        v = sorted([p for p in plans if p.get("piste") == pv],
+        v = sorted([p for p in plans if p.get("piste") == pv
+                    and p.get("genre") != "reglage"],
                    key=lambda p: float(p.get("position", 0)))
         a0 = float(montage.get("entree", 0) or 0)
         b0 = float(montage.get("sortie", 0) or 0)

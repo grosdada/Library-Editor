@@ -1,5 +1,5 @@
 {
- "version": "1.2.9",
+ "version": "1.3.0",
  "date": "2026-09-26",
  "notes": "",
  "genres": {
@@ -7,19 +7,20 @@
    "fichiers": {
     "_app/serveur.py": {
      "depot": "template/_app/serveur.py",
-     "sha256": "559ee737835bfc6a2eed3c56e935d3371c8cce39b2f21fa2fbbcffac1d524e7c",
+     "sha256": "a1822f8d7d813fbf2379625972d686b5040b18e00063d7c7adc12806922c4c8f",
      "historique": [
       "e1cdd0258910b7986a6c26f6b7164d7b8a2610f66f69ef292806e8115ba3a49d",
       "85d2a6014b37143750673fcc5da50dc4dd63dd837627cf2d002be0e1f08a9a03",
       "ea172db806ac11052ee370de9a6a8aebf62d4d9784b5d2d56cb329095a6f48c8",
       "8c1412468452137edee9002a12e5edf3dc35393bcac525949a4dc71ee33c645f",
       "a23923db7c34a283ecc3534eda05564a9f52d406425bc87e295d934e32fe3818",
-      "87cca5d355189e38d50e988eb9e071070138b56d4aad603b7c1e291b22f167f0"
+      "87cca5d355189e38d50e988eb9e071070138b56d4aad603b7c1e291b22f167f0",
+      "559ee737835bfc6a2eed3c56e935d3371c8cce39b2f21fa2fbbcffac1d524e7c"
      ]
     },
     "_app/app.html": {
      "depot": "template/_app/app.html",
-     "sha256": "a46e5980ffd931e5115d6ccee37999659d1e62b4c3dc0458ae547dd2e51ee100",
+     "sha256": "fba73eb065b6351dab079f6a14e12bb08619d24d7bd98f0d5648092eafa022cc",
      "historique": [
       "bcaee501fc23d322034fee64afde7dff827884ddb7139dd4c370ed07d4fc2410",
       "5fdf04c279c4c900a3a202b2b3c5310bee53684a032f7c965e8f466684eae5d9",
@@ -33,7 +34,8 @@
       "9d61233f506071f71efb70f65a7010b494231a1afa14684d0c0c9204902615c3",
       "c14b37c9e3c45d8723cb0c99d5b7e95c84d6fbe860faf7ee9274db51cb7955f8",
       "045a58d76bc25d13c35c03b59b7630465b0e4e9e02de552ad65c624fb0a08d6a",
-      "c1738b29bb460507d6969fc355ca1e12e279d576be7ac937f5c26eee14b2623e"
+      "c1738b29bb460507d6969fc355ca1e12e279d576be7ac937f5c26eee14b2623e",
+      "a46e5980ffd931e5115d6ccee37999659d1e62b4c3dc0458ae547dd2e51ee100"
      ]
     },
     "_app/_maj.py": {
@@ -251,12 +253,5 @@
     }
    }
   }
- },
- "commit": "0225e722de9b28abbf30c84618e476627b84b63d",
- "installeur": {
-  "version": "1.2.9",
-  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.2.9/Library-Editor-1.2.9.zip",
-  "octets": 38365137,
-  "sha256": "4fbf29d04cf6ded69b71f251f11a43f857932913014b8b16f8127e956edacdbd"
  }
 }

@@ -442,6 +442,36 @@ body.regPop .colReg{border-left:1px dashed var(--trait)}
 .clip .anim{position:absolute;left:3px;top:2px;z-index:3;font-size:9px;
  color:var(--or);text-shadow:0 1px 2px #000;pointer-events:none}
 .reglages .rang{display:flex;gap:6px;align-items:center}
+/* Le rack d effets : une carte par effet, dans l ordre ou ils s appliquent. */
+.rack{display:flex;flex-direction:column;gap:7px;margin-top:6px;
+ padding-top:8px;border-top:1px solid var(--trait)}
+.rackTete{display:flex;align-items:center;gap:6px}
+.rackTete label{margin:0;flex:0 0 auto}
+.rackTete select{flex:1 1 auto;min-width:0;font-size:11px;padding:2px 4px}
+.rackVide{font-size:11px;color:var(--sourd)}
+.fxCarte{border:1px solid var(--trait);border-radius:5px;padding:6px 7px;
+ display:flex;flex-direction:column;gap:5px;background:#1f1e1c}
+.fxCarte.eteint{opacity:.5}
+.fxTete{display:flex;align-items:center;gap:4px;font-size:12px}
+.fxTete b{font-weight:600}
+.fxOn{background:none;border:0;padding:0 2px;color:var(--sourd);font-size:13px;
+ line-height:1;cursor:pointer}
+.fxOn.on{color:var(--vert);background:none;border-color:transparent}
+.fxOn.on:hover{background:none}
+.rackPresets{display:flex;gap:5px}
+.rackPresets select{flex:1 1 auto;min-width:0;font-size:11px;padding:2px 4px}
+/* Un plan qui porte des effets le montre sur la timeline. */
+.clip .fxBadge{position:absolute;top:1px;right:3px;font-size:9px;
+ color:#c9a2ff;pointer-events:none;z-index:3;text-shadow:0 1px 2px #000}
+.fxPetit{background:none;border:1px solid transparent;color:var(--sourd);
+ padding:0 4px;font-size:11px;line-height:1.4;cursor:pointer}
+.fxPetit:hover{border-color:var(--trait);color:var(--encre)}
+.fxModes{display:flex;gap:3px}
+.fxModes button{flex:1 1 0;padding:3px 2px;font-size:10.5px;border-radius:4px}
+.fxModes button.on{background:var(--orange);border-color:var(--orange);color:#fff}
+.fxCouleur{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--sourd)}
+.fxCouleur input{width:34px;height:20px;padding:0;border:1px solid var(--trait)}
+.fxAppliquer{font-size:11px;padding:4px 6px}
 .reglages .val{font:11px/1 ui-monospace,monospace;color:var(--sourd);
  min-width:40px;text-align:right}
 /* Les curseurs etaient laisses au navigateur : gros et bleu vif. Un rail fin
@@ -705,6 +735,8 @@ here and change nothing to the files">My folders</button>
       title="colour layer, placed above the picture at the playhead">▢ Layer</button>
     <button id="bTexte" class="outil calque"
       title="text, placed above the picture at the playhead">T Text</button>
+    <button id="bReglage" class="outil calque"
+      title="effect layer: its effects apply to everything below it, for its duration">✦ FX</button>
     <button id="bZoomM" class="outil">−</button>
     <button id="bZoomP" class="outil">+</button>
     <button id="bZoomT" class="outil" title="fit all">⤢</button>
@@ -3151,7 +3183,9 @@ function blocClip(c) {
          : estSynth(c)
            ? '<div class="vign synth" style="background:' +
              (c.genre === 'couleur' ? echapHtml(c.fond || '#000')
-              : 'repeating-linear-gradient(135deg,#2f2d29 0 6px,#26241f 6px 12px)') +
+              : estReglage(c)
+                ? 'repeating-linear-gradient(135deg,#3a2c52 0 6px,#2c2240 6px 12px)'
+                : 'repeating-linear-gradient(135deg,#2f2d29 0 6px,#26241f 6px 12px)') +
              '"></div>'
            : '<div class="vign" style="background-image:url(' +
              posterDe(c.film) + ')"></div>') +
@@ -3163,6 +3197,9 @@ function blocClip(c) {
     (fonduOut(c) > 0.02 ? '<div class="fondu d" style="right:0;width:' +
       (fonduOut(c) * PPS) + 'px"></div>' : '') +
     (aDesAnims(c) ? '<div class="anim" title="animated block">◆</div>' : '') +
+    (fxActifs(c).length && !estReglage(c)
+      ? '<div class="fxBadge" title="' + fxActifs(c).map(x => FX[x.t].nom).join(' · ') +
+        '">✦</div>' : '') +
     '<div class="bande" data-bande="1" title="drag here: fade in / fade out">' +
     '</div>' +
     '<div class="poi g" data-poi="g"></div>' +
@@ -3172,6 +3209,9 @@ function blocClip(c) {
     (dur(c) * PPS - c._fOut * PPS) + 'px"></div>' +
     '<div class="nom">' + (c.lien ? '⛓ ' : '') +
       (c.genre === 'couleur' ? '▢ ' + echapHtml(c.fond || '')
+       : estReglage(c)
+         ? '✦ ' + (fxActifs(c).length
+             ? fxActifs(c).map(x => FX[x.t].nom).join(' + ') : 'effect layer')
        : c.genre === 'texte'
          ? 'T ' + echapHtml(String(c.txt || '').split('\n')[0].slice(0, 24) ||
                             'text')
@@ -3658,6 +3698,13 @@ function boiteTexte(bloc) {
 }
 
 $('#bCalque').onclick = () => boiteCalque();
+$('#bReglage').onclick = () => {
+  poserSynth({genre: 'reglage', fx: []},
+             parseFloat(pref.lire('calqueDuree', '4')) || 4);
+  REG_ONGLET = 'fx';
+  rendreReglages();
+  dire('effect layer placed — add its effects in the panel on the right');
+};
 $('#bTexte').onclick = () => {
   const c = CLIPS.find(x => clipsSel.has(x.uid) && x.genre === 'texte');
   boiteTexte(c || null);
@@ -4382,7 +4429,15 @@ function retirerSelection() {
 function copierBlocs() {
   const s = CLIPS.filter(c => clipsSel.has(c.uid));
   if (!s.length) { dire('nothing to copy'); return; }
-  presse = s.map(c => { const n = {}; for (const k in c) if (k[0] !== '_') n[k] = c[k]; return n; });
+  presse = s.map(c => {
+    const n = {};
+    for (const k in c) if (k[0] !== '_') n[k] = c[k];
+    // Le rack et les images-cles sont des tableaux : sans copie profonde, le
+    // bloc colle partagerait ceux de l original.
+    if (c.fx) n.fx = JSON.parse(JSON.stringify(c.fx));
+    if (c.anim) n.anim = JSON.parse(JSON.stringify(c.anim));
+    return n;
+  });
   dire(presse.length + (presse.length > 1 ? ' blocks copied' : ' block copied'));
 }
 function collerBlocs() {
@@ -4393,6 +4448,8 @@ function collerBlocs() {
   const neufs = presse.map(c => {
     const n = {};
     for (const k in c) n[k] = c[k];
+    if (c.fx) n.fx = JSON.parse(JSON.stringify(c.fx));
+    if (c.anim) n.anim = JSON.parse(JSON.stringify(c.anim));
     n.uid = uidSuivant++;
     n.t0 = Math.max(0, tLect + (c.t0 - t0min));
     if (c.lien) {
@@ -4443,6 +4500,7 @@ function dupliquerBlocs() {
     n.uid = uidSuivant++;
     n.t0 = c.t0 + ecart;
     if (c.anim) n.anim = JSON.parse(JSON.stringify(c.anim));
+    if (c.fx) n.fx = JSON.parse(JSON.stringify(c.fx));
     if (c.lien) {
       if (!liens[c.lien]) liens[c.lien] = lienLibre();
       n.lien = liens[c.lien];
@@ -4562,6 +4620,7 @@ $('#lanes').addEventListener('contextmenu', e => {
   const f = PAR_ID[c.film] || {};
   const vitesses = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
   const titre = c.genre === 'couleur' ? 'layer ' + (c.fond || '')
+    : estReglage(c) ? 'effect layer'
     : c.genre === 'texte' ? 'texte'
     : (f.nom || 'shot');
   menu.innerHTML =
@@ -4749,6 +4808,7 @@ async function chargerPresets() {
     const d = await api('/api/presets?genre=secousse');
     PRESETS_SHK = d.presets || {};
     PRESETS_SERVEUR = true;
+    chargerPresetsFx();
   } catch (e) {
     // Serveur d avant les prereglages : on reste sur la copie du navigateur.
     PRESETS_SHK = nav;
@@ -4903,10 +4963,14 @@ function rendreReglages() {
   const c = sel.find(x => piste(x.piste).type === 'v') || sel[0];
   const f = PAR_ID[c.film];
   const estV = piste(c.piste).type === 'v';
-  let h = '<div><b style="font-size:12px">' + (f ? f.nom : '?') + '</b><br>' +
-    '<span style="color:var(--sourd);font-size:11px">' +
-    (f ? f.w + '×' + f.h : '') + ' · ' + c.piste + ' · ' + sel.length + ' sel.' +
-    '</span></div>';
+  let h = estReglage(c)
+    ? '<div><b style="font-size:12px">✦ Effect layer</b><br>' +
+      '<span style="color:var(--sourd);font-size:11px">applies to everything ' +
+      'below it · ' + c.piste + '</span></div>'
+    : '<div><b style="font-size:12px">' + (f ? f.nom : '?') + '</b><br>' +
+      '<span style="color:var(--sourd);font-size:11px">' +
+      (f ? f.w + '×' + f.h : '') + ' · ' + c.piste + ' · ' + sel.length + ' sel.' +
+      '</span></div>';
   // Le volume agit sur le son : les blocs audio selectionnes, et pour un bloc
   // video celui de sa piste son liee. On regle donc le son depuis l image,
   // sans avoir a aller selectionner le bloc audio.
@@ -5064,7 +5128,11 @@ function rendreReglages() {
       'Reverse — plays backwards</label></div>';
   };
 
-  if (estV) {
+  if (estReglage(c)) {
+    // Un calque d effet n a ni cadre ni son : sa transparence dose l effet,
+    // et son rack fait tout le reste.
+    h += rangee('opac', 'Amount', 'rOpac') + rackFx(c, sel);
+  } else if (estV) {
     const ONG = [['tr', 'Transform'], ['fx', 'Effects'], ['sh', 'Anim']];
     if (!ONG.some(o => o[0] === REG_ONGLET)) REG_ONGLET = 'tr';
     h += '<div class="ongletsReg">' + ONG.map(o =>
@@ -5076,7 +5144,8 @@ function rendreReglages() {
            rangee('dx', 'Position X', 'rDx') +
            rangee('dy', 'Position Y', 'rDy');
     else if (REG_ONGLET === 'fx')
-      h += rangee('opac', 'Opacity', 'rOpac') + rangeeVitesse() + rangeeVolume();
+      h += rangee('opac', 'Opacity', 'rOpac') + rangeeVitesse() + rangeeVolume() +
+           rackFx(c, sel);
     else
       h += rangeeSecousse(c);
   } else {
@@ -5094,6 +5163,7 @@ function rendreReglages() {
      : (fonduIn(c) > 0.02 || fonduOut(c) > 0.02) ? '' : ' (none)') +
     '</div></div>';
   r.innerHTML = h;
+  lierRackFx(r, c, sel);
 
   r.querySelectorAll('[data-onglet]').forEach(b => b.onclick = () => {
     REG_ONGLET = b.dataset.onglet;
@@ -5723,7 +5793,8 @@ function signeMontage() {
             c.shk ? 1 : 0, JSON.stringify(couchesShk(c)),
             c.fond || '', c.txt || '', c.police || '', c.taille || 0,
             c.teinte || '', c.ombre === false ? 0 : 1,
-            c.anim ? JSON.stringify(c.anim) : ''].join(':'));
+            c.anim ? JSON.stringify(c.anim) : '',
+            c.fx ? JSON.stringify(c.fx) : ''].join(':'));
   return p.join('|');
 }
 
@@ -5849,6 +5920,560 @@ const cacheAJour = () => CACHE.pret && CACHE.signe === signeMontage();
 // en place : la coupe suivante, elle, n aurait plus ete protegee du tout.
 const GEL = {depuis: 0, qui: ''};
 
+// ===========================================================================
+//  Rack d effets
+// ===========================================================================
+// Chaque plan porte sa pile d effets (c.fx), appliques dans l ordre. Chacun
+// existe DEUX fois : ici pour le moniteur, et dans serveur.py (_graphe_fx)
+// pour le rendu — et les deux doivent donner la meme image. D ou :
+//  - les tailles en % de la LARGEUR DU CADRE, jamais en pixels : le moniteur
+//    est plus petit que la video rendue ;
+//  - la couleur en etapes identiques des deux cotes (pente, matrice), chacune
+//    bornee a [0,1] comme dans ffmpeg. Le filtre SVG est declare en sRGB : en
+//    linearRGB, le defaut, un rouge 200 x 0,5 donnait 146 au lieu de 100.
+// Les effets s appliquent APRES le cadrage et la secousse, AVANT la
+// transparence et les fondus : le meme ordre au rendu.
+const FX = {
+  flou: {nom: 'Blur', neuf: () => ({mode: 'gauss', force: 1, angle: 0,
+                                    centre: 50, largeur: 30, fondu: 20})},
+  etal: {nom: 'Colour', neuf: () => ({expo: 0, contraste: 0, satu: 0, temp: 0})},
+  nb: {nom: 'B&W · sepia · tint', neuf: () => ({mode: 'nb', teinte: '#d9a066',
+                                                dose: 100})},
+  vignette: {nom: 'Vignette', neuf: () => ({force: 40})},
+  grain: {nom: 'Grain', neuf: () => ({force: 25})},
+  halation: {nom: 'Halation', neuf: () => ({force: 45, seuil: 72, taille: 1.1,
+                                            teinte: '#ff5a1e'})},
+  aberration: {nom: 'Chromatic aberration', neuf: () => ({force: 0.25})}
+};
+// [cle, etiquette, min, max, pas, unite]
+const FX_REGLAGES = {
+  flou: {
+    gauss: [['force', 'Strength', 0, 5, 0.05, '%']],
+    dir: [['force', 'Length', 0, 8, 0.05, '%'], ['angle', 'Angle', 0, 180, 1, '°']],
+    tilt: [['force', 'Blur', 0, 5, 0.05, '%'],
+           ['centre', 'Focus position', 0, 100, 1, '%'],
+           ['largeur', 'Sharp band', 0, 100, 1, '%'],
+           ['fondu', 'Transition', 0, 100, 1, '%'],
+           ['angle', 'Angle', -90, 90, 1, '°']]
+  },
+  etal: [['expo', 'Exposure', -2, 2, 0.05, ' st'],
+         ['contraste', 'Contrast', -100, 100, 1, ''],
+         ['satu', 'Saturation', -100, 100, 1, ''],
+         ['temp', 'Temperature', -100, 100, 1, '']],
+  nb: [['dose', 'Amount', 0, 100, 1, '%']],
+  vignette: [['force', 'Strength', 0, 100, 1, '']],
+  grain: [['force', 'Strength', 0, 100, 1, '']],
+  halation: [['force', 'Strength', 0, 100, 1, ''],
+             ['seuil', 'From brightness', 0, 95, 1, '%'],
+             ['taille', 'Spread', 0, 5, 0.05, '%']],
+  aberration: [['force', 'Offset', 0, 1.5, 0.01, '%']]
+};
+// Un bloc « calque d effet » : sa pile s applique a tout ce qui est dessous.
+const estReglage = c => !!c && c.genre === 'reglage';
+const fxActifs = c => (c && (!estSynth(c) || estReglage(c)) && Array.isArray(c.fx))
+  ? c.fx.filter(x => x && x.on !== false && FX[x.t]) : [];
+const fxNum = (x, k, d) => {
+  const v = parseFloat(x[k]);
+  return isNaN(v) ? d : v;
+};
+
+// Les etapes de couleur d un effet — le MEME calcul que _etapes_couleur()
+// dans serveur.py. {pente, origine} : v' = v*pente + origine, par canal ;
+// {m} : matrice 3x3 sur (R,V,B). Tout en 0..1, borne apres chaque etape.
+function etapesCouleur(x) {
+  const e = [];
+  const melange = (m, d) => m.map((v, i) => (1 - d) * [1,0,0,0,1,0,0,0,1][i] + d * v);
+  if (x.t === 'etal') {
+    const expo = fxNum(x, 'expo', 0), temp = fxNum(x, 'temp', 0) / 100,
+          satu = fxNum(x, 'satu', 0) / 100, con = fxNum(x, 'contraste', 0) / 100;
+    if (Math.abs(expo) > 1e-4) e.push({pente: Math.pow(2, expo), origine: 0});
+    if (Math.abs(temp) > 1e-4)
+      e.push({m: [1 + 0.25 * temp, 0, 0, 0, 1, 0, 0, 0, 1 - 0.25 * temp]});
+    if (Math.abs(satu) > 1e-4) {
+      const s = 1 + satu;
+      e.push({m: [0.213 + 0.787 * s, 0.715 - 0.715 * s, 0.072 - 0.072 * s,
+                  0.213 - 0.213 * s, 0.715 + 0.285 * s, 0.072 - 0.072 * s,
+                  0.213 - 0.213 * s, 0.715 - 0.715 * s, 0.072 + 0.928 * s]});
+    }
+    if (Math.abs(con) > 1e-4) {
+      const C = 1 + con;
+      e.push({pente: C, origine: 0.5 - 0.5 * C});
+    }
+  } else if (x.t === 'nb') {
+    const d = Math.max(0, Math.min(1, fxNum(x, 'dose', 100) / 100));
+    if (d <= 1e-4) return e;
+    let m;
+    if (x.mode === 'sepia') {
+      m = [0.393, 0.769, 0.189, 0.349, 0.686, 0.168, 0.272, 0.534, 0.131];
+    } else if (x.mode === 'virage') {
+      const h = /^#[0-9a-f]{6}$/i.test(x.teinte || '') ? x.teinte : '#d9a066';
+      const r = parseInt(h.slice(1, 3), 16) / 255, g = parseInt(h.slice(3, 5), 16) / 255,
+            b = parseInt(h.slice(5, 7), 16) / 255;
+      const k = Math.max(r, g, b, 1e-3);
+      const L = [0.2126, 0.7152, 0.0722];
+      m = [r / k * L[0], r / k * L[1], r / k * L[2],
+           g / k * L[0], g / k * L[1], g / k * L[2],
+           b / k * L[0], b / k * L[1], b / k * L[2]];
+    } else {
+      m = [0.2126, 0.7152, 0.0722, 0.2126, 0.7152, 0.0722, 0.2126, 0.7152, 0.0722];
+    }
+    e.push({m: melange(m, d)});
+  }
+  return e;
+}
+
+// Un filtre SVG par suite d etapes, fabrique une fois et garde.
+const FX_SVG = (() => {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  s.setAttribute('width', '0'); s.setAttribute('height', '0');
+  s.style.cssText = 'position:absolute;width:0;height:0;pointer-events:none';
+  document.body.appendChild(s);
+  return s;
+})();
+const FX_FILTRES = new Map();
+function filtreCouleur(etapes) {
+  if (!etapes.length) return 'none';
+  const f5 = v => (+v).toFixed(5);
+  const corps = etapes.map(e => e.m
+    ? '<feColorMatrix type="matrix" values="' +
+      [e.m[0], e.m[1], e.m[2], 0, 0, e.m[3], e.m[4], e.m[5], 0, 0,
+       e.m[6], e.m[7], e.m[8], 0, 0, 0, 0, 0, 1, 0].map(f5).join(' ') + '"/>'
+    : '<feComponentTransfer>' + ['R', 'G', 'B'].map(c =>
+        '<feFunc' + c + ' type="linear" slope="' + f5(e.pente) +
+        '" intercept="' + f5(e.origine) + '"/>').join('') +
+      '</feComponentTransfer>').join('');
+  let id = FX_FILTRES.get(corps);
+  if (!id) {
+    // Un curseur qu on promene fabrique un filtre par valeur : on fait le
+    // menage de temps en temps.
+    if (FX_FILTRES.size > 300) { FX_FILTRES.clear(); FX_SVG.innerHTML = ''; }
+    id = 'fxc' + Math.random().toString(36).slice(2, 9);
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+    el.setAttribute('id', id);
+    el.setAttribute('color-interpolation-filters', 'sRGB');
+    el.innerHTML = corps;
+    FX_SVG.appendChild(el);
+    FX_FILTRES.set(corps, id);
+  }
+  return 'url(#' + id + ')';
+}
+
+// Toiles de travail, reutilisees d une image a l autre.
+const FX_TOILES = [];
+function toileFx(i, w, h) {
+  let tl = FX_TOILES[i];
+  if (!tl) { tl = document.createElement('canvas'); FX_TOILES[i] = tl; }
+  if (tl.width !== w || tl.height !== h) { tl.width = w; tl.height = h; }
+  const g = tl.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.filter = 'none';
+  return tl;
+}
+
+// Un grand reservoir de bruit uniforme [-1,1], tire une fois : chaque image y
+// puise a partir d un point au hasard, le grain change donc a chaque image.
+const FX_BRUIT = new Float32Array(1 << 20);
+let fxBruitPret = false;
+
+// La bande nette du tilt-shift, en masque — la meme formule que le « geq » du
+// rendu : 1 dans la bande, rampe lineaire sur la transition, 0 au-dela. Les
+// distances se comptent en hauteurs de cadre.
+function degradeBande(g, x, w, h) {
+  const th = fxNum(x, 'angle', 0) * Math.PI / 180;
+  const nx = -Math.sin(th), ny = Math.cos(th);
+  const cx = w / 2, cy = h * fxNum(x, 'centre', 50) / 100;
+  const demi = Math.max(0, fxNum(x, 'largeur', 30)) / 200;
+  const f = Math.max(0.001, fxNum(x, 'fondu', 20) / 100);
+  const L = demi + f;
+  const gr = g.createLinearGradient(cx - nx * L * h, cy - ny * L * h,
+                                    cx + nx * L * h, cy + ny * L * h);
+  gr.addColorStop(0, 'rgba(0,0,0,0)');
+  gr.addColorStop(0.5 - demi / (2 * L), 'rgba(0,0,0,1)');
+  gr.addColorStop(0.5 + demi / (2 * L), 'rgba(0,0,0,1)');
+  gr.addColorStop(1, 'rgba(0,0,0,0)');
+  return gr;
+}
+
+function flouFx(t1, x, w, h) {
+  const mode = x.mode || 'gauss';
+  const force = Math.max(0, fxNum(x, 'force', 1));
+  const t2 = toileFx(2, w, h), g2 = t2.getContext('2d');
+  g2.clearRect(0, 0, w, h);
+  if (mode === 'dir') {
+    // ffmpeg « dblur » : ecart-type ~1,1 x son rayon (mesure). Ici une somme
+    // ponderee de copies decalees le long de la direction.
+    const sig = force / 100 * w;
+    if (sig < 0.3) return;
+    const a = fxNum(x, 'angle', 0) * Math.PI / 180;
+    const n = Math.max(5, Math.min(41, Math.ceil(5 * sig / 1.5)));
+    const p = [];
+    let somme = 0;
+    for (let i = 0; i < n; i++) {
+      const d = (i / (n - 1) * 2 - 1) * 2.5 * sig;
+      const q = Math.exp(-d * d / (2 * sig * sig));
+      p.push([d, q]); somme += q;
+    }
+    g2.globalCompositeOperation = 'lighter';
+    for (const [d, q] of p) {
+      g2.globalAlpha = q / somme;
+      g2.drawImage(t1, Math.cos(a) * d, Math.sin(a) * d);
+    }
+    g2.globalAlpha = 1; g2.globalCompositeOperation = 'source-over';
+  } else {
+    const sig = force / 100 * w;
+    if (sig < 0.05) return;
+    g2.filter = 'blur(' + sig.toFixed(2) + 'px)';
+    g2.drawImage(t1, 0, 0);
+    g2.filter = 'none';
+  }
+  const g1 = t1.getContext('2d');
+  if (mode === 'tilt') {
+    const t3 = toileFx(3, w, h), g3 = t3.getContext('2d');
+    g3.clearRect(0, 0, w, h);
+    g3.drawImage(t1, 0, 0);
+    g3.globalCompositeOperation = 'destination-in';
+    g3.fillStyle = degradeBande(g3, x, w, h);
+    g3.fillRect(0, 0, w, h);
+    g3.globalCompositeOperation = 'source-over';
+    // flou par-dessus le net (les bords ne noircissent pas), puis la bande
+    // nette par-dessus le tout : maskedmerge au rendu.
+    g1.drawImage(t2, 0, 0);
+    g1.drawImage(t3, 0, 0);
+  } else {
+    g1.drawImage(t2, 0, 0);
+  }
+}
+
+// ffmpeg « vignette » en rgb24 : facteur cos^4(angle x distance/demi-diagonale)
+// — mesure au pixel (201 pour 200,8 attendus, 63 pour 63,8).
+function vignetteFx(g, w, h, force) {
+  const ang = Math.max(0, Math.min(100, force)) / 100 * Math.PI / 2;
+  if (ang <= 1e-4) return;
+  const R = Math.hypot(w / 2, h / 2);
+  const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, R);
+  for (let i = 0; i <= 24; i++) {
+    const r = i / 24, c = Math.cos(ang * r);
+    gr.addColorStop(r, 'rgba(0,0,0,' + (1 - c * c * c * c).toFixed(4) + ')');
+  }
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = gr;
+  g.fillRect(0, 0, w, h);
+  g.globalCompositeOperation = 'source-over';
+}
+
+// ffmpeg « noise=c0s=S:c0f=t+u » AJOUTE a la luminance un bruit uniforme
+// d ecart-type 0,33 x S (mesure), donc borne a +-0,57 x S. Meme chose ici,
+// ajoute aux trois canaux. Un « overlay » ne touchait pas les couleurs
+// saturees : le grain du moniteur etait six fois trop faible sur une mire.
+function grainFx(g, w, h, force) {
+  const S = Math.max(0, Math.min(100, force)) * 0.6;
+  if (S < 0.5) return;
+  if (!fxBruitPret) {
+    for (let i = 0; i < FX_BRUIT.length; i++) FX_BRUIT[i] = Math.random() * 2 - 1;
+    fxBruitPret = true;
+  }
+  const A = 0.57 * S, masque = FX_BRUIT.length - 1;
+  const img = g.getImageData(0, 0, w, h), d = img.data;
+  let k = Math.floor(Math.random() * FX_BRUIT.length);
+  for (let i = 0; i < d.length; i += 4) {
+    if (!d[i + 3]) continue;            // hors du plan : rien a graver
+    const n = FX_BRUIT[k++ & masque] * A;
+    d[i] += n; d[i + 1] += n; d[i + 2] += n;
+  }
+  g.putImageData(img, 0, 0);
+}
+
+// Halation : les hautes lumieres, seuillees puis ramenees a une luminance,
+// teintees, etalees, et ajoutees en « screen » — le halo rouge-orange du
+// 16 mm. Memes etapes que le rendu (_etapes_halo).
+function etapesHalo(x) {
+  const s = Math.max(0, Math.min(95, fxNum(x, 'seuil', 72))) / 100;
+  const h = /^#[0-9a-f]{6}$/i.test(x.teinte || '') ? x.teinte : '#ff5a1e';
+  const r = parseInt(h.slice(1, 3), 16) / 255, g = parseInt(h.slice(3, 5), 16) / 255,
+        b = parseInt(h.slice(5, 7), 16) / 255;
+  const L = [0.2126, 0.7152, 0.0722];
+  return [{pente: 1 / (1 - s), origine: -s / (1 - s)},
+          {m: [r * L[0], r * L[1], r * L[2], g * L[0], g * L[1], g * L[2],
+               b * L[0], b * L[1], b * L[2]]}];
+}
+function halationFx(t1, x, w, h) {
+  const a = Math.max(0, Math.min(100, fxNum(x, 'force', 45))) / 100;
+  if (a <= 0.001) return;
+  const sig = Math.max(0, fxNum(x, 'taille', 1.1)) / 100 * w;
+  const t2 = toileFx(2, w, h), g2 = t2.getContext('2d');
+  g2.clearRect(0, 0, w, h);
+  g2.filter = filtreCouleur(etapesHalo(x)) +
+    (sig > 0.05 ? ' blur(' + sig.toFixed(2) + 'px)' : '');
+  g2.drawImage(t1, 0, 0);
+  g2.filter = 'none';
+  const g1 = t1.getContext('2d');
+  g1.globalCompositeOperation = 'screen';
+  g1.globalAlpha = a;
+  g1.drawImage(t2, 0, 0);
+  g1.globalAlpha = 1; g1.globalCompositeOperation = 'source-over';
+}
+// Aberration chromatique : le rouge part d un cote, le bleu de l autre. Trois
+// passes, une par canal, additionnees — ffmpeg « rgbashift ».
+function aberrationFx(t1, x, w, h) {
+  const d = Math.max(0, fxNum(x, 'force', 0.25)) / 100 * w;
+  if (d < 0.05) return;
+  const t2 = toileFx(2, w, h), g2 = t2.getContext('2d');
+  g2.clearRect(0, 0, w, h);
+  g2.globalCompositeOperation = 'lighter';
+  [[[1, 0, 0, 0, 0, 0, 0, 0, 0], d], [[0, 0, 0, 0, 1, 0, 0, 0, 0], 0],
+   [[0, 0, 0, 0, 0, 0, 0, 0, 1], -d]].forEach(([m, dx]) => {
+    g2.filter = filtreCouleur([{m: m}]);
+    g2.drawImage(t1, dx, 0);
+  });
+  g2.filter = 'none'; g2.globalCompositeOperation = 'source-over';
+  const g1 = t1.getContext('2d');
+  g1.clearRect(0, 0, w, h);
+  g1.drawImage(t2, 0, 0);
+}
+
+function appliquerFx(t1, fx, w, h) {
+  const g1 = t1.getContext('2d');
+  for (const x of fx) {
+    g1.setTransform(1, 0, 0, 1, 0, 0);
+    g1.globalAlpha = 1; g1.globalCompositeOperation = 'source-over'; g1.filter = 'none';
+    if (x.t === 'etal' || x.t === 'nb') {
+      const etapes = etapesCouleur(x);
+      if (!etapes.length) continue;
+      const t2 = toileFx(2, w, h), g2 = t2.getContext('2d');
+      g2.clearRect(0, 0, w, h);
+      g2.filter = filtreCouleur(etapes);
+      g2.drawImage(t1, 0, 0);
+      g2.filter = 'none';
+      g1.clearRect(0, 0, w, h);
+      g1.drawImage(t2, 0, 0);
+    } else if (x.t === 'flou') flouFx(t1, x, w, h);
+    else if (x.t === 'vignette') vignetteFx(g1, w, h, fxNum(x, 'force', 40));
+    else if (x.t === 'grain') grainFx(g1, w, h, fxNum(x, 'force', 25));
+    else if (x.t === 'halation') halationFx(t1, x, w, h);
+    else if (x.t === 'aberration') aberrationFx(t1, x, w, h);
+  }
+}
+
+// Le calque d effet : sa pile s applique a TOUT ce qui est deja dessine
+// dessous, pendant sa duree. Sa transparence dose l effet — 0 %, rien ; 100 %,
+// l effet entier ; les fondus l amenent et le retirent en douceur.
+function reglageSur(c, cw, ch) {
+  const fx = fxActifs(c);
+  if (!fx.length) return;
+  const a = alpha(c, tLect) * valAnim(c, 'opac', tLect);
+  if (a <= 0.005) return;
+  const t1 = toileFx(1, cw, ch), g = t1.getContext('2d');
+  g.clearRect(0, 0, cw, ch);
+  g.drawImage(moni, 0, 0);
+  appliquerFx(t1, fx, cw, ch);
+  ctx.globalAlpha = a;
+  ctx.drawImage(t1, 0, 0);
+  ctx.globalAlpha = 1;
+}
+
+// ---- prereglages ------------------------------------------------------------
+// Ceux de la maison, puis ceux de la bibliotheque — rangés comme ceux de la
+// secousse, sous le genre « fx ». Le « 16 mm » ajoute a un rush un leger
+// flottement de couloir, avec la secousse existante.
+const FX_MAISON = {
+  '16 mm': {fx: [{t: 'etal', on: true, expo: 0, contraste: 12, satu: -12, temp: 18},
+                 {t: 'halation', on: true, force: 45, seuil: 72, taille: 1.1,
+                  teinte: '#ff5a1e'},
+                 {t: 'vignette', on: true, force: 32},
+                 {t: 'grain', on: true, force: 38}],
+            couloir: {f: 1.2, a: 0.12, r: 0}}
+};
+let FX_PRESETS = {};
+async function chargerPresetsFx() {
+  try {
+    const d = await api('/api/presets?genre=fx');
+    FX_PRESETS = (d && d.presets) || {};
+  } catch (e) { FX_PRESETS = {}; }
+}
+
+// Ce qui part au rendu : les effets allumes, en nombres.
+function fxRendu(c) {
+  const l = fxActifs(c);
+  return l.length ? JSON.parse(JSON.stringify(l)) : null;
+}
+
+// ---- le panneau ------------------------------------------------------------
+const fmtFx = (v, pas, u) =>
+  (pas < 0.1 ? v.toFixed(2) : pas < 1 ? v.toFixed(1) : String(Math.round(v))) + (u || '');
+
+function rackFx(c, sel) {
+  if (!c || (estSynth(c) && !estReglage(c)) || !piste(c.piste) ||
+      piste(c.piste).type !== 'v') return '';
+  const l = Array.isArray(c.fx) ? c.fx : [];
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+  let h = '<div class="rack"><div class="rackTete"><label>Effects</label>' +
+    '<select data-fx-ajout><option value="">+ add an effect…</option>' +
+    Object.keys(FX).map(k => '<option value="' + k + '">' + FX[k].nom +
+      '</option>').join('') + '</select></div>' +
+    '<div class="rackPresets"><select data-fx-preset>' +
+    '<option value="">Presets…</option>' +
+    Object.keys(FX_MAISON).map(n => '<option value="m:' + esc(n) + '">★ ' +
+      esc(n) + '</option>').join('') +
+    Object.keys(FX_PRESETS).sort().map(n => '<option value="p:' + esc(n) + '">' +
+      esc(n) + '</option>').join('') +
+    (l.length ? '<option value="+">＋ save this rack as a preset…</option>' : '') +
+    (Object.keys(FX_PRESETS).length
+      ? '<option value="-">✕ delete a preset…</option>' : '') +
+    '</select></div>';
+  if (!l.length) h += '<div class="rackVide">no effect on this block</div>';
+  l.forEach((x, i) => {
+    if (!FX[x.t]) return;
+    const on = x.on !== false;
+    h += '<div class="fxCarte' + (on ? '' : ' eteint') + '">' +
+      '<div class="fxTete"><button class="fxOn' + (on ? ' on' : '') +
+      '" data-fx-on="' + i + '" title="switch on / off">' + (on ? '●' : '○') +
+      '</button><b>' + FX[x.t].nom + '</b><span class="pousse"></span>' +
+      (i > 0 ? '<button class="fxPetit" data-fx-monte="' + i +
+        '" title="apply earlier">↑</button>' : '') +
+      (i < l.length - 1 ? '<button class="fxPetit" data-fx-descend="' + i +
+        '" title="apply later">↓</button>' : '') +
+      '<button class="fxPetit" data-fx-x="' + i + '" title="remove">✕</button></div>';
+    const modes = x.t === 'flou'
+      ? [['gauss', 'Gaussian'], ['dir', 'Directional'], ['tilt', 'Tilt-shift']]
+      : x.t === 'nb' ? [['nb', 'B&W'], ['sepia', 'Sepia'], ['virage', 'Tint']] : null;
+    if (x.t === 'halation')
+      h += '<div class="fxCouleur">Glow colour <input type="color" data-fx-couleur="' +
+        i + '" value="' + (x.teinte || '#ff5a1e') + '"></div>';
+    const mode = x.mode || (modes ? modes[0][0] : '');
+    if (modes) h += '<div class="fxModes">' + modes.map(m =>
+      '<button data-fx-mode="' + m[0] + '" data-fx-i="' + i + '" class="' +
+      (mode === m[0] ? 'on' : '') + '">' + m[1] + '</button>').join('') + '</div>';
+    if (x.t === 'nb' && mode === 'virage')
+      h += '<div class="fxCouleur">Tint colour <input type="color" data-fx-couleur="' +
+        i + '" value="' + (x.teinte || '#d9a066') + '"></div>';
+    const regl = x.t === 'flou' ? FX_REGLAGES.flou[mode] : FX_REGLAGES[x.t];
+    const def = FX[x.t].neuf();
+    regl.forEach(([k, et, mn, mx, pas, u]) => {
+      const v = fxNum(x, k, def[k]);
+      h += '<div><label>' + et + '</label><div class="rang">' +
+        '<input type="range" data-fx-p="' + k + '" data-fx-i="' + i +
+        '" data-fx-u="' + u + '" min="' + mn + '" max="' + mx + '" step="' + pas +
+        '" value="' + v + '"><span class="val">' + fmtFx(v, pas, u) +
+        '</span></div></div>';
+    });
+    h += '</div>';
+  });
+  const autres = sel.filter(x => x !== c && (!estSynth(x) || estReglage(x)) &&
+                             piste(x.piste) && piste(x.piste).type === 'v');
+  if (autres.length)
+    h += '<button class="fxAppliquer" data-fx-partout>Copy this rack to the ' +
+      autres.length + ' other selected block' + (autres.length > 1 ? 's' : '') +
+      '</button>';
+  return h + '</div>';
+}
+
+function lierRackFx(r, c, sel) {
+  const rack = r.querySelector('.rack');
+  if (!rack) return;
+  const liste = () => (Array.isArray(c.fx) ? c.fx : (c.fx = []));
+  const fini = refaire => {
+    modifie = true;
+    dessiner();
+    if (refaire) rendreReglages();
+  };
+  let glisse = false;
+  rack.oninput = e => {
+    const s = e.target.closest('input[type=range][data-fx-p]');
+    if (s) {
+      if (!glisse) { memoriser(); glisse = true; }
+      const v = parseFloat(s.value);
+      liste()[+s.dataset.fxI][s.dataset.fxP] = v;
+      s.nextElementSibling.textContent = fmtFx(v, +s.step, s.dataset.fxU);
+      fini(false);
+      return;
+    }
+    const co = e.target.closest('input[type=color][data-fx-couleur]');
+    if (co) {
+      if (!glisse) { memoriser(); glisse = true; }
+      liste()[+co.dataset.fxCouleur].teinte = co.value;
+      fini(false);
+    }
+  };
+  rack.onchange = async e => {
+    glisse = false;
+    const aj = e.target.closest('select[data-fx-ajout]');
+    if (aj && aj.value && FX[aj.value]) {
+      memoriser();
+      liste().push(Object.assign({t: aj.value, on: true}, FX[aj.value].neuf()));
+      fini(true);
+      return;
+    }
+    const pr = e.target.closest('select[data-fx-preset]');
+    if (!pr || !pr.value) return;
+    const v = pr.value;
+    pr.value = '';
+    if (v === '+') {
+      const nom = (prompt('Name of the preset:') || '').trim();
+      if (!nom) return;
+      try {
+        const d = await api('/api/presets',
+          {genre: 'fx', nom: nom, valeur: {fx: JSON.parse(JSON.stringify(liste()))}});
+        FX_PRESETS = d.presets || FX_PRESETS;
+        dire('preset “' + nom + '” saved');
+        rendreReglages();
+      } catch (err) { dire('preset not saved — ' + err.message, true); }
+      return;
+    }
+    if (v === '-') {
+      const noms = Object.keys(FX_PRESETS).sort();
+      const nom = (prompt('Preset to delete:\n' + noms.join('\n')) || '').trim();
+      if (!nom) return;
+      try {
+        const d = await api('/api/presets', {genre: 'fx', nom: nom, effacer: true});
+        FX_PRESETS = d.presets || {};
+        dire('preset “' + nom + '” deleted');
+        rendreReglages();
+      } catch (err) { dire('not deleted — ' + err.message, true); }
+      return;
+    }
+    const maison = v.slice(0, 2) === 'm:';
+    const p = maison ? FX_MAISON[v.slice(2)] : FX_PRESETS[v.slice(2)];
+    if (!p || !Array.isArray(p.fx)) return;
+    memoriser();
+    c.fx = JSON.parse(JSON.stringify(p.fx));
+    // Le flottement de couloir : sur un rush seulement, un calque d effet
+    // n a pas de cadre a faire bouger.
+    if (p.couloir && !estReglage(c)) {
+      const q = Object.assign(coucheNeuve(), p.couloir);
+      c.shk = true;
+      couchesEcrire(c, [q]);
+    }
+    dire('preset “' + v.slice(2) + '” applied');
+    fini(true);
+  };
+  rack.onclick = e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const L = liste(), d = b.dataset;
+    if (d.fxOn !== undefined) {
+      memoriser(); const x = L[+d.fxOn]; x.on = x.on === false; fini(true);
+    } else if (d.fxX !== undefined) {
+      memoriser(); L.splice(+d.fxX, 1); if (!L.length) delete c.fx; fini(true);
+    } else if (d.fxMonte !== undefined) {
+      memoriser(); const k = +d.fxMonte; [L[k - 1], L[k]] = [L[k], L[k - 1]]; fini(true);
+    } else if (d.fxDescend !== undefined) {
+      memoriser(); const k = +d.fxDescend; [L[k + 1], L[k]] = [L[k], L[k + 1]]; fini(true);
+    } else if (d.fxMode !== undefined) {
+      memoriser(); L[+d.fxI].mode = d.fxMode; fini(true);
+    } else if (d.fxPartout !== undefined) {
+      memoriser();
+      const cibles = sel.filter(x => x !== c && (!estSynth(x) || estReglage(x)) &&
+                                piste(x.piste) && piste(x.piste).type === 'v');
+      cibles.forEach(x => {
+        if (L.length) x.fx = JSON.parse(JSON.stringify(L)); else delete x.fx;
+      });
+      dire('rack copied to ' + cibles.length + ' block' + (cibles.length > 1 ? 's' : ''));
+      fini(false);
+    }
+  };
+}
+
 function dessiner() {
   // Image en cache : on la pose telle quelle, rien d autre a faire.
   const bmp = imageCache(tLect);
@@ -5887,6 +6512,7 @@ function dessiner() {
   ctx.fillRect(0, 0, moni.width, moni.height);
   const cw = moni.width, ch = moni.height;
   aDessiner.forEach(c => {
+    if (estReglage(c)) { reglageSur(c, cw, ch); return; }
     if (estSynth(c)) { dessinerSynth(c, cw, ch); return; }
     const v = estImage(c) ? imageDe(c) : POOL.get(c.uid);
     if (!v) return;
@@ -5897,7 +6523,6 @@ function dessiner() {
     if (!vw || !vh) return;
     const a = alpha(c, tLect) * valAnim(c, 'opac', tLect);
     if (a <= 0.005) return;
-    ctx.globalAlpha = a;
     const base = c.mode === 'cover' ? Math.max(cw / vw, ch / vh)
                                     : Math.min(cw / vw, ch / vh);
     const [sx, sy] = secousse(c, tLect);
@@ -5906,17 +6531,29 @@ function dessiner() {
           w = vw * k, h = vh * k;
     const px = (cw - w) / 2 + valAnim(c, 'dx', tLect) * cw / 200 + sx * cw / 100;
     const py = (ch - h) / 2 + valAnim(c, 'dy', tLect) * ch / 200 + sy * ch / 100;
+    // Un plan avec effets se dessine d abord seul, sur une toile a part, a sa
+    // place dans le cadre ; on lui applique ses effets, puis on le pose avec
+    // sa transparence — l ordre du rendu. Sans effet, rien ne change.
+    const fx = fxActifs(c);
+    const toile = fx.length ? toileFx(1, cw, ch) : null;
+    const g = toile ? toile.getContext('2d') : ctx;
+    if (toile) g.clearRect(0, 0, cw, ch); else ctx.globalAlpha = a;
     if (rot) {
       // Comme ffmpeg : on tourne le cadre autour de SON centre, pas autour du
       // coin du plan.
-      ctx.save();
-      ctx.translate(cw / 2, ch / 2);
-      ctx.rotate(rot * Math.PI / 180);
-      ctx.translate(-cw / 2, -ch / 2);
-      ctx.drawImage(v, px, py, w, h);
-      ctx.restore();
+      g.save();
+      g.translate(cw / 2, ch / 2);
+      g.rotate(rot * Math.PI / 180);
+      g.translate(-cw / 2, -ch / 2);
+      g.drawImage(v, px, py, w, h);
+      g.restore();
     } else {
-      ctx.drawImage(v, px, py, w, h);
+      g.drawImage(v, px, py, w, h);
+    }
+    if (toile) {
+      appliquerFx(toile, fx, cw, ch);
+      ctx.globalAlpha = a;
+      ctx.drawImage(toile, 0, 0);
     }
   });
   ctx.globalAlpha = 1;
@@ -5930,6 +6567,7 @@ function dessiner() {
 function modifierSynth() {
   const c = CLIPS.find(x => clipsSel.has(x.uid) && estSynth(x));
   if (!c) { dire('select a layer or a text'); return; }
+  if (estReglage(c)) { REG_ONGLET = 'fx'; rendreReglages(); return; }
   if (c.genre === 'texte') { boiteTexte(c); return; }
   const neuf = prompt('Layer colour (e.g. #1a2b3c):', c.fond || '#000000');
   if (!neuf) return;
@@ -7270,7 +7908,7 @@ function objetMontage() {
               sortie: +c.o.toFixed(3), duree: +dur(c).toFixed(3),
               vitesse: vAbs(c), rev: !!c.rev, couleur: c.couleur || 0,
               gain: c.gain, opacite: c.opac === undefined ? 1 : c.opac,
-              lien: c.lien, anim: c.anim || null,
+              lien: c.lien, anim: c.anim || null, fx: fxRendu(c),
               fondu_entree: +(c._fIn || 0).toFixed(3),
               fondu_sortie: +(c._fOut || 0).toFixed(3),
               cadrage: {mode: c.mode, echelle: c.ech, dx: c.dx, dy: c.dy,
