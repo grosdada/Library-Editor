@@ -1424,6 +1424,37 @@ grille.addEventListener('dblclick', e => {
   agrandir(c.dataset.id);
 });
 
+// Le volume des apercus de rushes — le lecteur qui s ouvre dans la vignette
+// et celui du pop-up. Les controles du navigateur repartaient a 100 % a
+// chaque rush, et un son mixe fort l etait a chaque fois (signale par David
+// le 29/09). Baisse une fois, il vaut pour tous les rushes, et il est retenu
+// d une visite a l autre — par bibliotheque, comme les autres preferences.
+// La coupure du son suit le meme chemin. La timeline n est pas concernee :
+// elle a ses volumes de bloc et de piste.
+const VOL_APERCU = (() => {
+  const v = parseFloat(pref.lire('volApercu', '1'));
+  return {v: isFinite(v) ? Math.min(1, Math.max(0, v)) : 1,
+          muet: pref.lire('muetApercu', '0') === '1'};
+})();
+const LECTEURS_APERCU = '.media video, .media audio, #loupe video, #loupe audio';
+function reglerApercu(el) {
+  if (!el) return;
+  el.volume = VOL_APERCU.v;
+  el.muted = VOL_APERCU.muet;
+}
+// « volumechange » ne remonte pas : on l ecoute a la descente.
+document.addEventListener('volumechange', e => {
+  const el = e.target;
+  if (!el || !el.matches || !el.matches(LECTEURS_APERCU)) return;
+  if (Math.abs(el.volume - VOL_APERCU.v) < 0.001 &&
+      el.muted === VOL_APERCU.muet) return;
+  VOL_APERCU.v = el.volume;
+  VOL_APERCU.muet = el.muted;
+  pref.ecrire('volApercu', String(+el.volume.toFixed(3)));
+  pref.ecrire('muetApercu', el.muted ? '1' : '0');
+  $$(LECTEURS_APERCU).forEach(x => { if (x !== el) reglerApercu(x); });
+}, true);
+
 // Double-clic sur un rush : il s ouvre en pop-up, six fois la vignette,
 // par-dessus la bibliotheque assombrie, et le clip part tout seul. Un
 // deuxieme double-clic, la croix, un clic a cote ou Échap le referment.
@@ -1463,6 +1494,7 @@ function agrandir(id) {
     '</span><span class="sp"></span>' +
     '<button data-loupe-x="1" title="close (Esc)">⤡</button></div>' +
     media + '</div>';
+  reglerApercu(l.querySelector('video, audio'));
   l.className = 'on';
 }
 
@@ -1520,6 +1552,7 @@ function visionner(id) {
   });
   zone.innerHTML = '<video data-dans-carte="' + id + '" src="' + urlMedia(f) +
     '" controls autoplay loop playsinline preload="metadata"></video>';
+  reglerApercu(zone.querySelector('video'));
 }
 
 grille.addEventListener('dragstart', e => {
