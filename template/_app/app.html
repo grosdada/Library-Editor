@@ -3948,8 +3948,14 @@ $('#entetes').addEventListener('dblclick', e => {
 $('#entetes').addEventListener('click', e => {
   if (e.target.closest('[data-vol], .pVal, .saisieVal')) return;
   const m = e.target.closest('[data-mute]'), s = e.target.closest('[data-solo]');
-  if (m) { const p = piste(m.dataset.mute); p.mute = !p.mute; }
-  else if (s) { const p = piste(s.dataset.solo); p.solo = !p.solo; }
+  // Couper ou isoler une piste change le montage. Ces deux boutons ne le
+  // disaient pas : l enregistrement automatique et celui du changement de
+  // sequence ne partent que sur « modifie », et la piste revenait non coupee
+  // au retour sur la sequence (signale par David le 29/09, sur Mode-Cringe).
+  // memoriser() leve « modifie », vide le cache de lecture — une piste
+  // coupee ne doit plus s y entendre — et rend le geste annulable.
+  if (m) { memoriser(); const p = piste(m.dataset.mute); p.mute = !p.mute; }
+  else if (s) { memoriser(); const p = piste(s.dataset.solo); p.solo = !p.solo; }
   else {
     // Cliquer l en-tete d une piste, c est dire « Add, c est ici ».
     const en = e.target.closest('.pEntete');
@@ -3960,6 +3966,7 @@ $('#entetes').addEventListener('click', e => {
     return;
   }
   rendreEntetes(); resynchroniser(true);
+  majEtatSauve();
 });
 </script>
 <script>
