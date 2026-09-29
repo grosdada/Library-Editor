@@ -2248,6 +2248,69 @@ async function effacerMontage(pj, nom) {
 // Un dossier virtuel n est qu une chaine dans une liste. Le renommer, c est
 // reecrire cette chaine partout ou elle sert — y compris pour ses
 // sous-dossiers, qui la portent en prefixe.
+// Les vrais sous-dossiers d un projet, tels que le catalogue les connait
+// (« dossier » de chaque fiche), parents compris.
+function sousDossiersReels(pj) {
+  const p = projetOuvert(pj);
+  const s = new Set();
+  ((p && p.films) || []).forEach(f => {
+    if (f.absent || !f.dossier) return;
+    const bouts = String(f.dossier).split('/');
+    for (let i = 1; i <= bouts.length; i++) s.add(bouts.slice(0, i).join('/'));
+  });
+  return [...s].sort();
+}
+
+// Les limites du serveur pour un dossier virtuel (_chemin_virtuel) : cinq
+// niveaux, soixante caracteres par nom. Au-dela il les jetterait sans rien
+// dire ; on prefere le dire.
+const dossierVirtuelPossible = d => {
+  const b = String(d).split('/');
+  return b.length <= 5 && b.every(x => x.trim() && x.trim().length <= 60);
+};
+
+// « Import subfolders as folders » : les vrais sous-dossiers deviennent des
+// dossiers virtuels, et chaque rush encore NON RANGE va dans celui de son
+// vrai dossier. Ce qu on avait deja range a la main ne bouge pas.
+async function importerSousDossiers(pj) {
+  const p = projetOuvert(pj);
+  const reels = sousDossiersReels(pj);
+  if (!p || !reels.length) { dire('no subfolder in “' + pj + '”'); return; }
+  // Sans son rangement charge, on repartirait d un rangement vide et on
+  // ecraserait celui du disque.
+  if (!RANGEMENTS[pj]) await chargerRangement(pj);
+  const bons = reels.filter(dossierVirtuelPossible);
+  const refuses = reels.length - bons.length;
+  const r = rangementDe(pj);
+  const avant = new Set(r.dossiers);
+  const neufs = bons.filter(d => !avant.has(d));
+  if (r.dossiers.length + neufs.length > 300) {
+    dire('too many folders — the arrangement holds 300 at most', true);
+    return;
+  }
+  const ou = Object.assign({}, r.ou);
+  const garde = new Set(bons);
+  let ranges = 0, laisses = 0;
+  p.films.forEach(f => {
+    if (f.absent || !f.dossier || !garde.has(f.dossier)) return;
+    if (ou[f.id]) { if (ou[f.id] !== f.dossier) laisses++; return; }
+    ou[f.id] = f.dossier;
+    ranges++;
+  });
+  r.dossiers = [...new Set(r.dossiers.concat(bons))].sort();
+  r.ou = ou;
+  await enregistrerRangement(pj);
+  // On montre le resultat : la vue « My folders », sur ce projet.
+  if (VUE !== 'rangement') await basculerVue('rangement');
+  dossierActif = pj;
+  refondre(); appliquerProfil(); rendre();
+  dire(neufs.length + ' folder' + (neufs.length > 1 ? 's' : '') + ' created, ' +
+       ranges + ' clip' + (ranges > 1 ? 's' : '') + ' filed' +
+       (laisses ? ', ' + laisses + ' already filed elsewhere, left there' : '') +
+       (refuses ? ' — ' + refuses + ' folder(s) too deep or with too long a ' +
+        'name, left out' : ''));
+}
+
 function creerDossierVirtuel(pj, parent, nom) {
   const p = String(nom).trim().replace(/[\/\\:*?"<>|]/g, '-');
   if (!p) return;
@@ -2425,9 +2488,17 @@ colDos.addEventListener('contextmenu', e => {
       '<div class="sep"></div>' +
       '<div class="it" data-dos="effacer">✕ Delete folder…</div>';
   } else {
+    // Proposee seulement quand le projet a de vrais sous-dossiers, et quand
+    // la bibliotheque sait ranger (dossiers virtuels).
+    const sd = RANGEABLE ? sousDossiersReels(pj) : [];
     colMenu.innerHTML = '<div class="lbl">' + pj.slice(0, 30) + '</div>' +
       '<div class="it" data-dos="scanner">⟳ Rescan this project</div>' +
       '<div class="it" data-dos="sous">+ New folder…</div>' +
+      (sd.length ? '<div class="it" data-dos="importer" title="recreate the ' +
+        'real subfolders in My folders, and file each clip in its own">' +
+        '⇲ Import subfolders as folders <span class="pousse" ' +
+        'style="color:var(--sourd);font-size:10px">' + sd.length + '</span></div>'
+        : '') +
       '<div class="sep"></div>' +
       '<div class="it" data-dos="fermer">✕ Close project</div>';
   }
@@ -2469,6 +2540,7 @@ colMenu.addEventListener('click', async e => {
   }
   if (act === 'fermer') { fermerProjet(pj); return; }
   if (act === 'scanner') { scannerProjet(pj); return; }
+  if (act === 'importer') { importerSousDossiers(pj); return; }
   if (act === 'sous') {
     const nom = prompt(rel
       ? 'New folder in “' + rel + '” :'
