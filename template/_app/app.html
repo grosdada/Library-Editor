@@ -305,6 +305,16 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
  flex-wrap:wrap;align-content:center;row-gap:4px}
 .pEntete b{flex:1 1 auto;font-weight:600;letter-spacing:.05em}
 .pEntete i{font-style:normal;font-size:9px;color:var(--or);flex:0 0 auto}
+/* Le volume de piste s affiche meme a 100 % — sinon il n y aurait rien a
+   double-cliquer —, mais en retrait : seul un volume change doit sauter aux
+   yeux. */
+.pEntete i.neutre{color:var(--sourd);opacity:.55}
+.pEntete i.pVal,.rang .val{cursor:text}
+/* Le chiffre qu on tape, a la place du chiffre affiche. */
+.saisieVal{font:11px/1 ui-monospace,monospace;color:var(--encre);
+ background:var(--fond);border:1px solid var(--or);border-radius:3px;
+ padding:1px 3px;text-align:right;flex:0 0 auto;min-width:0;outline:none}
+.pEntete .saisieVal{font-size:9px;padding:0 2px}
 /* Volume general de la piste son : sa propre ligne dans l en-tete. */
 .pEntete input.vol{-webkit-appearance:none;appearance:none;flex:1 0 100%;
  min-width:0;height:3px;margin:0;padding:0;border:0;border-radius:2px;
@@ -3214,15 +3224,16 @@ function rendreEntetes() {
         ? ' — target track for Add (click to release)'
         : ' — click to make it the target track for Add') + '">' +
       '<b>' + p.id + '</b>' +
-      (estSon(p) ? '<i>' + (v === 1 ? '' : Math.round(v * 100) + '%') +
-        '</i>' : '') +
+      (estSon(p) ? '<i class="pVal' + (v === 1 ? ' neutre' : '') +
+        '" title="double-click to type the volume">' +
+        Math.round(v * 100) + '%</i>' : '') +
       '<button class="m ' + (p.mute ? 'on' : '') + '" data-mute="' + p.id +
       '" title="mute">M</button>' +
       '<button class="s ' + (p.solo ? 'on' : '') + '" data-solo="' + p.id +
       '" title="solo">S</button>' +
       (estSon(p)
         ? '<input class="vol" type="range" min="0" max="2" step="0.01" value="' +
-          v + '" data-vol="' + p.id + '" title="track volume — ' +
+          v + '" data-vol="' + p.id + '" data-pct="1" title="track volume — ' +
           Math.round(v * 100) + '% (double-click: 100%)">'
         : '') +
       '</div>';
@@ -3883,8 +3894,11 @@ function poserVolPiste(el, val) {
   if (!p) return;
   p.vol = Math.max(0, Math.min(2, val));
   el.value = p.vol;
-  const i = el.parentElement.querySelector('i');
-  if (i) i.textContent = p.vol === 1 ? '' : Math.round(p.vol * 100) + '%';
+  const i = el.parentElement.querySelector('i.pVal');
+  if (i) {
+    i.textContent = Math.round(p.vol * 100) + '%';
+    i.classList.toggle('neutre', p.vol === 1);
+  }
   el.title = 'track volume — ' + Math.round(p.vol * 100) +
     '% (double-click: 100%)';
   modifie = true;
@@ -3899,7 +3913,7 @@ $('#entetes').addEventListener('dblclick', e => {
   if (el) poserVolPiste(el, 1);
 });
 $('#entetes').addEventListener('click', e => {
-  if (e.target.closest('[data-vol]')) return;
+  if (e.target.closest('[data-vol], .pVal, .saisieVal')) return;
   const m = e.target.closest('[data-mute]'), s = e.target.closest('[data-solo]');
   if (m) { const p = piste(m.dataset.mute); p.mute = !p.mute; }
   else if (s) { const p = piste(s.dataset.solo); p.solo = !p.solo; }
@@ -5028,7 +5042,8 @@ function rendreReglages() {
       'Blocks, cut and playhead<br>snap to nearby edges.<br>' +
       'Right-click a block: colour,<br>speed, linking, renaming,<br>' +
       'and where its file is<br>' +
-      'Double-click a rush: it opens<br>six times bigger<br><br>' +
+      'Double-click a rush: it opens<br>six times bigger<br>' +
+      'Double-click a value: type it<br>on the keypad, Enter to apply<br><br>' +
       'Two overlapping blocks<br>make an automatic dissolve.</div>';
     return;
   }
@@ -5171,7 +5186,8 @@ function rendreReglages() {
       '" title="keyframes">' + (ouvert ? '▾' : '▸') + '</button>' +
       (n ? '<i class="nbcle">◆' + n + '</i>' : '') + '</label>' +
       '<div class="rang"><input type="range" id="' + id + '" min="' + A.min +
-      '" max="' + A.max + '" step="' + A.pas + '" value="' + v + '">' +
+      '" max="' + A.max + '" step="' + A.pas + '" value="' + v + '"' +
+      (ANIMABLES[k] && ANIMABLES[k].pct ? ' data-pct="1"' : '') + '>' +
       '<span class="val">' + fmtVal(k, v) + '</span>' +
       boutonsCV(k) + '</div>' +
       (ouvert ? panneauAnim(k, t) : '') + '</div>';
@@ -5447,8 +5463,7 @@ function rendreReglages() {
       ecrire(v, false);
     };
     sl.onchange = () => rendreTimeline();
-    if (cb) cb.onchange = () => ecrire(
-      (cb.checked ? -1 : 1) * Math.abs(parseFloat(sl.value) || 1), true);
+    if (cb) cb.onchange = () => ecrire((cb.checked ? -1 : 1) * vAbs(c), true);
   })();
 
   // ---- panneau d animation ---------------------------------------------
@@ -6456,7 +6471,8 @@ function lierRackFx(r, c, sel) {
       if (!glisse) { memoriser(); glisse = true; }
       const v = parseFloat(s.value);
       liste()[+s.dataset.fxI][s.dataset.fxP] = v;
-      s.nextElementSibling.textContent = fmtFx(v, +s.step, s.dataset.fxU);
+      s.nextElementSibling.textContent =
+        fmtFx(v, +(s.dataset.pas || s.step), s.dataset.fxU);
       fini(false);
       return;
     }
@@ -7122,6 +7138,96 @@ function saisieActive(el) {
   if (n !== 'INPUT') return false;
   return !SANS_SAISIE.has((el.type || 'text').toLowerCase());
 }
+
+// ===========================================================================
+//  Taper une valeur : double-clic sur le chiffre d un curseur
+// ===========================================================================
+// Le chiffre affiche a cote d un curseur devient un petit champ : on tape au
+// pave numerique, Entree valide, Echap renonce, cliquer ailleurs valide. La
+// valeur passe par le curseur lui-meme — on la pose, puis on emet ses
+// evenements —, pour que son code reste le seul a ecrire dans le montage :
+// images-cles, selection multiple, bloc son lie, zone morte de la vitesse.
+function curseurDeValeur(el) {
+  if (el.classList.contains('pVal'))
+    return el.parentElement.querySelector('input.vol');
+  const s = el.previousElementSibling;
+  return s && s.matches('input[type=range]') ? s : null;
+}
+
+function poserValeurTapee(sl, txt, pct) {
+  const n = parseFloat(String(txt).replace(',', '.').replace(/[^0-9.+-]/g, ''));
+  if (!isFinite(n)) { dire('not a number — nothing changed'); return; }
+  const voulu = pct ? n / 100 : n;
+  const mn = parseFloat(sl.min), mx = parseFloat(sl.max);
+  const v = Math.min(mx, Math.max(mn, voulu));
+  const aff = x => pct ? Math.round(x * 100) + '%' : String(+x.toFixed(3));
+  if (Math.abs(v - voulu) > 1e-9)
+    dire('kept within ' + aff(mn) + ' – ' + aff(mx) + ' : ' + aff(v));
+  // Le rack garde lui-meme sa trace dans l historique, au premier mouvement.
+  if (!sl.closest('.rack')) memoriser();
+  // Au pas du curseur, une valeur tapee serait arrondie (x1.23 → x1.25) :
+  // on le leve le temps de la poser. « data-pas » garde le pas d origine
+  // pour ceux qui s en servent pour l affichage.
+  const pas = sl.getAttribute('step');
+  sl.dataset.pas = pas || '';
+  sl.step = 'any';
+  sl.value = String(v);
+  sl.dispatchEvent(new Event('input', {bubbles: true}));
+  sl.dispatchEvent(new Event('change', {bubbles: true}));
+  delete sl.dataset.pas;
+  if (pas === null) sl.removeAttribute('step'); else sl.setAttribute('step', pas);
+}
+
+function ouvrirSaisie(el) {
+  const sl = curseurDeValeur(el);
+  if (!sl || sl.disabled) return;
+  const suivant = el.nextElementSibling;
+  if (suivant && suivant.classList.contains('saisieVal')) return;
+  const pct = sl.dataset.pct === '1';
+  const m = String(el.textContent).match(/-?\d+(?:[.,]\d+)?/);
+  const ch = document.createElement('input');
+  ch.type = 'text';
+  ch.inputMode = 'decimal';
+  ch.className = 'saisieVal';
+  ch.autocomplete = 'off';
+  ch.spellcheck = false;
+  ch.value = m ? m[0].replace(',', '.')
+               : String(pct ? Math.round(parseFloat(sl.value) * 100)
+                            : parseFloat(sl.value));
+  ch.style.width = Math.max(el.classList.contains('pVal') ? 30 : 44,
+                            el.offsetWidth + 6) + 'px';
+  el.style.display = 'none';
+  el.after(ch);
+  let fini = false;
+  const fermer = garder => {
+    if (fini) return;
+    fini = true;
+    const txt = ch.value;
+    ch.remove();
+    el.style.display = '';
+    if (garder && txt.trim() !== ch.defaultValue) poserValeurTapee(sl, txt, pct);
+  };
+  ch.defaultValue = ch.value;
+  // Les frappes restent dans le champ : ni Entree ni Echap ne doivent
+  // atteindre les raccourcis du montage.
+  ch.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); fermer(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); fermer(false); }
+  });
+  ['input', 'change'].forEach(ev =>
+    ch.addEventListener(ev, e => e.stopPropagation()));
+  ch.addEventListener('blur', () => fermer(true));
+  ch.focus();
+  ch.select();
+}
+
+document.addEventListener('dblclick', e => {
+  const el = e.target.closest('.rang .val, .pEntete .pVal');
+  if (!el) return;
+  e.preventDefault();
+  ouvrirSaisie(el);
+});
 
 // Tab maintenue : les reglages du bloc selectionne sortent en pop-up, et y
 // restent tant qu on tient la touche. On ne deplace rien dans le DOM — c est
