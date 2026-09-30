@@ -561,6 +561,17 @@ input[type=range]:hover::-moz-range-thumb{background:#f3d264}
 #menu .couls span:hover{outline:2px solid var(--encre);outline-offset:1px}
 #menu .couls{flex-wrap:wrap;max-width:230px}
 #menu .couls span.aucune{background:none;border:1px dashed var(--sourd)}
+/* Les couleurs de rangement dans un menu : la pastille ET son nom. */
+#menu .chipsCat{display:flex;flex-wrap:wrap;gap:4px;padding:3px 10px 7px;
+ max-width:250px}
+#menu .chipsCat span{display:inline-flex;align-items:center;gap:4px;
+ padding:1px 7px 1px 3px;border-radius:10px;border:1px solid var(--trait);
+ font-size:11px;line-height:15px;cursor:pointer;color:var(--sourd)}
+#menu .chipsCat span i{width:11px;height:11px;border-radius:50%;flex:0 0 auto;
+ box-shadow:inset 0 0 0 1px #0006}
+#menu .chipsCat span i.aucune{box-shadow:none;border:1px dashed var(--sourd)}
+#menu .chipsCat span:hover{border-color:var(--sourd);color:var(--encre)}
+#menu .chipsCat span.on{border-color:var(--encre);color:var(--encre)}
 /* Le deroulant de la pastille, et l editeur d une couleur. */
 #menu .it i.pt{flex:0 0 auto;width:12px;height:12px;border-radius:50%;
  box-shadow:inset 0 0 0 1px #0006}
@@ -1656,14 +1667,8 @@ grille.addEventListener('contextmenu', e => {
     (REVELER_OK
       ? '<div class="it" data-carte-act="disque">⊞ Show in computer</div>'
       : '') +
-    '<div class="sep"></div><div class="lbl">Colour</div><div class="couls">' +
-    '<span data-carte-coul="0" class="aucune" title="no colour"' +
-    (catDe(f.coul) ? '' : ' style="outline:2px solid var(--encre);outline-offset:1px"') +
-    '></span>' +
-    CATS.liste.map(c => '<span data-carte-coul="' + c.id + '" title="' +
-      echapHtml(c.nom || 'no name') + '" style="background:' + c.coul +
-      (c.id === +(f.coul || 0) ? ';outline:2px solid var(--encre)' +
-      ';outline-offset:1px' : '') + '"></span>').join('') + '</div>';
+    '<div class="sep"></div><div class="lbl">Colour filter</div>' +
+    chipsCats('data-carte-coul', catDe(f.coul) ? +f.coul : 0);
   m.dataset.carteCibles = cibles.join(',');
   m.dataset.carteId = id;
   m.className = 'on';
@@ -1716,6 +1721,19 @@ async function couleurRush(ids, i) {
 // ===========================================================================
 //  Couleurs de rangement : la palette, son editeur, la pastille des cartes
 // ===========================================================================
+// Les couleurs de la palette en pastilles nommees, pour un menu. « attr »
+// porte le numero choisi ; « actuel » est entoure (0 : aucune, null : les
+// cibles n ont pas toutes la meme).
+function chipsCats(attr, actuel) {
+  const ch = (id, fond, nom) => '<span ' + attr + '="' + id + '"' +
+    (actuel === id ? ' class="on"' : '') + '><i' +
+    (fond ? ' style="background:' + fond + '"' : ' class="aucune"') + '></i>' +
+    echapHtml(nom) + '</span>';
+  return '<div class="chipsCat">' +
+    CATS.liste.map(c => ch(c.id, c.coul, c.nom || '—')).join('') +
+    ch(0, '', 'none') + '</div>';
+}
+
 function nettoyerCats(v) {
   const vus = new Set();
   const liste = (Array.isArray(v && v.liste) ? v.liste : [])
@@ -1782,7 +1800,7 @@ function menuPastille(el) {
   const cibles = selection.has(id) && selection.size > 1 ? [...selection] : [id];
   const m = $('#menu');
   m.innerHTML = '<div class="lbl">' + (cibles.length > 1
-      ? 'Colour of ' + cibles.length + ' clips' : 'Colour') + '</div>' +
+      ? 'Colour filter · ' + cibles.length + ' clips' : 'Colour filter') + '</div>' +
     CATS.liste.map(c => '<div class="it' + (+f.coul === c.id ? ' choisi' : '') +
       '" data-cat-choix="' + c.id + '"><i class="pt" style="background:' +
       c.coul + '"></i>' + (c.nom ? echapHtml(c.nom)
@@ -5013,6 +5031,15 @@ function menuPiste(p) {
       : '');
 }
 
+function rushesDeLaSelection() {
+  const ids = [];
+  CLIPS.forEach(x => {
+    if (clipsSel.has(x.uid) && !estSynth(x) && PAR_ID[x.film] &&
+        !ids.includes(x.film)) ids.push(x.film);
+  });
+  return ids;
+}
+
 $('#lanes').addEventListener('contextmenu', e => {
   const el = e.target.closest('.clip');
   if (!el) {
@@ -5072,9 +5099,20 @@ $('#lanes').addEventListener('contextmenu', e => {
          '" style="width:auto;padding:2px 9px;font:10px/1.6 ui-monospace,monospace;' +
          'background:' + ((c.mode || 'contain') === m ? 'var(--orange)' : 'var(--carte)') +
          '">' + (m === 'contain' ? 'Fit' : 'Fill') + '</span>').join('') + '</div>') +
-    '<div class="sep"></div><div class="lbl">Colour</div><div class="couls">' +
+    '<div class="sep"></div><div class="lbl">Block colour</div><div class="couls">' +
     COULS.map((v, i) => '<span data-coul="' + i + '" style="background:var(' + v +
       ')"></span>').join('') + '</div>' +
+    // La couleur de rangement du rush — celle de la bibliotheque, qui sert a
+    // filtrer : on trie depuis la timeline sans retourner dans les rushes.
+    (() => {
+      const ids = rushesDeLaSelection();
+      if (!ids.length) return '';
+      const cs = [...new Set(ids.map(id => catDe(PAR_ID[id].coul)
+        ? +PAR_ID[id].coul : 0))];
+      return '<div class="lbl">Colour filter' + (ids.length > 1
+        ? ' · ' + ids.length + ' rushes' : '') + '</div>' +
+        chipsCats('data-rush-cat', cs.length === 1 ? cs[0] : null);
+    })() +
     '<div class="lbl">Speed</div><div class="couls" style="flex-wrap:wrap">' +
     vitesses.map(v => '<span data-vit="' + v + '" style="width:auto;padding:2px 6px;' +
       'background:' + ((c.vitesse || 1) === v ? 'var(--orange)' : 'var(--carte)') +
@@ -5117,6 +5155,13 @@ menu.addEventListener('click', async e => {
   }
   const coul = e.target.closest('[data-coul]');
   if (coul) { couleurSelection(+coul.dataset.coul); fermerMenu(); return; }
+  const rc = e.target.closest('[data-rush-cat]');
+  if (rc) {
+    const ids = rushesDeLaSelection();
+    fermerMenu();
+    if (ids.length) couleurRush(ids, +rc.dataset.rushCat);
+    return;
+  }
   const vit = e.target.closest('[data-vit]');
   if (vit) {
     let v = vit.dataset.vit;
