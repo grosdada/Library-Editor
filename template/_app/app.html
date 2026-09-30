@@ -51,6 +51,20 @@ h1 small{color:var(--sourd);letter-spacing:.05em;font-weight:400;
 body.edit #selDossier{display:inline-block}
 body.edit .rushOnly{display:none}
 #tailleVign{min-width:74px;width:74px}
+/* Les couleurs de rangement : une pastille et son nom. Un clic filtre, un
+   double-clic ou un clic droit l edite. */
+#cats{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+#cats .cat{display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 4px;
+ border-radius:11px;font-size:11px;line-height:16px;color:var(--sourd);
+ background:none;border:1px solid var(--trait);cursor:pointer;max-width:140px}
+#cats .cat.vide{padding-right:4px}
+#cats .cat i{flex:0 0 auto;width:13px;height:13px;border-radius:50%;
+ background:var(--cc);box-shadow:inset 0 0 0 1px #0005}
+#cats .cat span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#cats .cat:hover{border-color:var(--sourd);color:var(--encre)}
+#cats .cat.on{border-color:var(--cc);color:var(--encre);
+ box-shadow:0 0 0 1px var(--cc)}
+#catPlus{padding:0 7px;border-radius:11px;font-size:13px;line-height:18px}
 
 main{flex:1 1 auto;display:flex;min-height:0}
 aside{flex:0 0 var(--wAside);border-right:1px solid var(--trait);overflow-y:auto;
@@ -545,6 +559,31 @@ input[type=range]:hover::-moz-range-thumb{background:#f3d264}
 #menu .couls span{width:19px;height:19px;border-radius:4px;cursor:pointer;
  border:1px solid #0006}
 #menu .couls span:hover{outline:2px solid var(--encre);outline-offset:1px}
+#menu .couls{flex-wrap:wrap;max-width:230px}
+#menu .couls span.aucune{background:none;border:1px dashed var(--sourd)}
+/* Le deroulant de la pastille, et l editeur d une couleur. */
+#menu .it i.pt{flex:0 0 auto;width:12px;height:12px;border-radius:50%;
+ box-shadow:inset 0 0 0 1px #0006}
+#menu .it i.pt.aucune{box-shadow:none;border:1px dashed var(--sourd)}
+#menu .it.choisi{background:#ffffff14}
+#menu .edCat{display:flex;flex-direction:column;gap:7px;padding:4px 8px 6px;
+ width:224px}
+#menu .edCat .ligne{display:flex;gap:6px;align-items:center}
+#menu .edCat input[type=color]{width:34px;min-width:0;height:26px;padding:0;
+ border:1px solid var(--trait);flex:0 0 auto;cursor:pointer}
+#menu .edCat input[type=text]{flex:1 1 auto;min-width:0;font-size:12px}
+#menu .edCat .teintes{display:flex;flex-wrap:wrap;gap:5px}
+#menu .edCat .teintes b{width:17px;height:17px;border-radius:50%;cursor:pointer;
+ box-shadow:inset 0 0 0 1px #0006}
+#menu .edCat .teintes b:hover{outline:2px solid var(--encre);outline-offset:1px}
+#menu .edCat .petit{font-size:10.5px;color:var(--sourd)}
+/* La pastille d un rush, en bas a droite de sa carte. */
+.c .bas{padding-right:22px}
+.c .pastille{position:absolute;right:6px;bottom:7px;width:13px;height:13px;
+ border-radius:50%;padding:0;border:1px solid #0007;background:var(--cc);
+ cursor:pointer;z-index:2;transition:transform .1s}
+.c .pastille.aucune{background:none;border:1px dashed #8a857c}
+.c .pastille:hover{transform:scale(1.3)}
 
 #voile{position:fixed;inset:0;background:#000a;z-index:80;display:none;
  align-items:center;justify-content:center}
@@ -669,10 +708,7 @@ body.enligne #qui { display: flex; }
   <select id="selDossier"></select>
   <input id="q" placeholder="search…">
   <button id="bFav" title="favourites only">★</button>
-  <select id="forme" title="thumbnail shape">
-    <option value="169">16:9</option><option value="carre">square</option>
-    <option value="rond">round</option>
-  </select>
+  <div id="cats"></div>
   <input type="range" id="tailleVign" min="64" max="300" step="2" value="206"
     title="thumbnail size">
   <span class="pousse"></span>
@@ -1034,21 +1070,16 @@ function poserForme(f) {
 function appliquerProfil() {
   const k = profilCourant(), d = PROFILS[k];
   const t = parseInt(pref.lire('vign_' + k, d.taille), 10) || d.taille;
-  const f = pref.lire('forme_' + k, d.forme);
+  let f = pref.lire('forme_' + k, d.forme);
+  if (f !== '169' && f !== 'carre') f = d.forme;
   poserTaille(t); poserForme(f);
   $('#tailleVign').value = t;
-  $('#forme').value = f;
 }
 function appliquerTaille(px) {
   poserTaille(px);
   pref.ecrire('vign_' + profilCourant(), px);
 }
-function appliquerForme(f) {
-  poserForme(f);
-  pref.ecrire('forme_' + profilCourant(), f);
-}
 $('#tailleVign').oninput = e => appliquerTaille(+e.target.value);
-$('#forme').onchange = e => appliquerForme(e.target.value);
 
 // -- poignées de redimensionnement ------------------------------------------
 const RZ = {
@@ -1119,10 +1150,33 @@ function format(f) {
   return null;
 }
 
+// Les couleurs de rangement : une couleur, un nom — une categorie. La
+// palette appartient a la bibliotheque et vaut pour tous ses projets (elle
+// vit avec les prereglages, genre « categories ») ; chaque rush garde la
+// sienne dans son catalogue, champ « coul », le numero de la categorie,
+// comme avant. Les cinq de depart sont les couleurs d etiquette d origine :
+// un rush deja colore au clic droit tombe dans la categorie de sa couleur.
+// Un numero n est jamais redonne (« suivant ») : un rush d un projet ferme
+// qui portait une couleur effacee ne se retrouve pas dans une nouvelle.
+const CAT_DEPART = [
+  {id: 1, coul: '#a8302f', nom: ''}, {id: 2, coul: '#c98a2b', nom: ''},
+  {id: 3, coul: '#6a9b4a', nom: ''}, {id: 4, coul: '#4a7fa8', nom: ''},
+  {id: 5, coul: '#7a5a9b', nom: ''}];
+// Les teintes proposees, et prises dans l ordre pour une couleur ajoutee.
+const CAT_TEINTES = ['#3f9a94', '#c2577f', '#8f8a3a', '#d06a3a', '#5a67b8',
+                     '#9a6b4a', '#4aa86a', '#b84a4a', '#7d8a99', '#c7b23a',
+                     '#a8302f', '#c98a2b', '#6a9b4a', '#4a7fa8', '#7a5a9b'];
+const CAT_MAX = 40;
+let CATS = {suivant: 6, liste: CAT_DEPART.map(c => Object.assign({}, c))};
+let FILTRE_CAT = 0;
+const catDe = id => CATS.liste.find(c => c.id === +id) || null;
+const couleurCat = id => { const c = id ? catDe(id) : null; return c ? c.coul : ''; };
+
 function correspond(f) {
   if (dossierActif !== null &&
       dossierActif !== f.pj && dossierActif !== clefDossier(f)) return false;
   if (favSeul && !f.fav) return false;
+  if (FILTRE_CAT && +f.coul !== FILTRE_CAT) return false;
   if (q && !f.nom.toLowerCase().includes(q)) return false;
   return true;
 }
@@ -1270,8 +1324,8 @@ function carte(f) {
           '" alt=""><button class="lire" data-lire="' + f.id + '">▶</button>') +
     // Une etiquette de couleur, posee sur le bas de la vignette : elle se voit
     // a toutes les tailles, y compris sur les plus petites du deck.
-    (f.coul ? '<div class="etiq" style="background:var(' +
-      (COULS[f.coul] || '--c0') + ')"></div>' : '') +
+    (couleurCat(f.coul) ? '<div class="etiq" style="background:' +
+      couleurCat(f.coul) + '"></div>' : '') +
     '</div>' +
     '<div class="bas"><div class="nom" data-nom="' + f.id +
     '" title="' + f.nom + ' — double-click to rename">' +
@@ -1284,7 +1338,18 @@ function carte(f) {
              : f.son_seul ? '<span class="b son">SOUND</span>'
                 : (f.a ? '' : '<span class="b muet">MUTE</span>')) +
     (f.absent ? '<span class="b abs">MISSING</span>' : '') +
-    '</div></div></div>';
+    '</div></div>' + pastilleDe(f) + '</div>';
+}
+
+// La pastille en bas a droite d une carte : sa couleur, et au clic le
+// deroulant des couleurs.
+function pastilleDe(f) {
+  const c = f.coul ? catDe(f.coul) : null;
+  const nom = c ? (c.nom || 'this colour') : 'no colour';
+  return '<button class="pastille' + (c ? '' : ' aucune') + '" data-pastille="' +
+    f.id + '"' + (c ? ' style="--cc:' + c.coul + '"' : '') + ' title="' +
+    nom.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;') +
+    ' — click to choose the colour"></button>';
 }
 
 function rendreGrille() {
@@ -1373,6 +1438,8 @@ async function renommerFilm(id, neuf) {
 }
 
 grille.addEventListener('click', async e => {
+  const pa = e.target.closest('[data-pastille]');
+  if (pa) { e.stopPropagation(); menuPastille(pa); return; }
   const et = e.target.closest('[data-fav]');
   if (et) {
     e.stopPropagation();
@@ -1412,6 +1479,7 @@ grille.addEventListener('click', async e => {
 });
 
 grille.addEventListener('dblclick', e => {
+  if (e.target.closest('[data-pastille]')) return;
   const n = e.target.closest('[data-nom]');
   if (n) { editerNom(n); return; }
   // Toute la carte repond : on double-clique « sur le rush », pas sur une
@@ -1589,8 +1657,12 @@ grille.addEventListener('contextmenu', e => {
       ? '<div class="it" data-carte-act="disque">⊞ Show in computer</div>'
       : '') +
     '<div class="sep"></div><div class="lbl">Colour</div><div class="couls">' +
-    COULS.map((v, i) => '<span data-carte-coul="' + i + '" style="background:var(' +
-      v + ')' + (i === (f.coul || 0) ? ';outline:2px solid var(--encre)' +
+    '<span data-carte-coul="0" class="aucune" title="no colour"' +
+    (catDe(f.coul) ? '' : ' style="outline:2px solid var(--encre);outline-offset:1px"') +
+    '></span>' +
+    CATS.liste.map(c => '<span data-carte-coul="' + c.id + '" title="' +
+      echapHtml(c.nom || 'no name') + '" style="background:' + c.coul +
+      (c.id === +(f.coul || 0) ? ';outline:2px solid var(--encre)' +
       ';outline-offset:1px' : '') + '"></span>').join('') + '</div>';
   m.dataset.carteCibles = cibles.join(',');
   m.dataset.carteId = id;
@@ -1634,8 +1706,231 @@ async function couleurRush(ids, i) {
     } catch (err) { f.coul = avant[k]; rate++; }
   }
   if (rate) { rendreGrille(); dire(rate + ' colour(s) not saved', true); }
-  else dire(ids.length > 1 ? ids.length + ' clips coloured' : 'clip coloured');
+  else {
+    const c = catDe(i);
+    dire((ids.length > 1 ? ids.length + ' clips' : 'clip') +
+         (c ? ' → ' + (c.nom ? '“' + c.nom + '”' : 'colour') : ': no colour'));
+  }
 }
+
+// ===========================================================================
+//  Couleurs de rangement : la palette, son editeur, la pastille des cartes
+// ===========================================================================
+function nettoyerCats(v) {
+  const vus = new Set();
+  const liste = (Array.isArray(v && v.liste) ? v.liste : [])
+    .filter(c => c && +c.id > 0 && !vus.has(+c.id) && vus.add(+c.id))
+    .slice(0, CAT_MAX)
+    .map(c => ({id: +c.id,
+                coul: /^#[0-9a-f]{6}$/i.test(c.coul || '') ? c.coul : '#7d8a99',
+                nom: String(c.nom || '').replace(/\s+/g, ' ').trim().slice(0, 40)}));
+  const max = liste.reduce((m, c) => Math.max(m, c.id), 0);
+  return {suivant: Math.max(+v.suivant || 0, max + 1), liste: liste};
+}
+
+async function chargerCategories() {
+  try {
+    const d = await api('/api/presets?genre=categories');
+    const v = d && d.presets && d.presets.palette;
+    if (v && Array.isArray(v.liste)) CATS = nettoyerCats(v);
+  } catch (e) {}
+  rendreCats();
+}
+
+async function enregistrerCats() {
+  try {
+    await api('/api/presets', {genre: 'categories', nom: 'palette',
+                               valeur: CATS});
+    return true;
+  } catch (err) { dire('colours not saved — ' + err.message, true); return false; }
+}
+
+function rendreCats() {
+  const b = $('#cats');
+  if (!b) return;
+  if (FILTRE_CAT && !catDe(FILTRE_CAT)) FILTRE_CAT = 0;
+  b.innerHTML = CATS.liste.map(c =>
+    '<button class="cat' + (c.nom ? '' : ' vide') +
+    (FILTRE_CAT === c.id ? ' on' : '') + '" data-cat="' + c.id +
+    '" style="--cc:' + c.coul + '" title="' +
+    echapHtml(c.nom || 'no name yet') + ' — click: show only these · ' +
+    'double-click or right-click: edit"><i></i>' +
+    (c.nom ? '<span>' + echapHtml(c.nom) + '</span>' : '') + '</button>')
+    .join('') +
+    (CATS.liste.length < CAT_MAX
+      ? '<button id="catPlus" title="add a new colour">+</button>' : '');
+}
+
+// Poser le menu pres d un element, sans deborder de la fenetre.
+function placerMenu(m, r, aDroite) {
+  m.className = 'on';
+  const w = m.offsetWidth, h = m.offsetHeight;
+  let x = aDroite ? r.right - w : r.left;
+  let y = r.bottom + 4;
+  if (y + h > innerHeight - 8) y = Math.max(8, r.top - h - 4);
+  m.style.left = Math.max(8, Math.min(x, innerWidth - w - 8)) + 'px';
+  m.style.top = y + 'px';
+}
+
+// Le deroulant de la pastille : les couleurs de la palette, et « aucune ».
+// Sur une carte de la selection, le choix vaut pour toute la selection —
+// comme le clic droit.
+function menuPastille(el) {
+  const id = el.dataset.pastille, f = PAR_ID[id];
+  if (!f) return;
+  EDIT_CAT = null;
+  const cibles = selection.has(id) && selection.size > 1 ? [...selection] : [id];
+  const m = $('#menu');
+  m.innerHTML = '<div class="lbl">' + (cibles.length > 1
+      ? 'Colour of ' + cibles.length + ' clips' : 'Colour') + '</div>' +
+    CATS.liste.map(c => '<div class="it' + (+f.coul === c.id ? ' choisi' : '') +
+      '" data-cat-choix="' + c.id + '"><i class="pt" style="background:' +
+      c.coul + '"></i>' + (c.nom ? echapHtml(c.nom)
+        : '<span style="opacity:.6">no name</span>') + '</div>').join('') +
+    '<div class="sep"></div><div class="it' + (catDe(f.coul) ? '' : ' choisi') +
+    '" data-cat-choix="0"><i class="pt aucune"></i>No colour</div>';
+  m.dataset.carteCibles = cibles.join(',');
+  placerMenu(m, el.getBoundingClientRect(), true);
+}
+
+// L editeur d une couleur de la palette : sa teinte, son nom, l effacer.
+let EDIT_CAT = null;
+function ouvrirEditeurCat(id) {
+  const c = catDe(id);
+  const b = $('#cats [data-cat="' + id + '"]');
+  if (!c || !b) return;
+  EDIT_CAT = c.id;
+  const n = FILMS.filter(f => +f.coul === c.id && !f.absent).length;
+  const m = $('#menu');
+  m.innerHTML = '<div class="lbl">Colour and its name</div><div class="edCat">' +
+    '<div class="ligne"><input type="color" data-cat-coul value="' + c.coul +
+    '" title="any colour"><input type="text" data-cat-nom maxlength="40" ' +
+    'placeholder="category name…" value="' + echapHtml(c.nom) + '"></div>' +
+    '<div class="teintes">' + [...new Set(CAT_TEINTES)].map(x =>
+      '<b data-cat-teinte="' + x + '" style="background:' + x + '"></b>').join('') +
+    '</div>' +
+    '<div class="petit">' + n + ' clip' + (n === 1 ? '' : 's') +
+    ' in the open projects · Enter to save</div>' +
+    '<div class="ligne"><button data-cat-ok>OK</button>' +
+    '<span class="pousse"></span>' +
+    '<button data-cat-suppr title="remove this colour from the palette — ' +
+    'the clips that carry it are left without colour">Delete</button></div>' +
+    '</div>';
+  placerMenu(m, b.getBoundingClientRect(), false);
+  const ch = m.querySelector('[data-cat-nom]');
+  ch.focus(); ch.select();
+}
+
+// Ecrit ce que l editeur montre. Appele par OK, Entree, ou un clic ailleurs.
+async function validerEditeurCat() {
+  if (!EDIT_CAT) return;
+  const m = $('#menu');
+  const c = catDe(EDIT_CAT);
+  EDIT_CAT = null;
+  const ec = m.querySelector('[data-cat-coul]');
+  const en = m.querySelector('[data-cat-nom]');
+  if (!c || !ec || !en) return;
+  const coul = /^#[0-9a-f]{6}$/i.test(ec.value) ? ec.value : c.coul;
+  const nom = en.value.replace(/\s+/g, ' ').trim().slice(0, 40);
+  if (coul === c.coul && nom === c.nom) return;
+  c.coul = coul; c.nom = nom;
+  rendreCats(); rendreGrille();
+  if (await enregistrerCats()) dire('colour saved' + (nom ? ': “' + nom + '”' : ''));
+}
+
+async function effacerCat(id) {
+  const c = catDe(id);
+  if (!c) return;
+  const n = FILMS.filter(f => +f.coul === c.id && !f.absent).length;
+  if (!confirm('Delete the colour “' + (c.nom || 'no name') + '” from the palette?' +
+      (n ? '\n\n' + n + ' clip' + (n > 1 ? 's' : '') + ' will be left without colour.'
+         : ''))) return;
+  CATS.liste = CATS.liste.filter(x => x.id !== c.id);
+  if (FILTRE_CAT === c.id) FILTRE_CAT = 0;
+  rendreCats(); rendreGrille();
+  if (await enregistrerCats()) dire('colour deleted');
+}
+
+function ajouterCat() {
+  if (CATS.liste.length >= CAT_MAX) { dire(CAT_MAX + ' colours at most'); return; }
+  const prises = new Set(CATS.liste.map(c => c.coul.toLowerCase()));
+  const coul = CAT_TEINTES.find(x => !prises.has(x)) ||
+    CAT_TEINTES[CATS.liste.length % CAT_TEINTES.length];
+  const c = {id: CATS.suivant++, coul: coul, nom: ''};
+  CATS.liste.push(c);
+  rendreCats();
+  enregistrerCats();
+  ouvrirEditeurCat(c.id);
+}
+
+// Un clic filtre ; le double-clic edite, et rend le filtre tel qu il etait
+// avant son premier clic.
+let FILTRE_AVANT = 0;
+$('#cats').addEventListener('click', e => {
+  if (e.target.closest('#catPlus')) { ajouterCat(); return; }
+  const b = e.target.closest('[data-cat]');
+  if (!b || e.detail > 1) return;
+  FILTRE_AVANT = FILTRE_CAT;
+  FILTRE_CAT = FILTRE_CAT === +b.dataset.cat ? 0 : +b.dataset.cat;
+  rendreCats(); rendreGrille();
+});
+$('#cats').addEventListener('dblclick', e => {
+  const b = e.target.closest('[data-cat]');
+  if (!b) return;
+  FILTRE_CAT = FILTRE_AVANT;
+  rendreCats(); rendreGrille();
+  ouvrirEditeurCat(+b.dataset.cat);
+});
+$('#cats').addEventListener('contextmenu', e => {
+  const b = e.target.closest('[data-cat]');
+  if (!b) return;
+  e.preventDefault();
+  ouvrirEditeurCat(+b.dataset.cat);
+});
+
+$('#menu').addEventListener('click', e => {
+  const ch = e.target.closest('[data-cat-choix]');
+  if (ch) {
+    const l = ($('#menu').dataset.carteCibles || '').split(',').filter(Boolean);
+    $('#menu').className = '';
+    couleurRush(l, +ch.dataset.catChoix);
+    return;
+  }
+  const te = e.target.closest('[data-cat-teinte]');
+  if (te) {
+    const ec = $('#menu').querySelector('[data-cat-coul]');
+    if (ec) ec.value = te.dataset.catTeinte;
+    return;
+  }
+  if (e.target.closest('[data-cat-ok]')) {
+    validerEditeurCat();
+    $('#menu').className = '';
+    return;
+  }
+  const su = e.target.closest('[data-cat-suppr]');
+  if (su && EDIT_CAT) {
+    const id = EDIT_CAT;
+    EDIT_CAT = null;
+    $('#menu').className = '';
+    effacerCat(id);
+  }
+});
+$('#menu').addEventListener('keydown', e => {
+  if (!EDIT_CAT || !e.target.closest('.edCat')) return;
+  if (e.key === 'Enter') {
+    e.preventDefault(); e.stopPropagation();
+    validerEditeurCat();
+    $('#menu').className = '';
+  } else if (e.key === 'Escape') {
+    e.preventDefault(); e.stopPropagation();
+    EDIT_CAT = null;
+    $('#menu').className = '';
+  }
+});
+// Un clic ailleurs referme l editeur : ce qui y est ecrit est garde.
+document.addEventListener('pointerdown', e => {
+  if (EDIT_CAT && !e.target.closest('#menu')) validerEditeurCat();
+}, true);
 
 // Retrouver une fiche dans la bibliotheque : on ne touche aux filtres que
 // s ils la cachent, on va a son dossier, et la carte bat le temps qu on la
@@ -1654,6 +1949,7 @@ async function montrerDansLeProjet(id, pj) {
   if (!correspond(f)) {
     if (q) { q = ''; $('#q').value = ''; }
     if (favSeul) { favSeul = false; $('#bFav').classList.remove('on'); }
+    if (FILTRE_CAT) { FILTRE_CAT = 0; rendreCats(); }
     dossierActif = clefDossier(f);
     appliquerProfil();
     rendreDossiers();
@@ -8446,6 +8742,8 @@ async function suivreRendu() {
   await chargerPolices();
   // Les prereglages de secousse : ils viennent de la bibliotheque.
   await chargerPresets();
+  // Et les couleurs de rangement, avant la premiere grille.
+  await chargerCategories();
 
   try {
     const l = await api('/api/projets');
