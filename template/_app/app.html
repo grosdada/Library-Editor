@@ -868,6 +868,10 @@ let OUVERTS = [];
 // partagee : la musique. Toujours ouverte, jamais fermable, jamais dans la
 // liste « ouvrir / creer ». Le serveur dit lesquels le sont.
 let BIBLIS = [];
+// Le projet des captures du moniteur, s il existe : toujours ouvert, tout en
+// bas, sans sequences a lui.
+let CAPTURES_NOM = '';
+const estCaptures = nom => !!CAPTURES_NOM && nom === CAPTURES_NOM;
 const estBibli = nom => BIBLIS.indexOf(nom) >= 0;
 // Projets dont la liste de dossiers est repliee dans la colonne.
 let REPLIES = new Set();
@@ -990,7 +994,8 @@ function refondre() {
   // Une bibliotheque passe TOUJOURS apres les projets — dans la colonne
   // comme dans la grille, et quel que soit l ordre d ouverture. Le tri est
   // stable, donc l ordre des projets entre eux ne bouge pas.
-  OUVERTS.sort((a, b) => (estBibli(a.nom) ? 1 : 0) - (estBibli(b.nom) ? 1 : 0));
+  const rang = n => estCaptures(n) ? 2 : estBibli(n) ? 1 : 0;
+  OUVERTS.sort((a, b) => rang(a.nom) - rang(b.nom));
   FILMS = []; DOSSIERS = [];
   OUVERTS.forEach(p => {
     (p.films || []).forEach(f => { f.pj = p.nom; FILMS.push(f); });
@@ -1225,7 +1230,9 @@ function rendreDossiers() {
   FILMS.forEach(f => {
     if (f.absent) return;
     const c = clefDossier(f);
-    n[c] = (n[c] || 0) + 1;
+    // Un fichier a la racine du projet a pour clef le projet lui-meme : il
+    // etait compte deux fois (4 rushes affichaient 8).
+    if (c !== f.pj) n[c] = (n[c] || 0) + 1;
     n[f.pj] = (n[f.pj] || 0) + 1;
   });
   const vivants = FILMS.filter(f => !f.absent).length;
@@ -1253,12 +1260,14 @@ function rendreDossiers() {
           (plie ? 'expand' : 'replier') + ' the folders">' +
           (plie ? '▶' : '▼') + '</span>'
         : '<span class="chev" style="visibility:hidden">▼</span>') +
-      '<b>' + (bibli ? '♪ ' : '') + ech(p.nom) + '</b><i>' +
-      (n[p.nom] || 0) + '</i>' +
-      '<button class="plus" data-nouveau="' + ech(p.nom) +
-      '" title="add a new folder">+</button>' +
-      (bibli ? '' : '<button class="x" data-fermer="' + ech(p.nom) +
-        '" title="close this project">×</button>') + '</div>';
+      '<b>' + (bibli ? '♪ ' : estCaptures(p.nom) ? '▣ ' : '') + ech(p.nom) +
+      '</b><i>' + (n[p.nom] || 0) + '</i>' +
+      (estCaptures(p.nom) ? ''
+        : '<button class="plus" data-nouveau="' + ech(p.nom) +
+          '" title="add a new folder">+</button>') +
+      (bibli || estCaptures(p.nom) ? ''
+        : '<button class="x" data-fermer="' + ech(p.nom) +
+          '" title="close this project">×</button>') + '</div>';
     if (!plie) {
       const mm = (typeof MONTAGES !== 'undefined' ? MONTAGES : [])
         .filter(x => x.projet === p.nom);
@@ -1269,7 +1278,7 @@ function rendreDossiers() {
     // sa musique. La ligne reste si des sequences y dorment deja — on ne
     // cache jamais du travail existant.
     const aDeLImage = (p.films || []).some(f => !f.absent && !f.son_seul);
-    if (!bibli && (aDeLImage || mm.length)) {
+    if (!bibli && !estCaptures(p.nom) && (aDeLImage || mm.length)) {
       h += '<div class="dos montages" data-montages="' + ech(p.nom) +
         '" title="sequences in this project"><span class="chev">' +
         (om ? '▼' : '▶') + '</span><b>Sequences</b><i>' + mm.length +
@@ -1284,7 +1293,9 @@ function rendreDossiers() {
         : '<div class="dosVide">no saved sequence</div>');
     }
     }
-    if (!plie && (p.besoinScan || !(p.films || []).length))
+    if (!plie && estCaptures(p.nom) && !(p.films || []).length)
+      h += '<div class="dosVide">no screenshot yet — right-click the monitor</div>';
+    else if (!plie && (p.besoinScan || !(p.films || []).length))
       h += '<div class="aScan">' +
         (p.aScanner ? p.aScanner + ' file(s) to scan'
                     : 'no rush found') +
@@ -1329,8 +1340,10 @@ function majEntete() {
   const voulu = TITRE ? TITRE + ' — library & edit table'
                       : 'library & edit table';
   if (document.title !== voulu) document.title = voulu;
-  $('#titre').textContent = OUVERTS.length
-    ? OUVERTS.map(p => p.nom).join(' + ') : 'no project open';
+  // Les captures ne sont pas un projet qu on a ouvert : pas dans le titre.
+  const nomsTitre = OUVERTS.filter(p => !estCaptures(p.nom)).map(p => p.nom);
+  $('#titre').textContent = nomsTitre.length
+    ? nomsTitre.join(' + ') : 'no project open';
   $('#entete').textContent = OUVERTS.length
     ? (vivants.length + ' clips · ' + DOSSIERS.length + ' folders · ' +
        (duree / 60).toFixed(0) + ' min · ' + (poids / 1024).toFixed(1) + ' Go')
@@ -3369,6 +3382,12 @@ const COULS = ['--c0', '--c1', '--c2', '--c3', '--c4', '--c5'];
 // d ecrire, pas une facon de ranger.
 const vAbs = c => Math.abs(c.vitesse || 1) || 1;
 const estRev = c => !!c.rev;
+// Un bloc fige (« Freeze frame ») garde son rush, sa duree et ses reglages,
+// mais ne montre qu une image : celle de l instant « gel », en secondes de
+// source. Au rendu elle vient du meme flux que la video — aucun ecart de
+// couleur a la coupe, ce qu une image extraite puis reimportee donnerait.
+const estGel = c => !!(c && !c.genre && typeof c.gel === 'number' &&
+                       isFinite(c.gel));
 const vSignee = c => (c.rev ? -1 : 1) * vAbs(c);
 // Quelle image de la SOURCE montrer a un instant du montage.
 const srcA = (c, t) => c.rev ? c.o - (t - c.t0) * vAbs(c)
@@ -3674,7 +3693,7 @@ function blocClip(c) {
        : c.genre === 'texte'
          ? 'T ' + echapHtml(String(c.txt || '').split('\n')[0].slice(0, 24) ||
                             'text')
-         : (f ? f.nom : '?')) + '</div>' +
+         : (estGel(c) ? '⏸ ' : '') + (f ? f.nom : '?')) + '</div>' +
     '<div class="info">' + dur(c).toFixed(1) + 's' + vit + '</div>' +
     mqBloc(c).filter(x => mqVisible(c, x)).map(x =>
       '<div class="mqb" data-mqb="' + x.toFixed(4) + '" style="left:' +
@@ -5450,6 +5469,11 @@ $('#lanes').addEventListener('contextmenu', e => {
        : c.genre === 'couleur'
          ? '<div class="it" data-act="modifier">✎ Change colour…</div>'
          : '<div class="it" data-act="renommer">✎ Rename rush…</div>') +
+    (estSynth(c) || estImage(c) || !PAR_ID[c.film] ||
+     piste(c.piste).type !== 'v' ? ''
+      : '<div class="it" data-act="figer">' + (estGel(c)
+          ? '▶ Unfreeze — the shot moves again'
+          : '⏸ Freeze frame') + '</div>') +
     (estSynth(c) ? ''
      : '<div class="it" data-act="usages">⌕ Used in which sequences…</div>' +
        '<div class="it" data-act="voirProjet">⌖ Show in project</div>' +
@@ -5544,6 +5568,7 @@ menu.addEventListener('click', async e => {
   const a = it.dataset.act;
   fermerMenu();
   if (a === 'reinit') { reinitSelection(); return; }
+  if (a === 'figer') { figerSelection(+menu.dataset.uid); return; }
   if (a === 'usages') {
     const c = CLIPS.find(x => clipsSel.has(x.uid) && !estSynth(x));
     if (c) boiteUsages(c.film);
@@ -5790,7 +5815,8 @@ function rendreReglages() {
       'Right-click a block: colour,<br>speed, linking, renaming,<br>' +
       'and where its file is<br>' +
       'Double-click a rush: it opens<br>six times bigger<br>' +
-      'Double-click a value: type it<br>on the keypad, Enter to apply<br><br>' +
+      'Double-click a value: type it<br>on the keypad, Enter to apply<br>' +
+      'Right-click the monitor: save<br>a screenshot to Screenshots<br><br>' +
       'Two overlapping blocks<br>make an automatic dissolve.</div>';
     return;
   }
@@ -6319,6 +6345,106 @@ function rendreReglages() {
 }
 
 // Remise a zero d un bloc, appelee depuis le menu du clic droit.
+// Fige les blocs image selectionnes sur l image sous la tete de lecture (sur
+// leur premiere image si la tete est ailleurs), pour toute leur duree. Le son
+// lie continue, comme un « frame hold ». Sur un bloc deja fige : il repart.
+// L image du moniteur a la taille du projet — pas a celle de l ecran : on
+// agrandit un instant la toile, on redessine sans le cache (ses images sont a
+// la taille de l ecran), on lit, et on remet tout. Les lecteurs sont d abord
+// ramenes a l instant exact.
+async function imageMoniteur() {
+  if (enLecture) pause();
+  resynchroniser(true);
+  await attendrePlaces();
+  const cv = $('#moni'), w0 = cv.width, h0 = cv.height;
+  const pret = CACHE.pret;
+  CACHE.pret = false;
+  GEL.depuis = 0; GEL.qui = '';
+  let url = '';
+  try {
+    cv.width = PROJET.w; cv.height = PROJET.h;
+    dessiner();
+    url = cv.toDataURL('image/png');
+  } finally {
+    cv.width = w0; cv.height = h0;
+    CACHE.pret = pret;
+    dessiner();
+  }
+  return url;
+}
+const nomCapture = () => ((projetNom || 'sequence') + ' ' +
+  tc(tLect).replace(/:/g, '-')).slice(0, 120);
+
+$('#moni').addEventListener('contextmenu', e => {
+  // Maj : le menu du navigateur, tel quel.
+  if (e.shiftKey) return;
+  e.preventDefault();
+  const m = $('#menu');
+  m.innerHTML = '<div class="lbl">Monitor · ' + tc(tLect) + '</div>' +
+    (CAPTURES_NOM ? '<div class="it" data-moni="deck">▣ Save screenshot ' +
+      '<span class="pousse" style="color:var(--sourd);font-size:10px">to ' +
+      echapHtml(CAPTURES_NOM) + '</span></div>' : '') +
+    '<div class="it" data-moni="fichier">⬇ Save image as…</div>' +
+    '<div class="it" data-moni="copier">⧉ Copy image</div>';
+  m.className = 'on';
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.min(e.clientX, innerWidth - r.width - 8) + 'px';
+  m.style.top = Math.min(e.clientY, innerHeight - r.height - 8) + 'px';
+});
+$('#menu').addEventListener('click', async e => {
+  const it = e.target.closest('[data-moni]');
+  if (!it) return;
+  const a = it.dataset.moni;
+  $('#menu').className = '';
+  let url;
+  try { url = await imageMoniteur(); }
+  catch (err) { dire('could not read the monitor — ' + err.message, true); return; }
+  if (!url || url.length < 100) { dire('the monitor is empty', true); return; }
+  if (a === 'deck') {
+    try {
+      const r = await api('/api/capture', {image: url, nom: nomCapture()});
+      const p = projetOuvert(r.projet);
+      if (p) p.films = r.films || p.films;
+      else await ouvrirProjetDisque(r.projet, true);
+      refondre(); rendre();
+      dire('screenshot saved in ' + r.projet + ': ' + ((r.film || {}).nom || ''));
+    } catch (err) { dire('screenshot not saved — ' + err.message, true); }
+  } else if (a === 'fichier') {
+    const l = document.createElement('a');
+    l.href = url;
+    l.download = nomCapture() + '.png';
+    document.body.appendChild(l); l.click(); l.remove();
+  } else if (a === 'copier') {
+    try {
+      const blob = await (await fetch(url)).blob();
+      await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
+      dire('image copied');
+    } catch (err) { dire('copy refused by the browser — ' + err.message, true); }
+  }
+});
+
+function figerSelection(uid) {
+  const c0 = parUid(uid);
+  const l = CLIPS.filter(c => clipsSel.has(c.uid) && !estSynth(c) &&
+    !estImage(c) && PAR_ID[c.film] && piste(c.piste) &&
+    piste(c.piste).type === 'v');
+  if (!l.length) { dire('select a video block'); return; }
+  const defiger = estGel(c0 || l[0]);
+  memoriser();
+  l.forEach(c => {
+    if (defiger) { delete c.gel; return; }
+    const t = (tLect >= c.t0 - 0.001 && tLect < fin(c) - 0.001) ? tLect : c.t0;
+    const f = PAR_ID[c.film];
+    const max = Math.max(0, (f.s || c.o || 0) - 1 / (PROJET.fps || 24));
+    c.gel = Math.round(Math.min(max, Math.max(0, srcA(c, t))) * 1000) / 1000;
+  });
+  rendreLanes(); rendreReglages(); resynchroniser(true); dessiner();
+  dire(defiger
+    ? (l.length > 1 ? l.length + ' blocks move again' : 'the block moves again')
+    : (l.length > 1 ? l.length + ' blocks frozen' : 'frozen on ' +
+       tc(l[0].gel) + ' of the rush') + ' — the sound goes on');
+}
+
 function reinitSelection() {
   const sel = CLIPS.filter(x => clipsSel.has(x.uid));
   if (!sel.length) return;
@@ -6531,6 +6657,14 @@ function resynchroniser(force) {
     // chaque tour de boucle. C est plus saccade qu une lecture normale et
     // c est muet. Le bouton Cache et le rendu ffmpeg, eux, le restituent
     // parfaitement, son compris.
+    if (p.type === 'v' && estGel(c)) {
+      if (!v.paused) v.pause();
+      if (force || Math.abs(v.currentTime - c.gel) > 0.015) {
+        try { v.currentTime = Math.max(0, c.gel); } catch (e) {}
+      }
+      v._prep = 1;
+      continue;
+    }
     if (rev) {
       if (!v.paused) v.pause();
       if (force || Math.abs(v.currentTime - cible) > 0.015) {
@@ -6574,9 +6708,10 @@ function resynchroniser(force) {
     const vit = vAbs(c);
     // Un plan inverse commence par sa DERNIERE image et ne se lance jamais :
     // il n y a rien a amorcer, seulement a se placer au bon endroit.
-    const rev = estRev(c);
+    // Un plan fige ne se lance pas non plus : il attend sur son image.
+    const rev = estRev(c) || estGel(c);
     const av = rev ? 0 : Math.min(AMORCE, c.e / vit);
-    const poser = rev ? c.o : Math.max(0, c.e - av * vit);
+    const poser = estGel(c) ? c.gel : rev ? c.o : Math.max(0, c.e - av * vit);
     const lance = !rev && enLecture && tLect >= c.t0 - av;
     // « _prep » etait un drapeau : une fois leve, il le restait a vie. Le plan
     // avait donc beau avoir deja ete joué et s etre arrete a sa sortie, on ne
@@ -6629,7 +6764,8 @@ function signeMontage() {
             c.teinte || '', c.ombre === false ? 0 : 1,
             c.anim ? JSON.stringify(c.anim) : '',
             c.fx ? JSON.stringify(c.fx) : '',
-            c.masque ? JSON.stringify(c.masque) : ''].join(':'));
+            c.masque ? JSON.stringify(c.masque) : '',
+            estGel(c) ? c.gel : ''].join(':'));
   return p.join('|');
 }
 
@@ -6672,7 +6808,7 @@ function attendrePlaces() {
     if (estSynth(c)) continue;
     const v = POOL.get(c.uid);
     if (!v) continue;
-    const cible = srcA(c, tLect);
+    const cible = estGel(c) ? c.gel : srcA(c, tLect);
     if (v.readyState >= 2 && Math.abs(v.currentTime - cible) < 0.02) continue;
     l.push(new Promise(res => {
       let fait = false;
@@ -8101,17 +8237,18 @@ document.addEventListener('keydown', e => {
 // garde-fou, ouvrir la musique avant les projets suffisait a y enregistrer
 // les montages.
 function hoteMontage() {
-  const bon = n => n && projetOuvert(n) && !estBibli(n);
+  const bon = n => n && projetOuvert(n) && !estBibli(n) && !estCaptures(n);
   if (bon(PROJET.pj)) return PROJET.pj;
-  // Le premier plan qui vient d un vrai projet, la musique mise a part.
+  // Le premier plan qui vient d un vrai projet, la musique et les captures
+  // mises a part.
   const c = CLIPS.find(x => {
     const pj = (PAR_ID[x.film] || {}).pj;
-    return pj && !estBibli(pj);
+    return pj && !estBibli(pj) && !estCaptures(pj);
   });
   if (c) return PAR_ID[c.film].pj;
   const cour = projetCourant();
   if (bon(cour)) return cour;
-  const p = OUVERTS.find(x => !estBibli(x.nom));
+  const p = OUVERTS.find(x => !estBibli(x.nom) && !estCaptures(x.nom));
   return p ? p.nom : '';
 }
 
@@ -8872,6 +9009,7 @@ function objetMontage(avecMasques) {
               gain: c.gain, opacite: c.opac === undefined ? 1 : c.opac,
               lien: c.lien, anim: c.anim || null, fx: fxRendu(c),
               masque: masqueActif(c) ? c.masque : null,
+              gel: estGel(c) ? c.gel : undefined,
               masque_png: avecMasques && masqueActif(c) ? pngMasque(c)
                                                         : undefined,
               fondu_entree: +(c._fIn || 0).toFixed(3),
@@ -9261,8 +9399,9 @@ async function suivreRendu() {
         $('#alerteJ').onclick = () => { $('#alerte').className = ''; };
       }
       BIBLIS = l.biblis || [];
+      CAPTURES_NOM = l.captures || '';
       const dispo = (l.projets || []).map(p => p.nom)
-        .filter(n => !estBibli(n));
+        .filter(n => !estBibli(n) && !estCaptures(n));
       // Ceux de la derniere session, sinon le premier projet deja scanne.
       REPLIES = new Set((pref.lire('replies', '') || '').split('\t')
         .filter(Boolean));
@@ -9282,6 +9421,11 @@ async function suivreRendu() {
         try { await ouvrirProjetDisque(n, true); }
         catch (err) { dire('“' + n + '” unreadable — ' + err.message, true); }
       }
+      // Les captures du moniteur, tout en bas.
+      if (CAPTURES_NOM) {
+        try { await ouvrirProjetDisque(CAPTURES_NOM, true); }
+        catch (err) { CAPTURES_NOM = ''; }
+      }
       // On ouvre sur le premier PROJET, pas sur la musique : sinon la grille
       // s ouvre sur 145 pochettes au lieu des rushes.
       // Le rangement de chacun, projet par projet. Il ne sert qu en ligne.
@@ -9296,7 +9440,7 @@ async function suivreRendu() {
           b.classList.toggle('on', b.dataset.vue === VUE));
         refondre();
       }
-      const prem = OUVERTS.find(x => !estBibli(x.nom));
+      const prem = OUVERTS.find(x => !estBibli(x.nom) && !estCaptures(x.nom));
       if (prem) dossierActif = prem.nom;
       rendre();
       if (!OUVERTS.length)

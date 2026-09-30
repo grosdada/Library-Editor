@@ -72,8 +72,14 @@ print("--- ce que le serveur annonce (port %d) ---" % serveur.PORT)
 c, l = req("/api/projets")
 v("repond", c == 200, c)
 v("rangement annonce", l.get("rangement") is True, l.get("rangement"))
-v("projets = ceux du disque", [p["nom"] for p in l["projets"]] == projets
-  + serveur.biblis_disque(), [p["nom"] for p in l["projets"]])
+v("projets = ceux du disque, puis les captures",
+  [p["nom"] for p in l["projets"]] == projets + serveur.biblis_disque()
+  + ([l["captures"]] if l.get("captures") else []),
+  [p["nom"] for p in l["projets"]])
+v("le projet des captures est annonce, a part des rushes",
+  l.get("captures") == serveur.CAPTURES
+  and serveur.racine_de(serveur.CAPTURES) == serveur.RACINE_CAPTURES,
+  l.get("captures"))
 print("    titre=%r lecture_seule=%r format=%r" % (
     l.get("titre"), l.get("lecture_seule"), l.get("format")))
 
@@ -329,6 +335,92 @@ if projets:
             v("incrustation : calque d effet en tete, couleur, rushes "
               "masque, accelere et inverse", ok_mq and os.path.isfile(sortie),
               serveur.RENDU.get("message"))
+        finally:
+            _sh.rmtree(d, ignore_errors=True)
+
+    print("--- image figee, et captures du moniteur ---")
+    if not serveur.FFMPEG or not video:
+        print("    ffmpeg ou video absents : non eprouve")
+    else:
+        import base64 as _b64
+        import shutil as _sh
+        import tempfile as _tf
+        d = _tf.mkdtemp(prefix="essai-gel-")
+        serveur.LARGE, serveur.HAUT, serveur.FPS_SORTIE = 320, 240, 24
+        serveur.MODE = "video"
+        try:
+            plan = {"projet": PR, "fichier": video["rel"], "entree": 0.0,
+                    "sortie": 1.5, "vitesse": 1, "rev": False, "gel": 0.4,
+                    "cadrage": {"mode": "contain", "echelle": 1}}
+            seg, duree = serveur._segment(plan, d, 1, False)
+            v("piste de base : le plan fige se fabrique, a sa duree",
+              bool(seg) and abs(duree - 1.5) < 0.01, serveur.RENDU.get("message"))
+
+            def image(t_):
+                r = subprocess.run([serveur.FFMPEG, "-v", "error", "-ss",
+                                    "%.2f" % t_, "-i", seg, "-frames:v", "1",
+                                    "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+                                   capture_output=True)
+                return r.stdout
+            if seg:
+                a, b = image(0.1), image(1.2)
+                ecart = (sum(abs(x - y) for x, y in zip(a, b)) / len(a)
+                         if a and len(a) == len(b) else 999)
+                v("une seule image du debut a la fin (ecart %.2f)" % ecart,
+                  ecart < 1.0)
+            base, _ = serveur._segment(
+                {"projet": PR, "fichier": video["rel"], "entree": 0.0,
+                 "sortie": 1.5, "vitesse": 1, "rev": False,
+                 "cadrage": {"mode": "contain", "echelle": 1}}, d, 90, False)
+            sortie = os.path.join(d, "incruste.mp4")
+            ok_gel = bool(base) and serveur._incruster(
+                base, sortie,
+                [{"genre": "", "piste": "V2", "projet": PR,
+                  "fichier": video["rel"], "entree": 0.0, "sortie": 1.0,
+                  "position": 0.2, "duree": 1.0, "vitesse": 1, "gel": 0.5,
+                  "cadrage": {"mode": "contain", "echelle": 0.5}}],
+                0.0, 1.5, d, PR)
+            v("piste du dessus : le plan fige s incruste",
+              ok_gel and os.path.isfile(sortie), serveur.RENDU.get("message"))
+        finally:
+            _sh.rmtree(d, ignore_errors=True)
+
+        # La route des captures : une petite image, puis on efface tout ce
+        # qu elle a cree (fichier, fiche, vignette).
+        cap = serveur.CAPTURES
+        cat_avant = serveur.lire_catalogue(cap) if serveur.catalogue_existe(
+            cap) else None
+        d = _tf.mkdtemp(prefix="essai-cap-")
+        try:
+            png = os.path.join(d, "c.png")
+            subprocess.run([serveur.FFMPEG, "-v", "error", "-y", "-f", "lavfi",
+                            "-i", "color=c=0x3366aa:s=64x36", "-frames:v", "1",
+                            png], check=True)
+            with open(png, "rb") as fh:
+                donnee = "data:image/png;base64," + _b64.b64encode(
+                    fh.read()).decode("ascii")
+            c, r = req("/api/capture", {"image": donnee, "nom": "essai capture"})
+            f = (r or {}).get("film") or {}
+            plein = os.path.join(serveur.media_de(cap), f.get("rel") or "?")
+            v("la capture arrive dans %s, en image" % cap,
+              c == 200 and f.get("image") and os.path.isfile(plein), r)
+            v("et sa fiche est au catalogue",
+              any(x.get("id") == f.get("id") for x in r.get("films", [])))
+            v("son chemin est hors des dossiers de rushes",
+              all(not os.path.abspath(plein).startswith(
+                  os.path.abspath(serveur.media_de(p)) + os.sep)
+                  for p in projets))
+            c2, _ = req("/api/capture", {"image": "data:image/png;base64,QUJD"})
+            v("une image qui n en est pas une est refusee", c2 == 400, c2)
+            if os.path.isfile(plein):
+                os.remove(plein)
+            vig = os.path.join(serveur.posters_de(cap), (f.get("id") or "x") + ".jpg")
+            if os.path.isfile(vig):
+                os.remove(vig)
+            if cat_avant is not None:
+                serveur.ecrire_catalogue(cap, cat_avant)
+            elif os.path.isfile(serveur.catalogue_de(cap)):
+                os.remove(serveur.catalogue_de(cap))
         finally:
             _sh.rmtree(d, ignore_errors=True)
 

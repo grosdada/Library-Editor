@@ -53,6 +53,13 @@ BASE = os.path.dirname(ICI)          # racine : Coulisses-Du-Cosmos-2026
 # Sans lui, tout reste exactement comme aux Coulisses du Cosmos : projets/,
 # bibliotheques/, donnees dans <projet>/_projet/, port 8779.
 FICHIER_REGLAGES = os.path.join(ICI, "bibliotheque.json")
+# Les images enregistrees depuis le moniteur (« Save screenshot ») : un projet
+# a part, rangé dans le dossier de l application — jamais dans un dossier de
+# rushes, ce qui le rend permis en lecture seule. La page le montre tout en
+# bas de la colonne.
+RACINE_CAPTURES = os.path.join(ICI, "_captures")
+CAPTURES = "Screenshots"
+MAX_CAPTURE = 64 * 1024 * 1024
 try:
     with io.open(FICHIER_REGLAGES, encoding="utf-8") as _f:
         REGLAGES = json.load(_f) or {}
@@ -175,11 +182,19 @@ def racine_de(pr):
     r = _OU.get(pr)
     if r and os.path.isdir(os.path.join(r, pr)):
         return r
-    for r in (RACINE_PROJETS, RACINE_BIBLIS):
+    for r in (RACINE_PROJETS, RACINE_BIBLIS, RACINE_CAPTURES):
         if os.path.isdir(os.path.join(r, pr)):
             _OU[pr] = r
             return r
     return RACINE_PROJETS
+
+
+def captures_pretes():
+    """Le projet des captures existe-t-il bien A PART ? Un vrai projet nomme
+    comme lui passerait devant, et on ecrirait dans ses rushes : dans ce cas
+    les captures sont indisponibles."""
+    os.makedirs(os.path.join(RACINE_CAPTURES, CAPTURES), exist_ok=True)
+    return racine_de(CAPTURES) == RACINE_CAPTURES
 
 
 def media_de(pr):
@@ -745,6 +760,24 @@ def scanner(pr, bavard=True):
               (pr, len(films), sum(1 for f in films if f.get("absent"))),
               flush=True)
     return cat
+
+
+def ajouter_fiche(pr, rel):
+    """Ajoute au catalogue la fiche d un seul fichier neuf, et la rend."""
+    plein = os.path.join(media_de(pr), rel.replace("/", os.sep))
+    infos = sonder(plein)
+    nom, ext = os.path.splitext(os.path.basename(rel))
+    cat = lire_catalogue(pr)
+    fiche = {"id": uuid.uuid4().hex[:12], "nom": nom, "ext": ext,
+             "dossier": os.path.dirname(rel), "rel": rel, "note": "",
+             "fav": False, "coul": 0, "absent": False,
+             "son_seul": ext.lower() in EXT_AUDIO,
+             "image": ext.lower() in EXT_IMAGE}
+    fiche.update(infos)
+    cat.setdefault("films", []).append(fiche)
+    cat["racine"] = pr
+    ecrire_catalogue(pr, cat)
+    return fiche
 
 
 def lister_dossiers(pr):
@@ -1385,30 +1418,43 @@ def _segment(plan, dossier, i, avec_son, fi=0.0, fo=0.0, pr_defaut=""):
         return cible, duree
 
     cible = os.path.join(dossier, "seg%03d.mp4" % i)
+    gel = None if image else _gel(plan)
     if image:
         cmd = [FFMPEG, "-nostdin", "-v", "error", "-loop", "1",
                "-framerate", str(FPS_SORTIE), "-t", "%.3f" % duree, "-i", src]
     else:
         cmd = [FFMPEG, "-nostdin", "-v", "error", "-ss", "%.3f" % e,
                "-to", "%.3f" % o, "-i", src]
+    # Image figee : l image vient d une seconde lecture du meme fichier, a
+    # l instant tenu ; le son, lui, reste celui du plan (entree 0). Elle
+    # reste dans le flux video du rush : aucun ecart de couleur a la coupe.
+    iv = 0
+    if gel is not None:
+        cmd += ["-ss", "%.3f" % gel, "-i", src]
+        iv = 1
     if MODE == "video":
         avec_son = False
+    idx_nul = None
     if not avec_son and MODE != "video":
         cmd += ["-f", "lavfi", "-t", "%.3f" % duree,
                 "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"]
+        idx_nul = iv + 1
     # Le masque, en derniere entree.
     mq = plan.get("_masque")
     idx_mq = None
     if mq:
-        idx_mq = 2 if (not avec_son and MODE != "video") else 1
+        idx_mq = (idx_nul if idx_nul is not None else iv) + 1
         cmd += _masque_entree(mq)
     cmd += ["-filter_complex"]
     fx = _fx_actifs(plan)
     opac = float(plan.get("opacite", 1) or 1)
     # Avec des effets, la transparence passe APRES eux, comme sur le moniteur
     # (qui pose le plan traite avec son alpha).
-    vf = _seg_filtre(plan.get("cadrage"), 1.0 if image else vit,
-                     1.0 if fx else opac, duree, rev)
+    vf = _seg_filtre(plan.get("cadrage"),
+                     1.0 if (image or gel is not None) else vit,
+                     1.0 if fx else opac, duree, rev and gel is None)
+    if gel is not None:
+        vf = _prefixe_gel(duree) + vf
     fin = ""
     if fx and opac < 0.995:
         o = max(0.0, min(1.0, opac))
@@ -1420,18 +1466,19 @@ def _segment(plan, dossier, i, avec_son, fi=0.0, fo=0.0, pr_defaut=""):
     graphe = _graphe_fx(fx, "p", "q", duree) if fx else None
     # Le masque passe APRES les effets et AVANT la transparence et les
     # fondus : l ordre du moniteur.
+    ev = "[%d:v]" % iv
     if graphe and idx_mq is not None:
-        fv = ("[0:v]" + vf + "[p];" + graphe + ";" +
+        fv = (ev + vf + "[p];" + graphe + ";" +
               _masque_rvb("q", "qm", idx_mq, "m") + ";[qm]" +
               (fin.lstrip(",") or "null") + "[v]")
     elif graphe:
-        fv = ("[0:v]" + vf + "[p];" + graphe + ";[q]" +
+        fv = (ev + vf + "[p];" + graphe + ";[q]" +
               (fin.lstrip(",") or "null") + "[v]")
     elif idx_mq is not None:
-        fv = ("[0:v]" + vf + "[p];" + _masque_rvb("p", "pm", idx_mq, "m") +
+        fv = (ev + vf + "[p];" + _masque_rvb("p", "pm", idx_mq, "m") +
               ";[pm]" + (fin.lstrip(",") or "null") + "[v]")
     else:
-        fv = "[0:v]" + vf + fin + "[v]"
+        fv = ev + vf + fin + "[v]"
     if avec_son:
         af = "[0:a]aresample=48000,aformat=channel_layouts=stereo"
         if rev:
@@ -1454,7 +1501,7 @@ def _segment(plan, dossier, i, avec_son, fi=0.0, fo=0.0, pr_defaut=""):
     else:
         cmd += [fv]
         if MODE != "video":
-            cmd += ["-map", "1:a"]
+            cmd += ["-map", "%d:a" % idx_nul]
     cmd += ["-map", "[v]"]
     if avec_son:
         cmd += ["-map", "[a]"]
@@ -1714,6 +1761,24 @@ def _num_piste(pid):
     return int(m.group(1)) if m else 0
 
 
+def _gel(plan):
+    """L instant tenu d un plan fige (secondes de source), ou None."""
+    g = plan.get("gel")
+    if g is None or isinstance(g, bool):
+        return None
+    try:
+        g = float(g)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, g) if math.isfinite(g) else None
+
+
+def _prefixe_gel(duree):
+    """Une seule image, tenue toute la duree du bloc."""
+    return ("trim=end_frame=1,setpts=PTS-STARTPTS,"
+            "tpad=stop_mode=clone:stop_duration=%.3f," % (duree + 1.0))
+
+
 def _fondus_alpha(fi, fo, duree):
     """Fondus d ouverture et de fermeture sur le canal alpha d un calque."""
     f = ""
@@ -1847,9 +1912,13 @@ def _incruster(base, sortie, calques, a0, b0, travail, pr_defaut=""):
             e = float(plan.get("entree", 0) or 0)
             o = float(plan.get("sortie", 0) or 0)
             image = src.lower().endswith(EXT_IMAGE)
+            gel = None if image else _gel(plan)
             if image:
                 idx = entree(["-loop", "1", "-framerate", str(FPS_SORTIE),
                               "-t", "%.3f" % (d + 0.2), "-i", src])
+            elif gel is not None:
+                idx = entree(["-ss", "%.3f" % gel, "-i", src])
+                vit, rev = 1.0, False
             else:
                 # Couper le debut du bloc, c est couper la fin de la source
                 # quand il est lu a l envers.
@@ -1867,7 +1936,8 @@ def _incruster(base, sortie, calques, a0, b0, travail, pr_defaut=""):
                               "-to", "%.3f" % max(e + 0.05, o), "-i", src])
             mg = _marge_secousse(cad)
             k2 = ech * mg
-            et = ["scale=%d:%d:force_original_aspect_ratio=%s"
+            et = ([_prefixe_gel(d).rstrip(",")] if gel is not None else []) + [
+                  "scale=%d:%d:force_original_aspect_ratio=%s"
                   % (LARGE, HAUT, "increase" if cad.get("mode") == "cover"
                      else "decrease"),
                   "scale=trunc(iw*%.5f/2)*2:trunc(ih*%.5f/2)*2" % (k2, k2)]
@@ -2807,7 +2877,8 @@ class Poste(BaseHTTPRequestHandler):
             out = []
             # les bibliotheques en dernier : l appli garde ainsi le premier
             # projet comme onglet d accueil, et elles tombent en bas de liste
-            for n in projets_disque() + biblis_disque():
+            captures = [CAPTURES] if captures_pretes() else []
+            for n in projets_disque() + biblis_disque() + captures:
                 vu = catalogue_existe(n)
                 cat = lire_catalogue(n) if vu else None
                 out.append({
@@ -2823,6 +2894,10 @@ class Poste(BaseHTTPRequestHandler):
             VEILLE["signe"] = time.time()
             return self._json({"projets": out, "racine": BASE, "jeton": JETON,
                                "biblis": biblis_disque(),
+                               # le projet des captures du moniteur
+                               # (/api/capture) : sans ce champ, la page ne
+                               # propose pas « Save screenshot ».
+                               "captures": captures[0] if captures else "",
                                "api": API, "ffmpeg": bool(FFMPEG),
                                "titre": TITRE, "rangement": True,
                                "lecture_seule": LECTURE_SEULE,
@@ -3110,6 +3185,41 @@ class Poste(BaseHTTPRequestHandler):
             return self._json({"ok": True, "nom": nom, "ajoute": neuf,
                                "chemin": media_de(nom),
                                "projets": projets_disque()})
+
+        if chemin == "/api/capture":
+            # Une image du moniteur, rangee dans Screenshots. Rien n est ecrit
+            # dans un dossier de rushes : permise en lecture seule.
+            if not captures_pretes():
+                return self._erreur("a project is already named %s" % CAPTURES,
+                                    409)
+            donnee = d.get("image") or ""
+            m = re.match(r"data:image/(png|jpeg);base64,", donnee)
+            if not m or len(donnee) > MAX_CAPTURE:
+                return self._erreur("invalid image", 400)
+            try:
+                brut = base64.b64decode(donnee[m.end():], validate=True)
+            except Exception:
+                return self._erreur("invalid image", 400)
+            ext = ".png" if m.group(1) == "png" else ".jpg"
+            if not brut.startswith(b"\x89PNG" if ext == ".png" else b"\xff\xd8"):
+                return self._erreur("invalid image", 400)
+            base = nom_propre(d.get("nom") or "") or "screenshot"
+            dossier = media_de(CAPTURES)
+            os.makedirs(dossier, exist_ok=True)
+            nom, k = base, 1
+            while os.path.exists(os.path.join(dossier, nom + ext)):
+                k += 1
+                nom = "%s-%d" % (base, k)
+            plein = os.path.join(dossier, nom + ext)
+            with open(plein + ".tmp", "wb") as fh:
+                fh.write(brut)
+            os.replace(plein + ".tmp", plein)
+            # (_agir tourne deja sous _verrou : pas de second verrou ici.)
+            fiche = ajouter_fiche(CAPTURES, nom + ext)
+            # sa vignette tout de suite : la carte s affiche aussitot
+            fabriquer_posters(CAPTURES, budget=10, bavard=False)
+            return self._json({"ok": True, "projet": CAPTURES, "film": fiche,
+                               "films": lire_catalogue(CAPTURES).get("films", [])})
 
         if chemin == "/api/presets":
             g = d.get("genre") or "secousse"
