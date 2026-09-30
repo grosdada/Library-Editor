@@ -2359,6 +2359,120 @@ def choisir_dossier(depart):
     return None
 
 
+# Le meme principe pour des FICHIERS : plusieurs a la fois, et les chemins
+# repartent en UTF-8 (un dossier « Décors » ne doit pas arriver en bouillie).
+_CHOISIR_FICHIERS_TK = (
+    "import sys\n"
+    "import tkinter as tk\n"
+    "from tkinter import filedialog\n"
+    "r = tk.Tk(); r.withdraw(); r.attributes('-topmost', True)\n"
+    "l = filedialog.askopenfilenames(title='Add rushes to the library',\n"
+    "    initialdir=(sys.argv[1] or None),\n"
+    "    filetypes=[('Videos, sounds, images', sys.argv[2]),\n"
+    "               ('All files', '*.*')])\n"
+    "sys.stdout.buffer.write('\\n'.join(l or ()).encode('utf-8'))\n"
+)
+
+_CHOISIR_FICHIERS_PS = (
+    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+    "Add-Type -AssemblyName System.Windows.Forms | Out-Null; "
+    "$d = New-Object System.Windows.Forms.OpenFileDialog; "
+    "$d.Title = 'Add rushes to the library'; $d.Multiselect = $true; "
+    "$d.InitialDirectory = '%s'; "
+    "$d.Filter = 'Videos, sounds, images|%s|All files|*.*'; "
+    "if ($d.ShowDialog() -eq 'OK') { [Console]::Out.Write(($d.FileNames -join \"`n\")) }"
+)
+
+
+def choisir_fichiers(depart):
+    """Ouvre un selecteur de fichiers natif (plusieurs a la fois). Renvoie la
+    liste des chemins, [] si l on annule, None si aucun selecteur."""
+    depart = depart if depart and os.path.isdir(depart) else ""
+    motifs = " ".join("*" + e for e in EXT_MEDIA)
+    lire = lambda o: [x.strip() for x in o.decode("utf-8", "replace")
+                      .splitlines() if x.strip()]
+    try:
+        r = subprocess.run([_python_muet(), "-c", _CHOISIR_FICHIERS_TK, depart,
+                            motifs], capture_output=True, timeout=600,
+                           **_sans_console())
+        if r.returncode == 0:
+            return lire(r.stdout)
+    except Exception:
+        pass
+    if sys.platform == "win32":
+        try:
+            r = subprocess.run(
+                ["powershell", "-NoProfile", "-STA", "-Command",
+                 _CHOISIR_FICHIERS_PS % (depart.replace("'", "''"),
+                                         motifs.replace(" ", ";"))],
+                capture_output=True, timeout=600, **_sans_console())
+            if r.returncode == 0:
+                return lire(r.stdout)
+        except Exception:
+            pass
+    return None
+
+
+def ajouter_rushes(chemins):
+    """Range au catalogue de leur projet des fichiers choisis un par un, sans
+    rescanner : seuls ces fichiers sont sondes. Un fichier doit deja se
+    trouver dans le dossier d un projet (rien n est copie ni deplace). Un
+    fichier renomme retrouve sa fiche d avant (notes, couleur, identifiant),
+    comme au scan."""
+    projets = projets_disque() + biblis_disque() + (
+        [CAPTURES] if captures_pretes() else [])
+    racines = sorted(((p, os.path.normcase(os.path.normpath(media_de(p))))
+                      for p in projets), key=lambda x: -len(x[1]))
+    ajoutes, deja, refus, touches = [], [], [], {}
+    for plein in chemins:
+        plein = os.path.normpath(plein)
+        nom_f = os.path.basename(plein)
+        if not os.path.isfile(plein) or not plein.lower().endswith(EXT_MEDIA):
+            refus.append({"nom": nom_f, "cause": "not a video, a sound or an image"})
+            continue
+        nc = os.path.normcase(plein)
+        pr = next((p for p, r in racines if nc.startswith(r + os.sep)), None)
+        if not pr:
+            refus.append({"nom": nom_f, "cause": "outside the library's "
+                          "projects — put it in a project folder first"})
+            continue
+        rel = os.path.relpath(plein, media_de(pr)).replace("\\", "/")
+        if sur(pr, rel) is None:
+            refus.append({"nom": nom_f, "cause": "in a hidden or data folder"})
+            continue
+        cat = touches.get(pr) or lire_catalogue(pr)
+        films = cat.setdefault("films", [])
+        vieux = next((f for f in films if f.get("rel") == rel), None)
+        if vieux is not None and not vieux.get("absent"):
+            deja.append({"nom": nom_f, "pj": pr, "id": vieux["id"]})
+            continue
+        infos = sonder(plein)
+        nom, ext = os.path.splitext(nom_f)
+        if vieux is None:
+            cle = cle_contenu(dict(infos, image=ext.lower() in EXT_IMAGE))
+            vieux = next((f for f in films if f.get("absent")
+                          and cle_contenu(f) == cle), None)
+        if vieux is None:
+            vieux = {"id": uuid.uuid4().hex[:12], "note": "", "fav": False,
+                     "coul": 0}
+            films.append(vieux)
+        vieux.update({"nom": nom, "ext": ext, "dossier": os.path.dirname(rel),
+                      "rel": rel, "absent": False,
+                      "son_seul": ext.lower() in EXT_AUDIO,
+                      "image": ext.lower() in EXT_IMAGE})
+        vieux.update(infos)
+        touches[pr] = cat
+        ajoutes.append({"nom": nom, "pj": pr, "id": vieux["id"]})
+    for pr, cat in touches.items():
+        cat["racine"] = pr
+        ecrire_catalogue(pr, cat)
+        fabriquer_posters(pr, budget=20, bavard=False)
+    return {"ajoutes": ajoutes, "deja": deja, "refus": refus,
+            "projets": {pr: lire_catalogue(pr).get("films", [])
+                        for pr in set([a["pj"] for a in ajoutes] +
+                                      [a["pj"] for a in deja])}}
+
+
 def _destination(pr, nom, demande, mode):
     """Ou ecrire le rendu.
 
@@ -2918,6 +3032,9 @@ class Poste(BaseHTTPRequestHandler):
                                # du systeme (/api/reveler) : en ligne, il n y
                                # a pas d explorateur, donc pas d entree.
                                "reveler": True,
+                               # sait ajouter des rushes choisis un par un
+                               # (/api/ajouter_rushes), sans rescanner.
+                               "ajout": True,
                                "version": version_installee(),
                                "format": REGLAGES.get("format") or None})
 
@@ -3063,6 +3180,27 @@ class Poste(BaseHTTPRequestHandler):
         if chemin == "/api/parcourir":
             try:
                 return self._agir(chemin, d)
+            except Exception as e:
+                return self._erreur("%s: %s" % (type(e).__name__, e), 500)
+        # « + Add rush » : le selecteur reste ouvert le temps qu on choisisse,
+        # donc hors du verrou ; seule l ecriture des catalogues le prend.
+        if chemin == "/api/ajouter_rushes":
+            try:
+                if d.get("jeton") != JETON:
+                    return self._erreur("invalid token", 403)
+                depart = ""
+                pr = nom_projet(d.get("projet"))
+                if pr:
+                    depart = sur(pr, d.get("dossier") or "") or media_de(pr)
+                l = choisir_fichiers(depart)
+                if l is None:
+                    return self._erreur("no file picker on this machine", 501)
+                if not l:
+                    return self._json({"ok": True, "annule": True,
+                                       "ajoutes": [], "deja": [], "refus": [],
+                                       "projets": {}})
+                with _verrou:
+                    return self._json(dict(ajouter_rushes(l), ok=True))
             except Exception as e:
                 return self._erreur("%s: %s" % (type(e).__name__, e), 500)
         with _verrou:

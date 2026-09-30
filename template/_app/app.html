@@ -749,6 +749,8 @@ body.enligne #qui { display: flex; }
   <span class="pousse"></span>
   <span id="cpt" style="color:var(--sourd)"></span>
   <button id="bScan" class="rushOnly bureauSeul">Rescan</button>
+  <button id="bAjoutRush" class="bureauSeul" hidden
+    title="pick one or more new rushes in the project's folder — only those are read, no rescan">+ Add rush</button>
   <button id="bPurge" class="rushOnly bureauSeul" hidden
     title="remove from the library the clips whose file is no longer on disk">Remove missing</button>
   <button id="bAnnul" class="rushOnly bureauSeul ecritRushes">Undo on disk</button>
@@ -913,6 +915,8 @@ let DOSSIERS_OK = false;
 // Le serveur sait-il montrer un fichier dans l explorateur du systeme
 // (/api/reveler) ? En ligne il n y a pas d explorateur : pas d entree.
 let REVELER_OK = false;
+// Le serveur sait ajouter des rushes choisis un par un (champ « ajout »).
+let AJOUT_OK = false;
 // Le serveur sait se mettre a jour depuis GitHub (champ « maj »).
 let MAJ_DISPO = false;
 // Le faux dossier qui recueille ce qui n a pas encore ete range. Il n est
@@ -3076,6 +3080,57 @@ $('#q').oninput = e => { q = e.target.value.toLowerCase().trim(); rendreGrille()
 $('#bFav').onclick = () => {
   favSeul = !favSeul; $('#bFav').classList.toggle('on', favSeul); rendreGrille();
 };
+// « + Add rush » : le selecteur de Windows s ouvre dans le dossier choisi
+// dans la colonne (le projet, ou son sous-dossier), et seuls les fichiers
+// pris sont lus — un rescan relit tout le projet. Les fichiers doivent deja
+// etre dans le dossier d un projet : rien n est copie ni deplace.
+$('#bAjoutRush').onclick = async () => {
+  const b = $('#bAjoutRush');
+  const pj = projetCourant() || '';
+  // En vue Source, la clef d un dossier est « projet/sous/dossier » : c est la
+  // qu on ouvre. En « My folders » les dossiers sont virtuels : le projet.
+  let sous = '';
+  if (VUE !== 'rangement' && dossierActif && dossierActif.indexOf('/') > 0 &&
+      dossierActif.split('/')[0] === pj)
+    sous = dossierActif.slice(pj.length + 1);
+  b.disabled = true; b.textContent = 'choose in the window…';
+  try {
+    const r = await api('/api/ajouter_rushes',
+      {jeton: JETON, projet: pj, dossier: sous}, 0);
+    if (r.annule) { dire('nothing added'); return; }
+    for (const nom of Object.keys(r.projets || {})) {
+      const p = projetOuvert(nom);
+      if (p) { p.films = r.projets[nom]; p.besoinScan = false; }
+      else {
+        try { await ouvrirProjetDisque(nom, true); } catch (err) {}
+      }
+    }
+    refondre(); rendre();
+    const neufs = (r.ajoutes || []).concat(r.deja || []);
+    if (neufs.length) {
+      selection.clear();
+      neufs.forEach(x => selection.add(x.id));
+      // On montre le premier, dans son dossier ; les autres restent
+      // selectionnes avec lui.
+      await montrerDansLeProjet(neufs[0].id, neufs[0].pj);
+      neufs.forEach(x => selection.add(x.id));
+      rendreGrille();
+    }
+    const n = (r.ajoutes || []).length, dj = (r.deja || []).length;
+    const rf = r.refus || [];
+    dire((n ? n + (n > 1 ? ' rushes added' : ' rush added') +
+          ' to ' + [...new Set(r.ajoutes.map(x => x.pj))].join(', ')
+        : 'no new rush') +
+      (dj ? ' · ' + dj + ' already in the library' : '') +
+      (rf.length ? ' · refused: ' + rf.map(x => x.nom + ' (' + x.cause + ')')
+        .join(', ') : ''), !n && rf.length > 0);
+  } catch (err) {
+    dire('rushes not added — ' + err.message, true);
+  } finally {
+    b.disabled = false; b.textContent = '+ Add rush';
+  }
+};
+
 $('#bScan').onclick = () => {
   const pj = projetCourant();
   if (!pj) { dire('pick a project in the column first', true); return; }
@@ -9345,6 +9400,8 @@ async function suivreRendu() {
     ONDE_OK = !ENLIGNE && !!l.onde;
     DOSSIERS_OK = !ENLIGNE && !!l.dossiers;
     REVELER_OK = !ENLIGNE && !!l.reveler;
+    AJOUT_OK = !ENLIGNE && !!l.ajout;
+    $('#bAjoutRush').hidden = !AJOUT_OK;
     MAJ_DISPO = !ENLIGNE && !!l.maj;
     if (MAJ_DISPO) {
       // Le bouton apparait tout de suite ; la verification aupres de GitHub

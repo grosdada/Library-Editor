@@ -424,6 +424,77 @@ if projets:
         finally:
             _sh.rmtree(d, ignore_errors=True)
 
+    print("--- + Add rush : des fichiers choisis, sans rescanner ---")
+    if not serveur.FFMPEG:
+        print("    ffmpeg absent : non eprouve")
+    else:
+        import shutil as _sh
+        import tempfile as _tf
+        cap = serveur.CAPTURES
+        dcap = serveur.media_de(cap)
+        cat_avant = serveur.lire_catalogue(cap) if serveur.catalogue_existe(
+            cap) else None
+        dehors = _tf.mkdtemp(prefix="essai-ajout-")
+        crees = []
+        vu = {}
+        vrai = serveur.choisir_fichiers
+        try:
+            jeton_srv = req("/api/projets")[1].get("jeton")
+            os.makedirs(dcap, exist_ok=True)
+            img = os.path.join(dcap, "essai ajout.png")
+            txt = os.path.join(dcap, "essai ajout.txt")
+            loin = os.path.join(dehors, "hors bibliotheque.png")
+            for p_ in (img, loin):
+                subprocess.run([serveur.FFMPEG, "-v", "error", "-y", "-f",
+                                "lavfi", "-i", "color=c=0x993333:s=64x36",
+                                "-frames:v", "1", p_], check=True)
+            with open(txt, "w") as fh:
+                fh.write("x")
+            crees += [img, txt]
+
+            def faux(depart):
+                vu["depart"] = depart
+                return [img, txt, loin]
+            serveur.choisir_fichiers = faux
+            c, r = req("/api/ajouter_rushes", {"jeton": jeton_srv,
+                                               "projet": cap})
+            v("la route repond", c == 200, r)
+            v("le selecteur s ouvre dans le dossier du projet",
+              os.path.normcase(vu.get("depart") or "") ==
+              os.path.normcase(dcap), vu.get("depart"))
+            aj = r.get("ajoutes") or []
+            v("le fichier du projet entre au catalogue",
+              len(aj) == 1 and aj[0].get("pj") == cap
+              and any(f.get("id") == aj[0]["id"]
+                      for f in (r.get("projets") or {}).get(cap, [])), r)
+            causes = sorted(x.get("cause", "")[:12] for x in r.get("refus", []))
+            v("le texte et le fichier hors bibliotheque sont refuses",
+              len(causes) == 2, r.get("refus"))
+            c, r2 = req("/api/ajouter_rushes", {"jeton": jeton_srv,
+                                                "projet": cap})
+            v("repris une seconde fois : deja la, rien de double",
+              not r2.get("ajoutes") and len(r2.get("deja") or []) == 1, r2)
+            c, r3 = req("/api/ajouter_rushes", {"jeton": "faux"})
+            v("sans le jeton du serveur : refuse", c == 403, c)
+            serveur.choisir_fichiers = lambda depart: []
+            c, r4 = req("/api/ajouter_rushes", {"jeton": jeton_srv})
+            v("fenetre fermee sans choix : rien ne change",
+              c == 200 and r4.get("annule"), r4)
+        finally:
+            serveur.choisir_fichiers = vrai
+            for p_ in crees:
+                if os.path.isfile(p_):
+                    os.remove(p_)
+            for f in serveur.lire_catalogue(cap).get("films", []):
+                vig = os.path.join(serveur.posters_de(cap), f["id"] + ".jpg")
+                if f.get("rel") == "essai ajout.png" and os.path.isfile(vig):
+                    os.remove(vig)
+            if cat_avant is not None:
+                serveur.ecrire_catalogue(cap, cat_avant)
+            elif os.path.isfile(serveur.catalogue_de(cap)):
+                os.remove(serveur.catalogue_de(cap))
+            _sh.rmtree(dehors, ignore_errors=True)
+
     print("--- rangement virtuel ---")
     c, sauve = req("/api/rangement?projet=" + PR)
     v("lecture", c == 200, sauve)
