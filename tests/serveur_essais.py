@@ -11,6 +11,7 @@ Lance le vrai serveur.py de la bibliotheque, sur son vrai port, dans un fil.
 """
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -256,6 +257,78 @@ if projets:
                                                       0.0, 2.0, d)
             v("calque d effet incruste sur le montage", ok_inc
               and os.path.isfile(sortie), serveur.RENDU.get("message"))
+        finally:
+            _sh.rmtree(d, ignore_errors=True)
+
+    print("--- masques, et rushes des pistes du dessus ---")
+    if not serveur.FFMPEG or not video:
+        print("    ffmpeg ou video absents : masques non eprouves")
+    else:
+        import base64 as _b64
+        import shutil as _sh
+        import tempfile as _tf
+        d = _tf.mkdtemp(prefix="essai-masque-")
+        serveur.LARGE, serveur.HAUT, serveur.FPS_SORTIE = 320, 240, 24
+        serveur.MODE = "video"
+        try:
+            png = os.path.join(d, "ellipse.png")
+            subprocess.run([serveur.FFMPEG, "-v", "error", "-y", "-f", "lavfi",
+                            "-i", "color=c=black:s=320x240,geq=lum='if(lt("
+                            "hypot((X-160)/100,(Y-120)/70),1),255,0)':cb=128:"
+                            "cr=128", "-frames:v", "1", png], check=True)
+            with open(png, "rb") as fh:
+                donnee = "data:image/png;base64," + _b64.b64encode(
+                    fh.read()).decode("ascii")
+            mq = serveur._ecrire_masque(donnee, d, 1)
+            v("le masque recu s ecrit", bool(mq) and os.path.isfile(mq))
+            v("un masque qui n est pas un PNG est refuse",
+              serveur._ecrire_masque("data:image/png;base64,QUJD", d, 2) is None)
+
+            plan = {"projet": PR, "fichier": video["rel"], "entree": 0.0,
+                    "sortie": 1.0, "vitesse": 1, "rev": False,
+                    "cadrage": {"mode": "cover", "echelle": 1}, "_masque": mq}
+            seg, _ = serveur._segment(plan, d, 1, False)
+            v("piste principale : le segment masque se fabrique", bool(seg),
+              serveur.RENDU.get("message"))
+            if seg:
+                r = subprocess.run([serveur.FFMPEG, "-v", "error", "-ss", "0.5",
+                                    "-i", seg, "-frames:v", "1", "-f",
+                                    "rawvideo", "-pix_fmt", "gray", "-"],
+                                   capture_output=True)
+                px = r.stdout
+                coin = max(px[0:8]) if len(px) >= 320 * 240 else 255
+                centre = px[120 * 320 + 160] if len(px) >= 320 * 240 else 0
+                v("hors du masque, le noir (coin %d) ; dedans, l image" % coin,
+                  coin <= 18 and len(px) == 320 * 240)
+
+            base, _ = serveur._segment(
+                {"projet": PR, "fichier": video["rel"], "entree": 0.0,
+                 "sortie": 2.0, "vitesse": 1, "rev": False,
+                 "cadrage": {"mode": "contain", "echelle": 1}}, d, 90, False)
+            calques = [
+                {"genre": "reglage", "piste": "V2", "position": 0.2,
+                 "duree": 1.0, "opacite": 1, "_masque": mq,
+                 "fx": [{"t": "nb", "mode": "nb"}]},
+                {"genre": "couleur", "piste": "V2", "fond": "#ff0000",
+                 "position": 0.0, "duree": 1.5, "opacite": 0.8,
+                 "cadrage": {"echelle": 0.5}, "_masque": mq},
+                {"genre": "", "piste": "V3", "projet": PR,
+                 "fichier": video["rel"], "entree": 0.0, "sortie": 1.5,
+                 "position": 0.3, "duree": 1.5, "vitesse": 1,
+                 "fondu_entree": 0.2,
+                 "cadrage": {"mode": "contain", "echelle": 0.6, "dx": 20},
+                 "fx": [{"t": "flou", "mode": "gauss", "force": 1}],
+                 "_masque": mq},
+                {"genre": "", "piste": "V3", "projet": PR,
+                 "fichier": video["rel"], "entree": 0.0, "sortie": 0.8,
+                 "position": 1.2, "duree": 0.4, "vitesse": 2, "rev": True,
+                 "cadrage": {"mode": "cover", "echelle": 1.2}}]
+            sortie = os.path.join(d, "incruste.mp4")
+            ok_mq = bool(base) and serveur._incruster(base, sortie, calques,
+                                                      0.0, 2.0, d, PR)
+            v("incrustation : calque d effet en tete, couleur, rushes "
+              "masque, accelere et inverse", ok_mq and os.path.isfile(sortie),
+              serveur.RENDU.get("message"))
         finally:
             _sh.rmtree(d, ignore_errors=True)
 

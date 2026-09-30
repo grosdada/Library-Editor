@@ -1396,6 +1396,12 @@ def _segment(plan, dossier, i, avec_son, fi=0.0, fo=0.0, pr_defaut=""):
     if not avec_son and MODE != "video":
         cmd += ["-f", "lavfi", "-t", "%.3f" % duree,
                 "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"]
+    # Le masque, en derniere entree.
+    mq = plan.get("_masque")
+    idx_mq = None
+    if mq:
+        idx_mq = 2 if (not avec_son and MODE != "video") else 1
+        cmd += _masque_entree(mq)
     cmd += ["-filter_complex"]
     fx = _fx_actifs(plan)
     opac = float(plan.get("opacite", 1) or 1)
@@ -1412,9 +1418,18 @@ def _segment(plan, dossier, i, avec_son, fi=0.0, fo=0.0, pr_defaut=""):
     if fo > 0.02:
         fin += ",fade=t=out:st=%.3f:d=%.3f" % (max(0, duree - fo), min(fo, duree))
     graphe = _graphe_fx(fx, "p", "q", duree) if fx else None
-    if graphe:
+    # Le masque passe APRES les effets et AVANT la transparence et les
+    # fondus : l ordre du moniteur.
+    if graphe and idx_mq is not None:
+        fv = ("[0:v]" + vf + "[p];" + graphe + ";" +
+              _masque_rvb("q", "qm", idx_mq, "m") + ";[qm]" +
+              (fin.lstrip(",") or "null") + "[v]")
+    elif graphe:
         fv = ("[0:v]" + vf + "[p];" + graphe + ";[q]" +
               (fin.lstrip(",") or "null") + "[v]")
+    elif idx_mq is not None:
+        fv = ("[0:v]" + vf + "[p];" + _masque_rvb("p", "pm", idx_mq, "m") +
+              ";[pm]" + (fin.lstrip(",") or "null") + "[v]")
     else:
         fv = "[0:v]" + vf + fin + "[v]"
     if avec_son:
@@ -1641,6 +1656,64 @@ def _drawtext(plan, travail, n, ech=1.0):
     return ":".join(f)
 
 
+# ---------------------------------------------------------------------------
+#  Masques
+# ---------------------------------------------------------------------------
+# La page trace le masque elle-meme (plume et inversion comprises) a la
+# taille de sortie, et l envoie en PNG avec le montage : blanc = garde. Le
+# rendu n a donc qu a multiplier — l image de la piste principale, ou l alpha
+# d un calque —, et ce qu on voit au moniteur est ce qui sort.
+MAX_MASQUE = 16 * 1024 * 1024
+
+
+def _ecrire_masque(donnee, dossier, k):
+    """Le PNG d un masque, recu en data URL. None s il ne va pas."""
+    pre = "data:image/png;base64,"
+    if (not isinstance(donnee, str) or not donnee.startswith(pre)
+            or len(donnee) > MAX_MASQUE):
+        return None
+    try:
+        brut = base64.b64decode(donnee[len(pre):], validate=True)
+    except Exception:
+        return None
+    if not brut.startswith(b"\x89PNG"):
+        return None
+    chemin = os.path.join(dossier, "masque%03d.png" % k)
+    with open(chemin, "wb") as fh:
+        fh.write(brut)
+    return chemin
+
+
+def _masque_entree(chemin):
+    """L entree ffmpeg d un masque : l image, bouclee a la cadence de sortie."""
+    return ["-framerate", str(FPS_SORTIE), "-loop", "1", "-i", chemin]
+
+
+def _masque_rvb(entree, sortie, idx, pre):
+    """Piste principale : l image multipliee par le masque. Rien n est
+    dessous, le dehors devient donc noir — comme au moniteur."""
+    return ("[{i}:v]format=gray,scale={w}:{h},format=gbrp[{p}mk];"
+            "[{e}]format=gbrp[{p}mx];"
+            "[{p}mx][{p}mk]blend=all_mode=multiply:shortest=1,"
+            "format=yuv420p[{s}]").format(i=idx, w=LARGE, h=HAUT, p=pre,
+                                          e=entree, s=sortie)
+
+
+def _masque_alpha(entree, sortie, idx, pre):
+    """Calque : son alpha multiplie par le masque."""
+    return ("[{i}:v]format=gray,scale={w}:{h}[{p}mk];"
+            "[{e}]format=rgba,split[{p}ma][{p}mb];[{p}mb]alphaextract[{p}al];"
+            "[{p}al][{p}mk]blend=all_mode=multiply:shortest=1[{p}am];"
+            "[{p}ma][{p}am]alphamerge,format=rgba[{s}]").format(
+                i=idx, w=LARGE, h=HAUT, p=pre, e=entree, s=sortie)
+
+
+def _num_piste(pid):
+    """Le numero d une piste (« V2 » -> 2) : l ordre d empilement."""
+    m = re.search(r"(\d+)", str(pid or ""))
+    return int(m.group(1)) if m else 0
+
+
 def _fondus_alpha(fi, fo, duree):
     """Fondus d ouverture et de fermeture sur le canal alpha d un calque."""
     f = ""
@@ -1687,7 +1760,13 @@ def _segment_synth(plan, dossier, i, duree, fi=0.0, fo=0.0):
         vf += ",fade=t=in:st=0:d=%.3f" % min(fi, duree)
     if fo > 0.02:
         vf += ",fade=t=out:st=%.3f:d=%.3f" % (max(0, duree - fo), min(fo, duree))
-    cmd += ["-filter_complex", "[0:v]" + vf + ",format=yuv420p[v]", "-map", "[v]"]
+    if plan.get("_masque"):
+        cmd += _masque_entree(plan["_masque"])
+        graphe = ("[0:v]" + vf + "[s0];" +
+                  _masque_rvb("s0", "v", 2 if MODE != "video" else 1, "m"))
+    else:
+        graphe = "[0:v]" + vf + ",format=yuv420p[v]"
+    cmd += ["-filter_complex", graphe, "-map", "[v]"]
     if MODE != "video":
         cmd += ["-map", "1:a", "-c:a", "aac", "-b:a", "192k",
                 "-ar", "48000", "-ac", "2"]
@@ -1702,21 +1781,35 @@ def _segment_synth(plan, dossier, i, duree, fi=0.0, fo=0.0):
     return cible, duree
 
 
-def _incruster(base, sortie, calques, a0, b0, travail):
+def _incruster(base, sortie, calques, a0, b0, travail, pr_defaut=""):
     """Superpose les calques sur le montage assemble, en une passe.
 
     Chaque calque devient une entree RGBA de sa propre duree : couleur pleine,
-    ou canevas transparent grave par drawtext. Fondus sur l alpha, decalage
-    dans le temps par tpad, puis overlay en chaine."""
+    canevas transparent grave par drawtext, ou rush pose sur un canevas
+    transparent plein cadre. Masque et fondus sur l alpha, decalage dans le
+    temps par tpad, puis overlay en chaine.
+
+    « n » numerote les etiquettes, « nin » les entrees : un calque d effet
+    n ajoute pas d entree, un masque en ajoute une."""
     cmd = [FFMPEG, "-nostdin", "-v", "error", "-i", base]
-    chaine, etiq, n = [], "0:v", 0
+    chaine, etiq, n, nin = [], "0:v", 0, 1
+
+    def entree(args):
+        nonlocal nin
+        cmd.extend(args)
+        nin += 1
+        return nin - 1
+
     for plan in calques:
         pos = float(plan.get("position", 0) or 0)
         d = float(plan.get("duree", 0) or 0)
+        coupe_debut = coupe_fin = 0.0
         if pos < a0:
+            coupe_debut = a0 - pos
             d -= (a0 - pos)
             pos = a0
         if b0 and pos + d > b0:
+            coupe_fin = pos + d - b0
             d = b0 - pos
         if d <= 0.06:
             continue
@@ -1734,6 +1827,94 @@ def _incruster(base, sortie, calques, a0, b0, travail):
         # montage assemble, et le calque entre a « pos ».
         sx, sy = _secousse(cad, pos, d)
         sr = _rotation_secousse(cad, pos, d)
+        # Les memes, en temps du calque (avant tpad), pour ce qui se place
+        # sur son propre canevas.
+        sxl, syl = _secousse(cad, 0.0, d)
+        srl = _rotation_secousse(cad, 0.0, d)
+        mq = plan.get("_masque")
+        idx_mq = entree(_masque_entree(mq)) if mq else None
+        if not genre:
+            # Un rush pose sur une piste du dessus : on le decoupe, le met a
+            # sa vitesse et a sa taille, le pose sur un canevas transparent
+            # plein cadre a sa place, puis effets, masque, transparence et
+            # fondus — l ordre du moniteur.
+            src = sur(plan.get("projet") or pr_defaut, plan.get("fichier") or "")
+            if not src or not os.path.isfile(src):
+                n -= 1
+                continue
+            vit = abs(float(plan.get("vitesse", 1) or 1)) or 1.0
+            rev = bool(plan.get("rev"))
+            e = float(plan.get("entree", 0) or 0)
+            o = float(plan.get("sortie", 0) or 0)
+            image = src.lower().endswith(EXT_IMAGE)
+            if image:
+                idx = entree(["-loop", "1", "-framerate", str(FPS_SORTIE),
+                              "-t", "%.3f" % (d + 0.2), "-i", src])
+            else:
+                # Couper le debut du bloc, c est couper la fin de la source
+                # quand il est lu a l envers.
+                if rev:
+                    e, o = e + coupe_fin * vit, o - coupe_debut * vit
+                else:
+                    e, o = e + coupe_debut * vit, o - coupe_fin * vit
+                if rev and (o - e) > LIMITE_INVERSE:
+                    RENDU["message"] = (
+                        "un plan inverse de %.0f s depasse la limite de %.0f s"
+                        " : coupe-le en morceaux plus courts."
+                        % (o - e, LIMITE_INVERSE))
+                    return False
+                idx = entree(["-ss", "%.3f" % max(0.0, e),
+                              "-to", "%.3f" % max(e + 0.05, o), "-i", src])
+            mg = _marge_secousse(cad)
+            k2 = ech * mg
+            et = ["scale=%d:%d:force_original_aspect_ratio=%s"
+                  % (LARGE, HAUT, "increase" if cad.get("mode") == "cover"
+                     else "decrease"),
+                  "scale=trunc(iw*%.5f/2)*2:trunc(ih*%.5f/2)*2" % (k2, k2)]
+            if rev and not image:
+                et.append("reverse")
+            if not image and abs(vit - 1) > 0.001:
+                et.append("setpts=%.6f*PTS" % (1.0 / vit))
+            et += ["fps=%d" % FPS_SORTIE, "format=rgba"]
+            chaine.append("[%d:v]" % idx + ",".join(et) + "[os%d]" % n)
+            x = "(W-w)/2+%.2f" % dx + ("+" + sxl if sxl else "")
+            y = "(H-h)/2+%.2f" % dy + ("+" + syl if syl else "")
+            chaine.append("color=c=black@0.0:s=%dx%d:r=%d:d=%.3f,format=rgba"
+                          "[og%d]" % (LARGE, HAUT, FPS_SORTIE, d, n))
+            cur = "op%d" % n
+            chaine.append("[og%d][os%d]overlay=x='%s':y='%s':eof_action=pass:"
+                          "format=auto,format=rgba%s[%s]"
+                          % (n, n, x, y,
+                             (",rotate=a='%s':ow=iw:oh=ih:fillcolor=black@0.0"
+                              % srl) if srl else "", cur))
+            fxl = _fx_actifs(plan)
+            if fxl:
+                # Les effets travaillent en RVB : l alpha est mis de cote
+                # et reposé ensuite.
+                g = _graphe_fx(fxl, "of%d" % n, "oq%d" % n, d, "o%d_" % n)
+                if g:
+                    chaine.append("[%s]split[of%d][ob%d];[ob%d]alphaextract"
+                                  "[oa%d]" % (cur, n, n, n, n))
+                    chaine.append(g)
+                    chaine.append("[oq%d][oa%d]alphamerge,format=rgba[ox%d]"
+                                  % (n, n, n))
+                    cur = "ox%d" % n
+            if idx_mq is not None:
+                chaine.append(_masque_alpha(cur, "om%d" % n, idx_mq, "k%d" % n))
+                cur = "om%d" % n
+            f = "[%s]" % cur + ("colorchannelmixer=aa=%.3f" % opac
+                                if opac < 0.995 else "null")
+            f += _fondus_alpha(fi, fo, d)
+            if pos > 0.001:
+                f += (",tpad=start_duration=%.3f:start_mode=add:color=black@0.0"
+                      % pos)
+            f += "[c%d]" % n
+            chaine.append(f)
+            suivante = "b%d" % n
+            chaine.append("[%s][c%d]overlay=x=0:y=0:eof_action=pass[%s]"
+                          % (etiq, n, suivante))
+            etiq = suivante
+            continue
         if genre == "reglage":
             # Sa pile s applique a TOUT ce qui est deja assemble dessous : on
             # dedouble le montage, on traite la copie sur la duree du calque,
@@ -1748,7 +1929,12 @@ def _incruster(base, sortie, calques, a0, b0, travail):
             chaine.append("[ra%d]trim=start=%.3f:duration=%.3f,"
                           "setpts=PTS-STARTPTS[rs%d]" % (n, pos, d, n))
             chaine.append(graphe)
-            f = "[rq%d]format=rgba,colorchannelmixer=aa=%.3f" % (n, opac)
+            if idx_mq is not None:
+                chaine.append(_masque_alpha("rq%d" % n, "rk%d" % n, idx_mq,
+                                            "k%d" % n))
+                f = "[rk%d]colorchannelmixer=aa=%.3f" % (n, opac)
+            else:
+                f = "[rq%d]format=rgba,colorchannelmixer=aa=%.3f" % (n, opac)
             f += _fondus_alpha(fi, fo, d)
             if pos > 0.001:
                 f += (",tpad=start_duration=%.3f:start_mode=add:color=black@0.0"
@@ -1766,25 +1952,28 @@ def _incruster(base, sortie, calques, a0, b0, travail):
             mg = _marge_secousse(cad)
             w = max(2, int(round(LARGE * ech * mg))) & ~1
             h = max(2, int(round(HAUT * ech * mg))) & ~1
-            cmd += ["-f", "lavfi", "-t", "%.3f" % d, "-i",
-                    "color=c=%s:s=%dx%d:r=%d,format=rgba"
-                    % (_coul_ff(plan.get("fond")), w, h, FPS_SORTIE)]
-            f = "[%d:v]colorchannelmixer=aa=%.3f" % (n, opac)
-            x = "%.1f" % ((LARGE - w) / 2.0 + dx)
-            y = "%.1f" % ((HAUT - h) / 2.0 + dy)
+            idx = entree(["-f", "lavfi", "-t", "%.3f" % d, "-i",
+                          "color=c=%s:s=%dx%d:r=%d,format=rgba"
+                          % (_coul_ff(plan.get("fond")), w, h, FPS_SORTIE)])
+            f = "[%d:v]colorchannelmixer=aa=%.3f" % (idx, opac)
+            x0 = "%.1f" % ((LARGE - w) / 2.0 + dx)
+            y0 = "%.1f" % ((HAUT - h) / 2.0 + dy)
+            x, y = x0, y0
             if sx:
                 x, y = x + "+" + sx, y + "+" + sy
+            xl, yl = (x0 + "+" + sxl, y0 + "+" + syl) if sxl else (x0, y0)
         else:
             dessin = _drawtext(plan, travail, n, ech)
             if not dessin:
                 # texte vide, ou police introuvable : rien a graver. On rend
-                # l indice, aucune entree n ayant ete ajoutee.
+                # l indice, aucune entree n ayant ete ajoutee (sauf son
+                # masque, qui reste inutilise).
                 n -= 1
                 continue
-            cmd += ["-f", "lavfi", "-t", "%.3f" % d, "-i",
-                    "color=c=black@0.0:s=%dx%d:r=%d,format=rgba"
-                    % (LARGE, HAUT, FPS_SORTIE)]
-            f = "[%d:v]" % n + dessin
+            idx = entree(["-f", "lavfi", "-t", "%.3f" % d, "-i",
+                          "color=c=black@0.0:s=%dx%d:r=%d,format=rgba"
+                          % (LARGE, HAUT, FPS_SORTIE)])
+            f = "[%d:v]" % idx + dessin
             if sr:
                 # Le canevas du texte est transparent et plein cadre : le faire
                 # tourner fait tourner le texte autour du centre de l image.
@@ -1792,6 +1981,20 @@ def _incruster(base, sortie, calques, a0, b0, travail):
             # Le canevas du texte est transparent et plein cadre : le secouer
             # ne decouvre rien, il n y a donc pas de marge a prendre.
             x, y = (sx, sy) if sx else ("0", "0")
+            xl, yl = (sxl, syl) if sxl else ("0", "0")
+        if idx_mq is not None:
+            # Masque dans le CADRE : le calque est d abord pose a sa place
+            # sur un canevas transparent plein cadre (secousse comprise, en
+            # temps du calque), puis masque, puis pose tel quel.
+            chaine.append(f + "[cs%d]" % n)
+            chaine.append("color=c=black@0.0:s=%dx%d:r=%d:d=%.3f,format=rgba"
+                          "[cg%d]" % (LARGE, HAUT, FPS_SORTIE, d, n))
+            chaine.append("[cg%d][cs%d]overlay=x='%s':y='%s':eof_action=pass:"
+                          "format=auto,format=rgba[cp%d]" % (n, n, xl, yl, n))
+            chaine.append(_masque_alpha("cp%d" % n, "cm%d" % n, idx_mq,
+                                        "k%d" % n))
+            f = "[cm%d]null" % n
+            x, y = "0", "0"
         f += _fondus_alpha(fi, fo, d)
         if pos > 0.001:
             f += ",tpad=start_duration=%.3f:start_mode=add:color=black@0.0" % pos
@@ -2158,7 +2361,7 @@ def rendre(montage, nom, pr, cible=None, mode="mp4"):
         plans = montage.get("plans") or []
         pistes = {p["id"]: p for p in (montage.get("pistes") or [])}
 
-        # piste video retenue : celle qui porte le plus de plans, la plus haute
+        # piste video retenue : la plus basse qui porte des plans (voir plus bas)
         compte = {}
         for p in plans:
             pid = p.get("piste", "")
@@ -2182,17 +2385,25 @@ def rendre(montage, nom, pr, cible=None, mode="mp4"):
                     compte[pid] = compte.get(pid, 0) + 1
         if not compte:
             raise RuntimeError("no shot on an active video track")
-        pv = sorted(compte.items(), key=lambda kv: (kv[1], kv[0]))[-1][0]
+        # La base est la piste la plus BASSE qui porte des plans : tout ce
+        # qui est au-dessus s y incruste, dans l ordre du moniteur (V1 en
+        # bas). Avant que les rushes des pistes du dessus ne sortent, on
+        # prenait la plus fournie, a egalite la plus haute — ce qui aurait
+        # maintenant pose V1 PAR-DESSUS V2.
+        pv = min(compte, key=lambda pid: (_num_piste(pid), pid))
 
-        # Les calques poses ailleurs que sur la piste retenue sont incrustes
-        # sur le montage assemble, dans une seconde passe.
+        # Tout ce qui est pose ailleurs que sur la piste retenue — calques,
+        # textes, et rushes des pistes du dessus — est incruste sur le montage
+        # assemble, dans une seconde passe, piste par piste de bas en haut
+        # comme au moniteur. Les rushes des autres pistes ne sortaient pas du
+        # tout avant la 1.3.7 : ils s affichaient pourtant au moniteur.
         calques = sorted(
             [p for p in plans
-             if p.get("genre")
-             and (p.get("piste") != pv or p.get("genre") == "reglage")
+             if (p.get("piste") != pv or p.get("genre") == "reglage")
              and pistes.get(p.get("piste", ""), {}).get("type") == "v"
              and not pistes[p["piste"]].get("mute")],
-            key=lambda p: (p.get("piste", ""), float(p.get("position", 0) or 0)))
+            key=lambda p: (_num_piste(p.get("piste")),
+                           float(p.get("position", 0) or 0)))
 
         # sons disponibles, par lien
         sons = {}
@@ -2207,12 +2418,17 @@ def rendre(montage, nom, pr, cible=None, mode="mp4"):
         def _sonore(pid):
             t = pistes.get(pid, {})
             return t.get("type") in ("a", "m") and not t.get("mute")
+        # Seul le son lie a un plan de la piste retenue est cuit dans son
+        # segment ; celui d un rush incruste se mixe comme un son libre.
+        liens_pv = {p.get("lien") for p in plans
+                    if p.get("piste") == pv and p.get("lien")}
         libres = []
         for p in plans:
             pid = p.get("piste", "")
             if not _sonore(pid) or p.get("genre"):
                 continue
-            if p.get("lien") and sons.get(p["lien"]) is p:
+            if (p.get("lien") and p["lien"] in liens_pv
+                    and sons.get(p["lien"]) is p):
                 continue
             q = dict(p)
             pa = pistes.get(pid, {})
@@ -2235,6 +2451,14 @@ def rendre(montage, nom, pr, cible=None, mode="mp4"):
         travail = os.path.join(montages_de(pr), "_travail")
         shutil.rmtree(travail, ignore_errors=True)
         os.makedirs(travail, exist_ok=True)
+        # Les masques, ecrits une fois pour toutes : les plans les retrouvent
+        # par « _masque ».
+        for k, p in enumerate(plans):
+            png = p.pop("masque_png", None)
+            if png and MODE != "audio":
+                chemin = _ecrire_masque(png, travail, k)
+                if chemin:
+                    p["_masque"] = chemin
 
         RENDU["total"] = len(v)
         segments = []
@@ -2328,7 +2552,7 @@ def rendre(montage, nom, pr, cible=None, mode="mp4"):
             RENDU["message"] = "compositing %d layer(s)" % len(a_incruster)
             suiv = (os.path.join(travail, "incruste.mp4") if a_melanger
                     else sortie)
-            if not _incruster(cour, suiv, a_incruster, a0, b0, travail):
+            if not _incruster(cour, suiv, a_incruster, a0, b0, travail, pr):
                 raise RuntimeError("overlay pass failed: " + RENDU["message"])
             cour = suiv
         if a_melanger:

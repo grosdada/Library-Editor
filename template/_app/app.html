@@ -540,6 +540,30 @@ input[type=range]:hover::-moz-range-thumb{background:#f3d264}
 /* La musique a sa couleur, pour se distinguer des bruitages d un coup d oeil. */
 .outil.musique{border-color:#7a5a9b;color:#c3aada}
 .outil.musique:hover{border-color:#a98fc6;color:#ded0ef;background:#251d30}
+/* Le masque a sa couleur : bouton cerne tant que le bloc selectionne n a pas
+   de masque actif, plein des qu il en a un. */
+.outil.masque{border-color:#2fb5a5;color:#8fe0d4}
+.outil.masque:hover{border-color:#5fd6c7;color:#d2f5f0;background:#16302c}
+.outil.masque.plein{background:#2fb5a5;border-color:#2fb5a5;color:#08201c}
+.outil.masque.plein:hover{background:#45c9b9;border-color:#45c9b9;color:#08201c}
+/* Le contour du masque, par-dessus le moniteur. Il ne prend la souris que
+   pendant un trace. */
+.cadreMoni{position:relative}
+#mqCalque{position:absolute;left:0;top:0;width:0;height:0;overflow:hidden;
+ pointer-events:none;z-index:3}
+body:not(.edit) #mqCalque{display:none}
+body.mqDessin #mqCalque{pointer-events:auto;cursor:crosshair}
+#mqCalque path{fill:none;stroke:#2fb5a5;stroke-width:1.6;
+ vector-effect:non-scaling-stroke}
+#mqCalque path.repos{stroke-dasharray:6 4}
+#mqCalque path.eteint{opacity:.35}
+.clip .mqBadge{position:absolute;top:1px;right:14px;font-size:9px;
+ color:#8fe0d4;pointer-events:none;z-index:3;text-shadow:0 1px 2px #000}
+#menu .mqRang{display:flex;gap:7px;align-items:center;padding:2px 10px 6px}
+#menu .mqRang input{flex:1 1 auto;min-width:0}
+#menu .mqRang .val{font:11px/1 ui-monospace,monospace;color:var(--sourd);
+ min-width:38px;text-align:right}
+#menu label.it input{margin:0;min-width:0;width:auto;flex:0 0 auto}
 .lane.ma{background:#1d1826}
 .outil.calque:hover{border-color:#79aed6;color:#d3e9fb;background:#1d2b38}
 /* Vignette d un bloc sans rush : un aplat, pas une image. */
@@ -754,7 +778,8 @@ here and change nothing to the files">My folders</button>
   <section id="grille"></section>
   <div class="rz vert" data-rz="moni"></div>
   <div class="moniteur" id="moniteur">
-    <div class="cadreMoni"><canvas id="moni" width="1280" height="720"></canvas></div>
+    <div class="cadreMoni"><canvas id="moni" width="1280" height="720"></canvas>
+      <svg id="mqCalque" xmlns="http://www.w3.org/2000/svg"></svg></div>
     <div class="transport">
       <button id="bPrec" class="tr" title="previous range (↑)">⏮</button>
       <button id="bPlay" class="tr" title="play (Space)">▶</button>
@@ -794,6 +819,8 @@ here and change nothing to the files">My folders</button>
       title="text, placed above the picture at the playhead">T Text</button>
     <button id="bReglage" class="outil calque"
       title="effect layer: its effects apply to everything below it, for its duration">✦ FX</button>
+    <button id="bMasque" class="outil masque"
+      title="mask the selected block: freehand, rectangle or ellipse, with a feather">◐ Mask ▾</button>
     <button id="bZoomM" class="outil">−</button>
     <button id="bZoomP" class="outil">+</button>
     <button id="bZoomT" class="outil" title="fit all">⤢</button>
@@ -801,7 +828,7 @@ here and change nothing to the files">My folders</button>
       <div class="mt" id="mt"></div><div class="bulle" id="bulleMt"></div></div>
     <button id="bUnite" class="outil" title="frames or seconds (U)">SEC</button>
     <span id="mDuree" class="mono" style="color:var(--sourd)"></span>
-    <button id="bProjet" class="outil" title="sequence name, size and frame rate">Sequence…</button>
+    <button id="bProjet" class="outil" title="name, size and frame rate of the current sequence">Edit sequence…</button>
     <button id="bVider" class="outil">Clear</button>
     <button id="bExport" class="outil"
       title="JSON, Premiere/Resolve XML, or the ffmpeg commands">Export ▾</button>
@@ -3630,6 +3657,8 @@ function blocClip(c) {
     (fxActifs(c).length && !estReglage(c)
       ? '<div class="fxBadge" title="' + fxActifs(c).map(x => FX[x.t].nom).join(' · ') +
         '">✦</div>' : '') +
+    (typeof masqueActif === 'function' && masqueActif(c)
+      ? '<div class="mqBadge" title="masked">◐</div>' : '') +
     '<div class="bande" data-bande="1" title="drag here: fade in / fade out">' +
     '</div>' +
     '<div class="poi g" data-poi="g"></div>' +
@@ -4875,6 +4904,7 @@ function copierBlocs() {
     // Le rack et les images-cles sont des tableaux : sans copie profonde, le
     // bloc colle partagerait ceux de l original.
     if (c.fx) n.fx = JSON.parse(JSON.stringify(c.fx));
+    if (c.masque) n.masque = JSON.parse(JSON.stringify(c.masque));
     if (c.anim) n.anim = JSON.parse(JSON.stringify(c.anim));
     return n;
   });
@@ -4889,6 +4919,7 @@ function collerBlocs() {
     const n = {};
     for (const k in c) n[k] = c[k];
     if (c.fx) n.fx = JSON.parse(JSON.stringify(c.fx));
+    if (c.masque) n.masque = JSON.parse(JSON.stringify(c.masque));
     if (c.anim) n.anim = JSON.parse(JSON.stringify(c.anim));
     n.uid = uidSuivant++;
     n.t0 = Math.max(0, tLect + (c.t0 - t0min));
@@ -4941,6 +4972,7 @@ function dupliquerBlocs() {
     n.t0 = c.t0 + ecart;
     if (c.anim) n.anim = JSON.parse(JSON.stringify(c.anim));
     if (c.fx) n.fx = JSON.parse(JSON.stringify(c.fx));
+    if (c.masque) n.masque = JSON.parse(JSON.stringify(c.masque));
     if (c.lien) {
       if (!liens[c.lien]) liens[c.lien] = lienLibre();
       n.lien = liens[c.lien];
@@ -5010,6 +5042,338 @@ $('#bVider').onclick = () => {
   rendreTimeline(); resynchroniser(true);
   dire('timeline cleared — Ctrl+Z to go back');
 };
+</script>
+<script>
+// ===========================================================================
+//  Masque
+// ===========================================================================
+// Un masque par bloc, dans le CADRE : ses points sont en 0..1 de l image de
+// sortie, on le trace sur le moniteur, la ou on le voit. Trois formes — a main
+// levee, rectangle, ellipse —, une plume (ecart-type du flou du bord, en % de
+// la largeur du cadre) et l inversion. Il s applique APRES les effets du bloc
+// et AVANT sa transparence et ses fondus. Le rendu recoit la MEME image,
+// tracee ici a la taille de sortie : ce qu on voit est ce qui sort.
+var MQ_PLUME = 1, MQ_INV = false;
+var MQ_DESSIN = null, mqCle = '', MQ_GESTE = false;
+var MQ_TOILES = new Map();
+
+function masqueActif(c) {
+  return !!(c && c.masque && c.masque.on !== false &&
+            Array.isArray(c.masque.pts) && c.masque.pts.length >= 2);
+}
+// Les blocs que le masque concerne : la selection, sur les pistes image.
+function blocsMasquables() {
+  return CLIPS.filter(c => clipsSel.has(c.uid) && piste(c.piste) &&
+                           piste(c.piste).type === 'v');
+}
+
+function boiteMasque(mq, w, h) {
+  const p = mq.pts;
+  const x0 = Math.min(p[0][0], p[1][0]) * w, x1 = Math.max(p[0][0], p[1][0]) * w;
+  const y0 = Math.min(p[0][1], p[1][1]) * h, y1 = Math.max(p[0][1], p[1][1]) * h;
+  return [x0, y0, x1, y1];
+}
+function cheminMasque(g, mq, w, h) {
+  if (mq.forme === 'rect' || mq.forme === 'ellipse') {
+    const [x0, y0, x1, y1] = boiteMasque(mq, w, h);
+    if (mq.forme === 'rect') g.rect(x0, y0, x1 - x0, y1 - y0);
+    else g.ellipse((x0 + x1) / 2, (y0 + y1) / 2, Math.max(0.5, (x1 - x0) / 2),
+                   Math.max(0.5, (y1 - y0) / 2), 0, 0, Math.PI * 2);
+    return;
+  }
+  const p = mq.pts;
+  g.moveTo(p[0][0] * w, p[0][1] * h);
+  for (let i = 1; i < p.length; i++) g.lineTo(p[i][0] * w, p[i][1] * h);
+  g.closePath();
+}
+
+// Le masque en alpha : blanc opaque dedans, transparent dehors (l inverse
+// s il est inverse), bord adouci par la plume.
+function tracerMasque(g, mq, w, h) {
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  g.clearRect(0, 0, w, h);
+  const s = Math.max(0, +mq.plume || 0) / 100 * w;
+  g.fillStyle = '#fff';
+  if (mq.inv) {
+    g.fillRect(0, 0, w, h);
+    g.globalCompositeOperation = 'destination-out';
+  }
+  g.filter = s > 0.05 ? 'blur(' + s.toFixed(2) + 'px)' : 'none';
+  g.beginPath();
+  cheminMasque(g, mq, w, h);
+  g.fill();
+  g.restore();
+}
+
+function toileMasque(c, w, h) {
+  const cle = JSON.stringify(c.masque) + '|' + w + 'x' + h;
+  const e = MQ_TOILES.get(c.uid);
+  if (e && e.cle === cle) return e.tl;
+  const tl = (e && e.tl) || document.createElement('canvas');
+  tl.width = w; tl.height = h;
+  tracerMasque(tl.getContext('2d'), c.masque, w, h);
+  MQ_TOILES.set(c.uid, {cle: cle, tl: tl});
+  return tl;
+}
+
+// Sur une toile ou le bloc est deja pose (et traite), ne garder que ce que
+// le masque laisse passer.
+function appliquerMasque(tl, c, w, h) {
+  if (!masqueActif(c)) return;
+  const g = tl.getContext('2d');
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.filter = 'none';
+  g.globalCompositeOperation = 'destination-in';
+  g.drawImage(toileMasque(c, w, h), 0, 0);
+  g.restore();
+}
+
+// Pour le rendu : le masque a la taille de sortie, en niveaux de gris
+// (blanc = garde), que ffmpeg multiplie a l image ou a l alpha.
+function pngMasque(c) {
+  const w = PROJET.w, h = PROJET.h;
+  const a = document.createElement('canvas');
+  a.width = w; a.height = h;
+  tracerMasque(a.getContext('2d'), c.masque, w, h);
+  const b = document.createElement('canvas');
+  b.width = w; b.height = h;
+  const g = b.getContext('2d');
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, w, h);
+  g.drawImage(a, 0, 0);
+  return b.toDataURL('image/png');
+}
+
+// ---- le bouton -------------------------------------------------------------
+function majBoutonMasque() {
+  const b = $('#bMasque');
+  if (b) b.classList.toggle('plein', blocsMasquables().some(masqueActif));
+}
+
+// ---- le contour, par-dessus le moniteur -------------------------------------
+function dMasque(mq, w, h) {
+  if (mq.forme === 'rect' || mq.forme === 'ellipse') {
+    const [x0, y0, x1, y1] = boiteMasque(mq, w, h);
+    if (mq.forme === 'rect')
+      return 'M' + x0 + ' ' + y0 + 'H' + x1 + 'V' + y1 + 'H' + x0 + 'Z';
+    const rx = Math.max(0.5, (x1 - x0) / 2), ry = Math.max(0.5, (y1 - y0) / 2);
+    const cx = x0 + rx, cy = y0 + ry;
+    return 'M' + (cx - rx) + ' ' + cy + 'A' + rx + ' ' + ry + ' 0 1 0 ' +
+      (cx + rx) + ' ' + cy + 'A' + rx + ' ' + ry + ' 0 1 0 ' + (cx - rx) +
+      ' ' + cy + 'Z';
+  }
+  return 'M' + mq.pts.map(q => (q[0] * w).toFixed(1) + ' ' +
+                               (q[1] * h).toFixed(1)).join('L') +
+    (MQ_DESSIN ? '' : 'Z');
+}
+
+function majContourMasque() {
+  const sv = $('#mqCalque'), cv = $('#moni');
+  if (!sv || !cv) return;
+  const r = cv.getBoundingClientRect(), pr = cv.parentElement.getBoundingClientRect();
+  const w = Math.round(r.width), h = Math.round(r.height);
+  const c = MQ_DESSIN ? null : blocsMasquables().find(x => x.masque && x.masque.pts);
+  const mq = MQ_DESSIN ? MQ_DESSIN.mq : (c ? c.masque : null);
+  const cle = [w, h, Math.round(r.left - pr.left), Math.round(r.top - pr.top),
+               mq ? JSON.stringify(mq) : '', MQ_DESSIN ? 1 : 0].join('|');
+  if (cle === mqCle) return;
+  mqCle = cle;
+  sv.style.left = Math.round(r.left - pr.left) + 'px';
+  sv.style.top = Math.round(r.top - pr.top) + 'px';
+  sv.style.width = w + 'px';
+  sv.style.height = h + 'px';
+  sv.setAttribute('viewBox', '0 0 ' + Math.max(1, w) + ' ' + Math.max(1, h));
+  sv.innerHTML = (mq && mq.pts && mq.pts.length >= 2 && w > 0)
+    ? '<path class="' + (MQ_DESSIN ? '' : 'repos') +
+      (mq.on === false ? ' eteint' : '') + '" d="' + dMasque(mq, w, h) + '"/>'
+    : '';
+}
+addEventListener('resize', () => { mqCle = ''; majContourMasque(); });
+
+// ---- le trace -----------------------------------------------------------------
+const NOMS_OUTIL = {libre: 'freehand', rect: 'rectangle', ellipse: 'ellipse'};
+function commencerMasque(outil) {
+  const cibles = blocsMasquables();
+  if (!cibles.length) { dire('select a block on a video track first'); return; }
+  MQ_DESSIN = {outil: outil, mq: null, appui: false,
+               uids: cibles.map(c => c.uid)};
+  document.body.classList.add('mqDessin');
+  mqCle = ''; majContourMasque();
+  dire(NOMS_OUTIL[outil] + ' mask: draw it on the monitor' +
+       (outil === 'libre' ? '' : ' (Shift: square / circle)') + ' — Esc cancels');
+}
+function finirMasque() {
+  MQ_DESSIN = null;
+  document.body.classList.remove('mqDessin');
+  mqCle = ''; majContourMasque();
+}
+function pointMoniteur(e) {
+  const r = $('#moni').getBoundingClientRect();
+  const f = v => Math.round(v * 10000) / 10000;
+  return [f((e.clientX - r.left) / Math.max(1, r.width)),
+          f((e.clientY - r.top) / Math.max(1, r.height))];
+}
+$('#mqCalque').addEventListener('pointerdown', e => {
+  const d = MQ_DESSIN;
+  if (!d || e.button !== 0) return;
+  e.preventDefault();
+  try { $('#mqCalque').setPointerCapture(e.pointerId); } catch (err) {}
+  const p = pointMoniteur(e);
+  d.mq = {forme: d.outil, pts: d.outil === 'libre' ? [p] : [p, p.slice()],
+          plume: MQ_PLUME, inv: MQ_INV, on: true};
+  d.appui = true;
+  mqCle = ''; majContourMasque();
+});
+$('#mqCalque').addEventListener('pointermove', e => {
+  const d = MQ_DESSIN;
+  if (!d || !d.appui) return;
+  let p = pointMoniteur(e);
+  const l = d.mq.pts;
+  if (d.outil === 'libre') {
+    const q = l[l.length - 1];
+    if (Math.hypot(p[0] - q[0], p[1] - q[1]) > 0.003 && l.length < 1500) l.push(p);
+  } else {
+    if (e.shiftKey) {
+      // Un carre, un cercle — en pixels, pas en fractions du cadre.
+      const r = $('#moni').getBoundingClientRect();
+      const dx = (p[0] - l[0][0]) * r.width, dy = (p[1] - l[0][1]) * r.height;
+      const m = Math.max(Math.abs(dx), Math.abs(dy));
+      p = [l[0][0] + Math.sign(dx || 1) * m / r.width,
+           l[0][1] + Math.sign(dy || 1) * m / r.height];
+    }
+    l[1] = p;
+  }
+  mqCle = ''; majContourMasque();
+});
+$('#mqCalque').addEventListener('pointerup', () => {
+  const d = MQ_DESSIN;
+  if (!d || !d.appui) return;
+  d.appui = false;
+  const mq = d.mq, l = mq.pts;
+  const assez = mq.forme === 'libre' ? l.length >= 3
+    : Math.abs(l[1][0] - l[0][0]) > 0.008 && Math.abs(l[1][1] - l[0][1]) > 0.008;
+  if (!assez) {
+    d.mq = null; mqCle = ''; majContourMasque();
+    dire('too small — draw it bigger, or Esc to cancel');
+    return;
+  }
+  // Un trace a main levee trop dense est eclairci : au-dela de 400 points
+  // on ne voit plus la difference, mais le fichier du montage si.
+  if (mq.forme === 'libre' && l.length > 400) {
+    const k = Math.ceil(l.length / 400);
+    mq.pts = l.filter((x, i) => i % k === 0 || i === l.length - 1);
+  }
+  memoriser();
+  const cibles = CLIPS.filter(c => d.uids.indexOf(c.uid) >= 0);
+  cibles.forEach(c => {
+    const neuf = JSON.parse(JSON.stringify(mq));
+    // Retracer garde la plume et l inversion qu on avait reglees.
+    if (c.masque) { neuf.plume = c.masque.plume; neuf.inv = !!c.masque.inv; }
+    c.masque = neuf;
+  });
+  finirMasque();
+  majBoutonMasque();
+  rendreLanes(); dessiner();
+  dire(NOMS_OUTIL[mq.forme] + ' mask on ' + cibles.length + ' block' +
+       (cibles.length > 1 ? 's' : '') + ' — feather, invert and delete in ◐ Mask');
+});
+document.addEventListener('keydown', e => {
+  if (MQ_DESSIN && e.key === 'Escape') {
+    e.preventDefault(); e.stopPropagation();
+    finirMasque();
+    dire('mask cancelled');
+  }
+}, true);
+
+// ---- le menu du bouton ----------------------------------------------------------
+function menuMasque() {
+  const cibles = blocsMasquables();
+  if (!cibles.length) { dire('select a block on a video track first'); return; }
+  const c = cibles.find(x => x.masque) || cibles[0];
+  const mq = c.masque || null;
+  const plume = mq ? (+mq.plume || 0) : MQ_PLUME;
+  const inv = mq ? !!mq.inv : MQ_INV;
+  const m = $('#menu');
+  m.innerHTML = '<div class="lbl">Mask' + (cibles.length > 1
+      ? ' · ' + cibles.length + ' blocks' : '') + '</div>' +
+    (mq ? '<label class="it"><input type="checkbox" data-mq-on' +
+      (mq.on !== false ? ' checked' : '') + '> Mask on</label>' +
+      '<div class="sep"></div>' : '') +
+    '<div class="it" data-mq-outil="libre">✎ Freehand</div>' +
+    '<div class="it" data-mq-outil="rect">▭ Rectangle</div>' +
+    '<div class="it" data-mq-outil="ellipse">◯ Ellipse</div>' +
+    '<div class="sep"></div><div class="lbl">Feather</div>' +
+    '<div class="rang mqRang"><input type="range" data-mq-plume min="0" ' +
+    'max="10" step="0.1" value="' + plume + '"><span class="val">' +
+    plume.toFixed(1) + '%</span></div>' +
+    '<label class="it"><input type="checkbox" data-mq-inv' +
+    (inv ? ' checked' : '') + '> Invert — hide the inside</label>' +
+    '<div class="sep"></div>' +
+    '<div class="it' + (mq ? '' : ' mort') + '" data-mq-suppr>✕ Delete mask</div>';
+  placerMenu(m, $('#bMasque').getBoundingClientRect(), false);
+}
+$('#bMasque').onclick = () => {
+  if (MQ_DESSIN) { finirMasque(); dire('mask cancelled'); return; }
+  menuMasque();
+};
+
+function apresMasque() {
+  majBoutonMasque();
+  mqCle = ''; majContourMasque();
+  modifie = true;
+  rendreLanes(); dessiner();
+}
+$('#menu').addEventListener('click', e => {
+  const o = e.target.closest('[data-mq-outil]');
+  if (o) { $('#menu').className = ''; commencerMasque(o.dataset.mqOutil); return; }
+  const s = e.target.closest('[data-mq-suppr]');
+  if (s) {
+    if (s.classList.contains('mort')) return;
+    const l = blocsMasquables().filter(c => c.masque);
+    $('#menu').className = '';
+    if (!l.length) return;
+    memoriser();
+    l.forEach(c => { delete c.masque; });
+    apresMasque();
+    dire('mask deleted on ' + l.length + ' block' + (l.length > 1 ? 's' : ''));
+  }
+});
+$('#menu').addEventListener('change', e => {
+  const on = e.target.closest('[data-mq-on]');
+  if (on) {
+    memoriser();
+    blocsMasquables().forEach(c => { if (c.masque) c.masque.on = on.checked; });
+    apresMasque();
+    dire(on.checked ? 'mask on' : 'mask off — kept, not applied');
+    return;
+  }
+  const iv = e.target.closest('[data-mq-inv]');
+  if (iv) {
+    MQ_INV = iv.checked;
+    const l = blocsMasquables().filter(c => c.masque);
+    if (l.length) { memoriser(); l.forEach(c => { c.masque.inv = iv.checked; }); }
+    apresMasque();
+    return;
+  }
+  if (e.target.closest('[data-mq-plume]')) MQ_GESTE = false;
+});
+$('#menu').addEventListener('input', e => {
+  const sl = e.target.closest('[data-mq-plume]');
+  if (!sl) return;
+  const v = Math.max(0, Math.min(10, parseFloat(sl.value) || 0));
+  MQ_PLUME = v;
+  if (sl.nextElementSibling) sl.nextElementSibling.textContent = v.toFixed(1) + '%';
+  const l = blocsMasquables().filter(c => c.masque);
+  if (!l.length) return;
+  if (!MQ_GESTE) { memoriser(); MQ_GESTE = true; }
+  l.forEach(c => { c.masque.plume = v; });
+  apresMasque();
+});
 </script>
 <script>
 // ===========================================================================
@@ -5400,6 +5764,8 @@ const aDesAnims = c => !!(c.anim && Object.keys(c.anim)
   .some(k => c.anim[k] && c.anim[k].length));
 
 function rendreReglages() {
+  majBoutonMasque();
+  mqCle = ''; majContourMasque();
   const r = $('#reglages');
   const sel = CLIPS.filter(c => clipsSel.has(c.uid));
   if (!sel.length) {
@@ -6262,7 +6628,8 @@ function signeMontage() {
             c.fond || '', c.txt || '', c.police || '', c.taille || 0,
             c.teinte || '', c.ombre === false ? 0 : 1,
             c.anim ? JSON.stringify(c.anim) : '',
-            c.fx ? JSON.stringify(c.fx) : ''].join(':'));
+            c.fx ? JSON.stringify(c.fx) : '',
+            c.masque ? JSON.stringify(c.masque) : ''].join(':'));
   return p.join('|');
 }
 
@@ -6734,6 +7101,7 @@ function reglageSur(c, cw, ch) {
   g.clearRect(0, 0, cw, ch);
   g.drawImage(moni, 0, 0);
   appliquerFx(t1, fx, cw, ch);
+  appliquerMasque(t1, c, cw, ch);
   ctx.globalAlpha = a;
   ctx.drawImage(t1, 0, 0);
   ctx.globalAlpha = 1;
@@ -6982,7 +7350,19 @@ function dessiner() {
   const cw = moni.width, ch = moni.height;
   aDessiner.forEach(c => {
     if (estReglage(c)) { reglageSur(c, cw, ch); return; }
-    if (estSynth(c)) { dessinerSynth(c, cw, ch); return; }
+    if (estSynth(c)) {
+      // Un calque ou un texte masque : pose seul sur une toile, masque,
+      // puis pose sur l image.
+      if (masqueActif(c)) {
+        const tl = toileFx(1, cw, ch), g = tl.getContext('2d');
+        g.clearRect(0, 0, cw, ch);
+        dessinerSynth(c, cw, ch, g);
+        appliquerMasque(tl, c, cw, ch);
+        ctx.globalAlpha = 1;
+        ctx.drawImage(tl, 0, 0);
+      } else dessinerSynth(c, cw, ch);
+      return;
+    }
     const v = estImage(c) ? imageDe(c) : POOL.get(c.uid);
     if (!v) return;
     // Une balise image donne « naturalWidth », un lecteur « videoWidth » :
@@ -7004,7 +7384,7 @@ function dessiner() {
     // place dans le cadre ; on lui applique ses effets, puis on le pose avec
     // sa transparence — l ordre du rendu. Sans effet, rien ne change.
     const fx = fxActifs(c);
-    const toile = fx.length ? toileFx(1, cw, ch) : null;
+    const toile = (fx.length || masqueActif(c)) ? toileFx(1, cw, ch) : null;
     const g = toile ? toile.getContext('2d') : ctx;
     if (toile) g.clearRect(0, 0, cw, ch); else ctx.globalAlpha = a;
     if (rot) {
@@ -7020,12 +7400,14 @@ function dessiner() {
       g.drawImage(v, px, py, w, h);
     }
     if (toile) {
-      appliquerFx(toile, fx, cw, ch);
+      if (fx.length) appliquerFx(toile, fx, cw, ch);
+      appliquerMasque(toile, c, cw, ch);
       ctx.globalAlpha = a;
       ctx.drawImage(toile, 0, 0);
     }
   });
   ctx.globalAlpha = 1;
+  majContourMasque();
 }
 
 // Calque de couleur et texte : dessines directement sur la toile, avec les
@@ -7059,7 +7441,8 @@ $('#lanes').addEventListener('dblclick', e => {
   modifierSynth();
 });
 
-function dessinerSynth(c, cw, ch) {
+function dessinerSynth(c, cw, ch, g) {
+  g = g || ctx;
   const a = alpha(c, tLect) * valAnim(c, 'opac', tLect);
   if (a <= 0.005) return;
   const [sx, sy] = secousse(c, tLect);
@@ -7070,37 +7453,37 @@ function dessinerSynth(c, cw, ch) {
             (c.genre === 'couleur' ? margeSecousse(c) : 1);
   const ox = valAnim(c, 'dx', tLect) * cw / 200 + sx * cw / 100;
   const oy = valAnim(c, 'dy', tLect) * ch / 200 + sy * ch / 100;
-  ctx.save();
+  g.save();
   if (rotS) {
-    ctx.translate(cw / 2, ch / 2);
-    ctx.rotate(rotS * Math.PI / 180);
-    ctx.translate(-cw / 2, -ch / 2);
+    g.translate(cw / 2, ch / 2);
+    g.rotate(rotS * Math.PI / 180);
+    g.translate(-cw / 2, -ch / 2);
   }
-  ctx.globalAlpha = a;
+  g.globalAlpha = a;
   if (c.genre === 'couleur') {
     const w = cw * k, h = ch * k;
-    ctx.fillStyle = c.fond || '#000000';
-    ctx.fillRect((cw - w) / 2 + ox, (ch - h) / 2 + oy, w, h);
+    g.fillStyle = c.fond || '#000000';
+    g.fillRect((cw - w) / 2 + ox, (ch - h) / 2 + oy, w, h);
   } else if (c.genre === 'texte') {
     const pol = POLICES[c.police] || POLICES[POLICE_DEFAUT];
     const taille = Math.max(5, ch * (c.taille || 9) / 100 * k);
-    ctx.font = taille + 'px ' + pol.css;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    g.font = taille + 'px ' + pol.css;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
     const lignes = String(c.txt === undefined ? '' : c.txt).split('\n');
     const inter = taille * 1.2;
     const y0 = ch / 2 + oy - (lignes.length - 1) * inter / 2;
     lignes.forEach((L, i) => {
       const y = y0 + i * inter;
       if (c.ombre !== false) {
-        ctx.fillStyle = 'rgba(0,0,0,.6)';
-        ctx.fillText(L, cw / 2 + ox + taille * 0.045, y + taille * 0.045);
+        g.fillStyle = 'rgba(0,0,0,.6)';
+        g.fillText(L, cw / 2 + ox + taille * 0.045, y + taille * 0.045);
       }
-      ctx.fillStyle = c.teinte || '#ffffff';
-      ctx.fillText(L, cw / 2 + ox, y);
+      g.fillStyle = c.teinte || '#ffffff';
+      g.fillText(L, cw / 2 + ox, y);
     });
   }
-  ctx.restore();
+  g.restore();
 }
 
 // Points de coupe : debuts et fins de blocs, plus les reperes I et O.
@@ -7960,13 +8343,19 @@ async function boiteUsages(film) {
   });
 }
 
-function boiteProjet() {
+// Deux usages, deux boites : « Edit sequence… » regle la sequence ouverte
+// (Apply), « + new » en cree une autre (Create new sequence). La boite
+// unique faisait les deux, et « + new » ouvrait la meme chose que
+// « Sequence… » (signale par David le 30/09).
+function boiteProjet(neuf) {
+  neuf = neuf === true;
   const b = $('#boite');
-  b.innerHTML = '<h3>Current sequence</h3>' +
+  b.innerHTML = '<h3>' + (neuf ? 'New sequence' : 'Current sequence') + '</h3>' +
     '<div style="display:flex;flex-direction:column;gap:12px">' +
     '<div><label style="font-size:11px;color:var(--sourd)">Name</label><br>' +
     '<input id="pNom" style="width:100%" value="' +
-      (PROJET.nom || '').replace(/"/g, '&quot;') + '" placeholder="untitled"></div>' +
+      (neuf ? '' : (PROJET.nom || '').replace(/"/g, '&quot;')) +
+      '" placeholder="untitled"></div>' +
     '<div><label style="font-size:11px;color:var(--sourd)">Saved in ' +
     'project</label><br><select id="pHote" style="width:100%">' +
       (OUVERTS.length ? OUVERTS.map(p => '<option value="' + p.nom + '"' +
@@ -7988,12 +8377,15 @@ function boiteProjet() {
       [23.976, 24, 25, 29.97, 30, 50, 60].map(f => '<option value="' + f + '"' +
         (Math.abs(PROJET.fps - f) < 0.01 ? ' selected' : '') + '>' + f +
         ' fps</option>').join('') + '</select></div>' +
-    '<div style="font-size:11px;color:var(--sourd)">Shots already placed keep ' +
-    'their duration in seconds. The format applies to the monitor, the render and the XML export.</div>' +
-    '<div style="display:flex;gap:8px;justify-content:space-between;margin-top:6px">' +
-    '<button id="pNouveau">New sequence…</button>' +
-    '<span><button id="pAnnule">Cancel</button> ' +
-    '<button id="pOk" class="on">Apply</button></span></div></div>';
+    '<div style="font-size:11px;color:var(--sourd)">' + (neuf
+      ? 'The sequence in progress is saved first, then an empty timeline ' +
+        'opens with these settings.'
+      : 'Shots already placed keep their duration in seconds. The format ' +
+        'applies to the monitor, the render and the XML export.') + '</div>' +
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">' +
+    '<button id="pAnnule">Cancel</button>' +
+    '<button id="pOk" class="on">' + (neuf ? 'Create new sequence' : 'Apply') +
+    '</button></div></div>';
   $('#voile').className = 'on';
   const maj = () => {
     $('#pLibre').style.display =
@@ -8001,27 +8393,33 @@ function boiteProjet() {
   };
   $('#pTaille').onchange = maj; maj();
   $('#pAnnule').onclick = () => $('#voile').className = '';
-  $('#pOk').onclick = () => {
+  // Format et cadence tels que la boite les montre.
+  const specs = () => {
+    let w, h;
+    if ($('#pTaille').value === 'libre') {
+      w = Math.max(64, Math.min(7680, parseInt($('#pW').value, 10) || 1280));
+      h = Math.max(64, Math.min(4320, parseInt($('#pH').value, 10) || 720));
+    } else {
+      [w, h] = $('#pTaille').value.split('x').map(Number);
+    }
+    return {w: w - w % 2, h: h - h % 2,
+            fps: parseFloat($('#pFps').value) || 24};
+  };
+  if (!neuf) $('#pOk').onclick = () => {
     PROJET.nom = $('#pNom').value.trim();
     projetNom = PROJET.nom;
     PROJET.pj = $('#pHote').value || PROJET.pj;
-    if ($('#pTaille').value === 'libre') {
-      PROJET.w = Math.max(64, Math.min(7680, parseInt($('#pW').value, 10) || 1280));
-      PROJET.h = Math.max(64, Math.min(4320, parseInt($('#pH').value, 10) || 720));
-    } else {
-      const [w, h] = $('#pTaille').value.split('x').map(Number);
-      PROJET.w = w; PROJET.h = h;
-    }
-    PROJET.w -= PROJET.w % 2; PROJET.h -= PROJET.h % 2;
-    PROJET.fps = parseFloat($('#pFps').value) || 24;
+    const s = specs();
+    PROJET.w = s.w; PROJET.h = s.h; PROJET.fps = s.fps;
     appliquerSpecs(); rendreTimeline();
     $('#voile').className = '';
     dire((PROJET.nom || 'untitled') + ' — ' + PROJET.w + '×' + PROJET.h +
       ' at ' + PROJET.fps + ' i/s');
   };
-  $('#pNouveau').onclick = async () => {
-    const bt = $('#pNouveau');
+  else $('#pOk').onclick = async () => {
+    const bt = $('#pOk');
     bt.disabled = true;
+    const s = specs();
     try {
       await assurerSauvegarde();
       memoriser();
@@ -8039,6 +8437,8 @@ function boiteProjet() {
       let nom = base, k = 1;
       while (pris(nom) && k < 200) { k++; nom = base + '-' + k; }
       PROJET.nom = nom; projetNom = nom; PROJET.pj = hote;
+      PROJET.w = s.w; PROJET.h = s.h; PROJET.fps = s.fps;
+      appliquerSpecs();
       modifie = false;
       // On l ECRIT tout de suite. La sauvegarde continue refuse un montage
       // sans bloc — c est voulu, elle ne doit pas semer des brouillons vides —
@@ -8175,7 +8575,8 @@ async function rafraichirProjets() {
     (caches ? '<span class="pu rouvrir" data-rouvrir="1" title="click: reopen all ' +
       '— right-click: choose">⟲ ' + caches + ' closed' +
       (caches > 1 ? 's' : '') + '</span>' : '') +
-    '<span class="pu neuf" data-nouveau="1">+ new</span>' +
+    '<span class="pu neuf" data-nouveau="1" title="create a new sequence">' +
+    '+ new</span>' +
     '<span class="pu neuf" data-recharger="1" title="refresh the list">↻</span>';
 }
 
@@ -8298,7 +8699,7 @@ $('#barreProjets').addEventListener('click', async e => {
     FERMES.clear(); noterFermes(); rafraichirProjets(); return;
   }
   if (e.target.dataset.recharger) { rafraichirProjets(); return; }
-  if (e.target.dataset.nouveau) { boiteProjet(); return; }
+  if (e.target.dataset.nouveau) { boiteProjet(true); return; }
   const el = e.target.closest('[data-p]');
   const nom = el && el.dataset.p, pj = el && el.dataset.pj;
   if (!nom) return;
@@ -8378,7 +8779,7 @@ addEventListener('beforeunload', () => {
   sauverAvantDeFermer(); direAdieu(); adieuPeutEtreAnnule();
 });
 
-$('#bProjet').onclick = boiteProjet;
+$('#bProjet').onclick = () => boiteProjet(false);
 // Un seul bouton pour les trois sorties : le menu s ouvre sous lui.
 // Les entrees portent « data-exp », jamais « data-act » : #menu est partage
 // avec le menu des blocs, dont le gestionnaire ne cherche que « data-act ».
@@ -8437,7 +8838,9 @@ function clipsDansBornes() {
   return CLIPS.filter(c => fin(c) > a + 0.001 && c.t0 < b - 0.001);
 }
 
-function objetMontage() {
+// « avecMasques » : pour le rendu seulement, chaque masque part aussi en
+// image (PNG a la taille de sortie). Les exports n en ont pas besoin.
+function objetMontage(avecMasques) {
   const {a, b} = bornes();
   return {
     genere: new Date().toISOString(), racine: hoteMontage(), nom: PROJET.nom,
@@ -8468,6 +8871,9 @@ function objetMontage() {
               vitesse: vAbs(c), rev: !!c.rev, couleur: c.couleur || 0,
               gain: c.gain, opacite: c.opac === undefined ? 1 : c.opac,
               lien: c.lien, anim: c.anim || null, fx: fxRendu(c),
+              masque: masqueActif(c) ? c.masque : null,
+              masque_png: avecMasques && masqueActif(c) ? pngMasque(c)
+                                                        : undefined,
               fondu_entree: +(c._fIn || 0).toFixed(3),
               fondu_sortie: +(c._fOut || 0).toFixed(3),
               cadrage: {mode: c.mode, echelle: c.ech, dx: c.dx, dy: c.dy,
@@ -8653,7 +9059,7 @@ const TYPES_RENDU = [
 
 bRendre.onclick = () => {
   if (renduEnCours) { dire('a render is already running'); return; }
-  const m = objetMontage();
+  const m = objetMontage(true);
   if (!m.plans.length) { dire('nothing to render'); return; }
   const hote = hoteMontage();
   if (!hote) { dire('open a project first', true); return; }
