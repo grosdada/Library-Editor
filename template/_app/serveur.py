@@ -1072,45 +1072,64 @@ def _marge_secousse(cad):
 LIMITE_INVERSE = 60.0
 
 
-def _seg_filtre(cadrage, vitesse, opacite=1.0, duree=0.0, rev=False):
-    mode = (cadrage or {}).get("mode", "contain")
-    if mode == "cover":
-        v = ("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d"
-             % (LARGE, HAUT, LARGE, HAUT))
-    else:
-        v = ("scale=%d:%d:force_original_aspect_ratio=decrease,"
-             "pad=%d:%d:(ow-iw)/2:(oh-ih)/2" % (LARGE, HAUT, LARGE, HAUT))
-    ech = float((cadrage or {}).get("echelle", 1) or 1)
-    if abs(ech - 1) > 0.01:
-        v += ",scale=iw*%.4f:ih*%.4f,crop=%d:%d" % (ech, ech, LARGE, HAUT)
+def _placement(entree, sortie, cadrage, duree, pre, alpha=False,
+               vitesse=1.0, rev=False, gel=None, decalage=0.0):
+    """Le plan pose dans le cadre exactement comme au moniteur (dessiner) :
+    taille de base (contain / cover) x echelle x marge de secousse, centre,
+    decale de dx / dy et de la secousse, puis tourne autour du centre du
+    CADRE. Fond noir pour la piste de base, transparent pour un calque.
+
+    Remplace _seg_filtre, qui ramenait l image a la taille du cadre puis la
+    recadrait : une echelle < 1 faisait echouer le segment (crop plus grand
+    que l image), dx / dy etaient ignores, et la secousse deplacait la
+    fenetre — donc l image dans le sens oppose a celui du moniteur."""
+    cad = cadrage or {}
+    ech = max(0.01, float(cad.get("echelle", 1) or 1))
+    k = ech * _marge_secousse(cad)
+    dx = float(cad.get("dx", 0) or 0) * LARGE / 200.0
+    dy = float(cad.get("dy", 0) or 0) * HAUT / 200.0
+    sx, sy = _secousse(cad, decalage, duree)
+    sr = _rotation_secousse(cad, decalage, duree)
+    et = []
+    if gel is not None:
+        et.append(_prefixe_gel(duree).rstrip(","))
+    et.append("scale=%d:%d:force_original_aspect_ratio=%s"
+              % (LARGE, HAUT, "increase" if cad.get("mode") == "cover"
+                 else "decrease"))
+    et.append("scale=trunc(iw*%.5f/2)*2:trunc(ih*%.5f/2)*2" % (k, k))
     # « reverse » APRES la mise a l echelle — il empile les images decodees,
-    # autant qu elles soient deja a la taille de sortie — et AVANT setpts,
-    # pour que « t » redevienne ensuite le temps du montage.
+    # autant qu elles soient petites — et AVANT setpts, pour que « t »
+    # redevienne ensuite le temps du montage.
     if rev:
-        v += ",reverse"
+        et.append("reverse")
     if abs(vitesse - 1) > 0.001:
-        v += ",setpts=%.6f*PTS" % (1.0 / vitesse)
-    if opacite < 0.995:
-        # composer sur du noir revient a multiplier les canaux RVB
-        o = max(0.0, min(1.0, opacite))
-        v += ",colorchannelmixer=rr=%.3f:gg=%.3f:bb=%.3f" % (o, o, o)
-    # Apres le changement de vitesse : « t » est alors le temps du montage,
-    # comme dans le moniteur.
-    ex, ey = _secousse(cadrage, 0.0, duree)
-    er = _rotation_secousse(cadrage, 0.0, duree)
-    if ex or er:
-        m = _marge_secousse(cadrage)
-        etapes = ["scale=iw*%.4f:ih*%.4f" % (m, m)]
-        if er:
-            # On tourne AVANT de decouper : la fenetre se promene ensuite dans
-            # une image deja inclinee, et la marge garantit qu elle ne sort
-            # jamais du cadre.
-            etapes.append("rotate=a='%s':ow=iw:oh=ih:fillcolor=black" % er)
-        etapes.append("crop=w=%d:h=%d:x='(iw-ow)/2+%s':y='(ih-oh)/2+%s'"
-                      % (LARGE, HAUT, ex or "0", ey or "0"))
-        v += "," + ",".join(etapes)
-    v += ",fps=%d,format=yuv420p,setsar=1" % FPS_SORTIE
-    return v
+        et.append("setpts=%.6f*PTS" % (1.0 / vitesse))
+    et += ["fps=%d" % FPS_SORTIE, "format=rgba" if alpha else "format=yuv420p"]
+    # Le canevas : le cadre ; ou, s il y a une rotation, un carre de la
+    # diagonale du cadre — le plan y tourne sans perdre ses coins, puis on
+    # reprend le cadre au centre, comme le moniteur qui dessine tourne.
+    if sr:
+        cote = int(math.ceil(math.hypot(LARGE, HAUT) / 2.0)) * 2
+        cw = ch = cote
+    else:
+        cw, ch = LARGE, HAUT
+    fond = "black@0.0" if alpha else "black"
+    x = "(W-w)/2+%.2f" % dx + ("+" + sx if sx else "")
+    y = "(H-h)/2+%.2f" % dy + ("+" + sy if sy else "")
+    # Un calque s arrete avec son plan (« pass ») ; la base garde sa derniere
+    # image si la source finit une fraction trop tot (« repeat »).
+    g = ["[%s]%s[%spl]" % (entree, ",".join(et), pre),
+         "color=c=%s:s=%dx%d:r=%d:d=%.3f%s[%scv]"
+         % (fond, cw, ch, FPS_SORTIE, duree if alpha else duree + 0.5,
+            ",format=rgba" if alpha else "", pre)]
+    f = ("[%scv][%spl]overlay=x='%s':y='%s':eof_action=%s:format=auto"
+         % (pre, pre, x, y, "pass" if alpha else "repeat"))
+    if sr:
+        f += (",rotate=a='%s':ow=iw:oh=ih:fillcolor=%s,crop=%d:%d:(iw-%d)/2:"
+              "(ih-%d)/2" % (sr, fond, LARGE, HAUT, LARGE, HAUT))
+    f += ",format=%s,setsar=1[%s]" % ("rgba" if alpha else "yuv420p", sortie)
+    g.append(f)
+    return ";".join(g)
 
 
 # ---------------------------------------------------------------------------
@@ -1448,37 +1467,32 @@ def _segment(plan, dossier, i, avec_son, fi=0.0, fo=0.0, pr_defaut=""):
     cmd += ["-filter_complex"]
     fx = _fx_actifs(plan)
     opac = float(plan.get("opacite", 1) or 1)
-    # Avec des effets, la transparence passe APRES eux, comme sur le moniteur
-    # (qui pose le plan traite avec son alpha).
-    vf = _seg_filtre(plan.get("cadrage"),
-                     1.0 if (image or gel is not None) else vit,
-                     1.0 if fx else opac, duree, rev and gel is None)
-    if gel is not None:
-        vf = _prefixe_gel(duree) + vf
-    fin = ""
-    if fx and opac < 0.995:
-        o = max(0.0, min(1.0, opac))
-        fin += ",colorchannelmixer=rr=%.3f:gg=%.3f:bb=%.3f" % (o, o, o)
-    if fi > 0.02:
-        fin += ",fade=t=in:st=0:d=%.3f" % min(fi, duree)
-    if fo > 0.02:
-        fin += ",fade=t=out:st=%.3f:d=%.3f" % (max(0, duree - fo), min(fo, duree))
+    # L ordre du moniteur : pose dans le cadre, effets, masque, puis
+    # transparence et fondus. Rien n est sous la piste de base : composer sur
+    # du noir revient a multiplier les canaux.
+    morceaux = [_placement("%d:v" % iv, "p", plan.get("cadrage"), duree, "b",
+                           vitesse=1.0 if (image or gel is not None) else vit,
+                           rev=rev and gel is None and not image, gel=gel)]
+    cur = "p"
     graphe = _graphe_fx(fx, "p", "q", duree) if fx else None
-    # Le masque passe APRES les effets et AVANT la transparence et les
-    # fondus : l ordre du moniteur.
-    ev = "[%d:v]" % iv
-    if graphe and idx_mq is not None:
-        fv = (ev + vf + "[p];" + graphe + ";" +
-              _masque_rvb("q", "qm", idx_mq, "m") + ";[qm]" +
-              (fin.lstrip(",") or "null") + "[v]")
-    elif graphe:
-        fv = (ev + vf + "[p];" + graphe + ";[q]" +
-              (fin.lstrip(",") or "null") + "[v]")
-    elif idx_mq is not None:
-        fv = (ev + vf + "[p];" + _masque_rvb("p", "pm", idx_mq, "m") +
-              ";[pm]" + (fin.lstrip(",") or "null") + "[v]")
-    else:
-        fv = ev + vf + fin + "[v]"
+    if graphe:
+        morceaux.append(graphe)
+        cur = "q"
+    if idx_mq is not None:
+        morceaux.append(_masque_rvb(cur, "pm", idx_mq, "m"))
+        cur = "pm"
+    fin = []
+    if opac < 0.995:
+        o = max(0.0, min(1.0, opac))
+        fin.append("colorchannelmixer=rr=%.3f:gg=%.3f:bb=%.3f" % (o, o, o))
+    if fi > 0.02:
+        fin.append("fade=t=in:st=0:d=%.3f" % min(fi, duree))
+    if fo > 0.02:
+        fin.append("fade=t=out:st=%.3f:d=%.3f" % (max(0, duree - fo),
+                                                  min(fo, duree)))
+    fin.append("format=yuv420p")
+    morceaux.append("[%s]%s[v]" % (cur, ",".join(fin)))
+    fv = ";".join(morceaux)
     if avec_son:
         af = "[0:a]aresample=48000,aformat=channel_layouts=stereo"
         if rev:
@@ -1934,29 +1948,11 @@ def _incruster(base, sortie, calques, a0, b0, travail, pr_defaut=""):
                     return False
                 idx = entree(["-ss", "%.3f" % max(0.0, e),
                               "-to", "%.3f" % max(e + 0.05, o), "-i", src])
-            mg = _marge_secousse(cad)
-            k2 = ech * mg
-            et = ([_prefixe_gel(d).rstrip(",")] if gel is not None else []) + [
-                  "scale=%d:%d:force_original_aspect_ratio=%s"
-                  % (LARGE, HAUT, "increase" if cad.get("mode") == "cover"
-                     else "decrease"),
-                  "scale=trunc(iw*%.5f/2)*2:trunc(ih*%.5f/2)*2" % (k2, k2)]
-            if rev and not image:
-                et.append("reverse")
-            if not image and abs(vit - 1) > 0.001:
-                et.append("setpts=%.6f*PTS" % (1.0 / vit))
-            et += ["fps=%d" % FPS_SORTIE, "format=rgba"]
-            chaine.append("[%d:v]" % idx + ",".join(et) + "[os%d]" % n)
-            x = "(W-w)/2+%.2f" % dx + ("+" + sxl if sxl else "")
-            y = "(H-h)/2+%.2f" % dy + ("+" + syl if syl else "")
-            chaine.append("color=c=black@0.0:s=%dx%d:r=%d:d=%.3f,format=rgba"
-                          "[og%d]" % (LARGE, HAUT, FPS_SORTIE, d, n))
             cur = "op%d" % n
-            chaine.append("[og%d][os%d]overlay=x='%s':y='%s':eof_action=pass:"
-                          "format=auto,format=rgba%s[%s]"
-                          % (n, n, x, y,
-                             (",rotate=a='%s':ow=iw:oh=ih:fillcolor=black@0.0"
-                              % srl) if srl else "", cur))
+            chaine.append(_placement("%d:v" % idx, cur, cad, d, "o%d" % n,
+                                     alpha=True,
+                                     vitesse=1.0 if image else vit,
+                                     rev=rev and not image, gel=gel))
             fxl = _fx_actifs(plan)
             if fxl:
                 # Les effets travaillent en RVB : l alpha est mis de cote

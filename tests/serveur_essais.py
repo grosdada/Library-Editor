@@ -266,6 +266,46 @@ if projets:
         finally:
             _sh.rmtree(d, ignore_errors=True)
 
+    print("--- piste de base : la pose dans le cadre ---")
+    if not serveur.FFMPEG or not video:
+        print("    ffmpeg ou video absents : non eprouve")
+    else:
+        import shutil as _sh
+        import tempfile as _tf
+        d = _tf.mkdtemp(prefix="essai-pose-")
+        serveur.LARGE, serveur.HAUT, serveur.FPS_SORTIE = 320, 240, 24
+        serveur.MODE = "video"
+        try:
+            plan = {"projet": PR, "fichier": video["rel"], "entree": 0.0,
+                    "sortie": 1.0, "vitesse": 1, "rev": False,
+                    "cadrage": {"mode": "contain", "echelle": 0.5, "dx": 50}}
+            seg, _ = serveur._segment(plan, d, 1, False)
+            v("echelle 50 % : le segment se fabrique (il echouait avant 1.3.10)",
+              bool(seg), serveur.RENDU.get("message"))
+            if seg:
+                r = subprocess.run([serveur.FFMPEG, "-v", "error", "-ss", "0.5",
+                                    "-i", seg, "-frames:v", "1", "-f",
+                                    "rawvideo", "-pix_fmt", "gray", "-"],
+                                   capture_output=True)
+                px = r.stdout
+                if len(px) == 320 * 240:
+                    gauche = max(px[120 * 320 + x] for x in range(10, 150))
+                    droite = max(px[120 * 320 + x] for x in range(175, 315))
+                else:
+                    gauche, droite = 255, 0
+                v("decale de dx = 50 : a gauche du noir (%d), a droite "
+                  "l image (%d)" % (gauche, droite), gauche <= 18 and droite > 60)
+            plan2 = {"projet": PR, "fichier": video["rel"], "entree": 0.0,
+                     "sortie": 1.0, "vitesse": 2, "rev": True,
+                     "cadrage": {"mode": "cover", "echelle": 0.8, "dy": -20,
+                                 "shk": True,
+                                 "shks": [{"f": 3, "a": 2, "r": 2, "on": True}]}}
+            seg2, duree2 = serveur._segment(plan2, d, 2, False)
+            v("echelle 80 %, secousse avec rotation, vitesse x2 a l envers",
+              bool(seg2) and abs(duree2 - 0.5) < 0.01, serveur.RENDU.get("message"))
+        finally:
+            _sh.rmtree(d, ignore_errors=True)
+
     print("--- masques, et rushes des pistes du dessus ---")
     if not serveur.FFMPEG or not video:
         print("    ffmpeg ou video absents : masques non eprouves")

@@ -564,6 +564,11 @@ body.mqDessin #mqCalque{pointer-events:auto;cursor:crosshair}
 #menu .mqRang .val{font:11px/1 ui-monospace,monospace;color:var(--sourd);
  min-width:38px;text-align:right}
 #menu label.it input{margin:0;min-width:0;width:auto;flex:0 0 auto}
+/* « Clone » : un champ pour le nombre de copies, dans la ligne du menu. */
+#menu .it.clone{gap:6px;cursor:default}
+#menu .it.clone:hover{background:none;color:inherit}
+#menu .it.clone input{width:54px;min-width:0;padding:1px 5px;font-size:12px}
+#menu .it.clone button{padding:1px 9px;font-size:11px}
 .lane.ma{background:#1d1826}
 .outil.calque:hover{border-color:#79aed6;color:#d3e9fb;background:#1d2b38}
 /* Vignette d un bloc sans rush : un aplat, pas une image. */
@@ -5061,6 +5066,85 @@ function dupliquerBlocs() {
     (decale ? ' — shifted past the blocks already there' : ''));
 }
 
+// « Clone » : N copies de la selection, posees bout a bout juste derriere
+// elle, sur les memes pistes ; le son lie suit chaque copie avec son propre
+// lien. Ce qui venait apres, sur ces pistes, recule de la longueur ajoutee —
+// sinon les copies tomberaient dessus et fondraient avec. Les autres pistes
+// (la musique, typiquement) ne bougent pas.
+let CLONE_N = Math.max(1, Math.min(50, parseInt(pref.lire('cloneN', '2'), 10) || 2));
+function clonerBlocs(n) {
+  const src = CLIPS.filter(c => clipsSel.has(c.uid));
+  if (!src.length) { dire('no block selected'); return; }
+  n = Math.max(1, Math.min(50, parseInt(n, 10) || 1));
+  CLONE_N = n;
+  pref.ecrire('cloneN', String(n));
+  const debut = Math.min.apply(null, src.map(c => c.t0));
+  const bout = Math.max.apply(null, src.map(fin));
+  const ecart = bout - debut;
+  if (ecart < 0.04) { dire('the selection is too short to clone'); return; }
+  memoriser();
+  const total = ecart * n;
+  const pistes = new Set(src.map(c => c.piste));
+  const aPousser = new Set();
+  CLIPS.forEach(c => {
+    if (clipsSel.has(c.uid) || !pistes.has(c.piste)) return;
+    // Ce qui commence apres la selection, et ce qui la chevauche en
+    // debordant derriere (un fondu enchaine avec sa fin) : il garde ainsi son
+    // fondu, avec la derniere copie.
+    if (c.t0 >= bout - 0.001 || (c.t0 > debut + 0.001 && fin(c) > bout + 0.001))
+      aPousser.add(c);
+  });
+  // Le son (ou l image) lie a un bloc qui recule le suit, meme s il est sur
+  // une autre piste : sinon les deux se decaleraient.
+  [...aPousser].forEach(c => {
+    if (c.lien) CLIPS.forEach(x => {
+      if (x.lien === c.lien && !clipsSel.has(x.uid)) aPousser.add(x);
+    });
+  });
+  aPousser.forEach(c => { c.t0 += total; });
+  const pousses = aPousser.size;
+  const neufs = [];
+  for (let k = 1; k <= n; k++) {
+    const liens = {};
+    src.forEach(c => {
+      const m = {};
+      for (const cle in c) if (cle[0] !== '_') m[cle] = c[cle];
+      if (c.fx) m.fx = JSON.parse(JSON.stringify(c.fx));
+      if (c.anim) m.anim = JSON.parse(JSON.stringify(c.anim));
+      if (c.masque) m.masque = JSON.parse(JSON.stringify(c.masque));
+      if (c.shks) m.shks = JSON.parse(JSON.stringify(c.shks));
+      if (Array.isArray(c.mq)) m.mq = JSON.parse(JSON.stringify(c.mq));
+      m.uid = uidSuivant++;
+      m.t0 = c.t0 + k * ecart;
+      if (c.lien) {
+        if (!liens[c.lien]) liens[c.lien] = lienLibre();
+        m.lien = liens[c.lien];
+      }
+      neufs.push(m);
+    });
+  }
+  CLIPS = CLIPS.concat(neufs);
+  clipsSel = new Set(neufs.map(m => m.uid));
+  rendreTimeline(); resynchroniser(true);
+  dire(n + (n > 1 ? ' clones' : ' clone') + ' placed from ' + tc(bout) +
+    ' to ' + tc(bout + total) +
+    (pousses ? ' — ' + pousses + ' block' + (pousses > 1 ? 's' : '') +
+      ' moved back' : '') + ' · Ctrl+Z to undo');
+}
+$('#menu').addEventListener('keydown', e => {
+  const ch = e.target.closest('[data-clone-n]');
+  if (!ch) return;
+  e.stopPropagation();
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    $('#menu').className = '';
+    clonerBlocs(ch.value);
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    $('#menu').className = '';
+  }
+});
+
 function delier() {
   const l = CLIPS.filter(c => clipsSel.has(c.uid) && c.lien);
   if (!l.length) { dire('nothing to unlink'); return; }
@@ -5519,6 +5603,10 @@ $('#lanes').addEventListener('contextmenu', e => {
       (clipsSel.size > 1 ? 'the ' + clipsSel.size + ' blocks' : 'the block') +
       ' <span class="pousse" style="color:var(--sourd);font-size:10px">Ctrl+D</span>' +
       '</div>' +
+    '<div class="it clone" title="copies one after the other, right behind ' +
+      'the selection — what follows on the same tracks moves back">' +
+      '⧉ Clone × <input type="number" data-clone-n min="1" max="50" step="1" ' +
+      'value="' + CLONE_N + '"><button data-act="cloner">OK</button></div>' +
     (c.genre === 'texte'
        ? '<div class="it" data-act="modifier">✎ Edit text…</div>'
        : c.genre === 'couleur'
@@ -5638,6 +5726,11 @@ menu.addEventListener('click', async e => {
     const pj = (PAR_ID[c.film] || {}).pj || c.pj || '';
     if (a === 'voirProjet') montrerDansLeProjet(c.film, pj);
     else montrerSurLeDisque(c.film, pj);
+    return;
+  }
+  if (a === 'cloner') {
+    const ch = menu.querySelector('[data-clone-n]');
+    clonerBlocs(ch ? ch.value : 1);
     return;
   }
   if (a === 'dupliquer') dupliquerBlocs();
@@ -5871,7 +5964,8 @@ function rendreReglages() {
       'and where its file is<br>' +
       'Double-click a rush: it opens<br>six times bigger<br>' +
       'Double-click a value: type it<br>on the keypad, Enter to apply<br>' +
-      'Right-click the monitor: save<br>a screenshot to Screenshots<br><br>' +
+      'Right-click the monitor: save<br>a screenshot to Screenshots<br>' +
+      'Right-click a block: Clone ×N,<br>copies one after the other<br><br>' +
       'Two overlapping blocks<br>make an automatic dissolve.</div>';
     return;
   }
