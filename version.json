@@ -267,5 +267,12 @@
     }
    }
   }
+ },
+ "commit": "27d9843e12eec679ad3d219b06ff723a9304d03b",
+ "installeur": {
+  "version": "1.3.10",
+  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.3.10/Library-Editor-1.3.10.zip",
+  "octets": 38397861,
+  "sha256": "ef29f2140f285a71ab58f25ffd5915ece1f452ed3e084ebbfe3d88a7c3da5b3a"
  }
 }
