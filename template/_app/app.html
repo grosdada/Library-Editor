@@ -51,6 +51,7 @@ h1 small{color:var(--sourd);letter-spacing:.05em;font-weight:400;
 body.edit #selDossier{display:inline-block}
 body.edit .rushOnly{display:none}
 #tailleVign{min-width:74px;width:74px}
+#selEpisode{max-width:240px;border-color:var(--or)}
 /* Les couleurs de rangement : une pastille et son nom. Un clic filtre, un
    double-clic ou un clic droit l edite. */
 #cats{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
@@ -761,6 +762,7 @@ body.enligne #qui { display: flex; }
   <button id="bAnnul" class="rushOnly bureauSeul ecritRushes">Undo on disk</button>
   <button id="bMaj" class="bureauSeul" hidden
     title="update this library's program from GitHub">Update</button>
+  <select id="selEpisode" hidden title="go to another episode"></select>
 </header>
 
 <main>
@@ -941,10 +943,10 @@ const clefDossier = f => VUE === 'rangement'
 let BASE_MEDIA = '', BASE_POSTERS = '', ENLIGNE = false;
 const urlMedia = f => BASE_MEDIA
   ? BASE_MEDIA + encodeURIComponent(f.pj) + '/' + encodeURI(f.proxy || f.rel)
-  : '/media/' + encodeURIComponent(f.pj) + '/' + encodeURI(f.rel);
+  : 'media/' + encodeURIComponent(f.pj) + '/' + encodeURI(f.rel);
 const urlPoster = f => BASE_POSTERS
   ? BASE_POSTERS + encodeURIComponent(f.pj) + '/' + f.id + '.jpg'
-  : '/posters/' + encodeURIComponent(f.pj) + '/' + f.id + '.jpg';
+  : 'posters/' + encodeURIComponent(f.pj) + '/' + f.id + '.jpg';
 const posterDe = id => { const f = PAR_ID[id]; return f ? urlPoster(f) : ''; };
 
 // Le projet « courant » sert aux actions qui ne visent pas une fiche precise :
@@ -959,7 +961,7 @@ function projetCourant() {
 async function chargerRangement(pj) {
   if (!RANGEABLE) return;
   try {
-    const d = await api('/api/rangement?projet=' + encodeURIComponent(pj));
+    const d = await api('api/rangement?projet=' + encodeURIComponent(pj));
     RANGEMENTS[pj] = {dossiers: d.dossiers || [], ou: d.ou || {}};
   } catch (err) {
     RANGEMENTS[pj] = {dossiers: [], ou: {}};
@@ -973,7 +975,7 @@ let _rangEnCours = null;
 async function enregistrerRangement(pj) {
   const r = rangementDe(pj);
   try {
-    _rangEnCours = api('/api/rangement',
+    _rangEnCours = api('api/rangement',
       {projet: pj, dossiers: r.dossiers, ou: r.ou});
     const d = await _rangEnCours;
     // Le serveur fait autorite : il cree les parents manquants et jette ce
@@ -1064,6 +1066,10 @@ function fmt(v) {
 // sans aucune sortie. Toute requete a donc une limite de temps ; passer 0 en
 // troisieme argument la leve, pour le scan qui dure legitimement des minutes.
 const DELAI_API = 25000;
+// Chemins RELATIFS (api/…, media/…) : sur le bureau la page est a la racine,
+// mais en ligne une bibliotheque peut vivre dans un sous-dossier
+// (ground-run.placenta.tv/ep-01/) ; un « /api/ » partait alors a la racine du
+// domaine, la porte ne s ouvrait jamais (05/10).
 async function api(route, corps, delai) {
   const ms = delai === undefined ? DELAI_API : delai;
   const ctrl = ms && window.AbortController ? new AbortController() : null;
@@ -1090,10 +1096,16 @@ async function api(route, corps, delai) {
 }
 
 // -- préférences d'affichage persistantes -----------------------------------
+// En ligne, plusieurs bibliotheques peuvent partager une adresse
+// (ground-run.placenta.tv/ep-01/, /ep-02/…) et donc un meme localStorage : la
+// cle prend le chemin du dossier, sinon les projets ouverts d un episode
+// etaient cherches dans l autre. A la racine (le bureau), rien ne change.
+const PREF_NS = location.pathname.replace(/[^/]*$/, '');
+const prefCle = c => 'gary_' + (PREF_NS === '/' ? '' : PREF_NS) + c;
 const pref = {
-  lire(c, d) { try { const v = localStorage.getItem('gary_' + c);
+  lire(c, d) { try { const v = localStorage.getItem(prefCle(c));
     return v === null ? d : v; } catch (e) { return d; } },
-  ecrire(c, v) { try { localStorage.setItem('gary_' + c, v); } catch (e) {} }
+  ecrire(c, v) { try { localStorage.setItem(prefCle(c), v); } catch (e) {} }
 };
 
 // Trois vues, trois reglages de vignette : la planche complete veut de
@@ -1286,8 +1298,15 @@ function rendreDossiers() {
     // Un dossier qui ne contient que du son non plus : on ne monte pas DANS
     // sa musique. La ligne reste si des sequences y dorment deja — on ne
     // cache jamais du travail existant.
-    const aDeLImage = (p.films || []).some(f => !f.absent && !f.son_seul);
-    if (!bibli && !estCaptures(p.nom) && (aDeLImage || mm.length)) {
+    // La ligne « Sequences » ne va qu ou l on monte : le dossier des rushes
+    // video. Une bibliotheque qui a un dossier « Vids » (la convention de David
+    // depuis le 05/10) ne la montre que la ; ailleurs, sous les dossiers qui
+    // ont de la video — jamais sous un kit d images ni sous du son.
+    const aDeLaVideo = (p.films || []).some(f => !f.absent && !f.son_seul &&
+                                                 !f.image);
+    const avecVids = OUVERTS.some(x => /^vids$/i.test(x.nom));
+    const ouMonter = avecVids ? /^vids$/i.test(p.nom) : aDeLaVideo;
+    if (!bibli && !estCaptures(p.nom) && (ouMonter || mm.length)) {
       h += '<div class="dos montages" data-montages="' + ech(p.nom) +
         '" title="sequences in this project"><span class="chev">' +
         (om ? '▼' : '▶') + '</span><b>Sequences</b><i>' + mm.length +
@@ -1463,7 +1482,7 @@ vPoster.addEventListener('seeked', async () => {
     c.width = 480;
     c.height = Math.round(480 * vPoster.videoHeight / vPoster.videoWidth) || 270;
     c.getContext('2d').drawImage(vPoster, 0, 0, c.width, c.height);
-    await api('/api/poster', {projet: (PAR_ID[id] || {}).pj, id: id,
+    await api('api/poster', {projet: (PAR_ID[id] || {}).pj, id: id,
                               data: c.toDataURL('image/jpeg', 0.78)});
     finirPoster(true);
   } catch (err) { finirPoster(false); }
@@ -1489,7 +1508,7 @@ async function renommerFilm(id, neuf) {
   const f = PAR_ID[id];
   if (!f || !neuf || neuf === f.nom) return false;
   try {
-    const d = await api('/api/renommer', {projet: f.pj, id: id, nom: neuf});
+    const d = await api('api/renommer', {projet: f.pj, id: id, nom: neuf});
     Object.assign(f, d.film);
     rendreGrille(); rendreTimeline();
     dire('renamed on disk: ' + f.nom);
@@ -1505,7 +1524,7 @@ grille.addEventListener('click', async e => {
     e.stopPropagation();
     const f = PAR_ID[et.dataset.fav];
     try {
-      const d = await api('/api/marquer',
+      const d = await api('api/marquer',
                           {projet: f.pj, id: f.id, fav: !f.fav});
       Object.assign(f, d.film); rendreGrille();
     } catch (err) { dire('favourite not saved — ' + err.message, true); }
@@ -1755,7 +1774,7 @@ async function couleurRush(ids, i) {
     const f = PAR_ID[ids[k]];
     if (!f) continue;
     try {
-      const d = await api('/api/marquer', {projet: f.pj, id: f.id, coul: i});
+      const d = await api('api/marquer', {projet: f.pj, id: f.id, coul: i});
       Object.assign(f, d.film);
     } catch (err) { f.coul = avant[k]; rate++; }
   }
@@ -1797,7 +1816,7 @@ function nettoyerCats(v) {
 
 async function chargerCategories() {
   try {
-    const d = await api('/api/presets?genre=categories');
+    const d = await api('api/presets?genre=categories');
     const v = d && d.presets && d.presets.palette;
     if (v && Array.isArray(v.liste)) CATS = nettoyerCats(v);
   } catch (e) {}
@@ -1806,7 +1825,7 @@ async function chargerCategories() {
 
 async function enregistrerCats() {
   try {
-    await api('/api/presets', {genre: 'categories', nom: 'palette',
+    await api('api/presets', {genre: 'categories', nom: 'palette',
                                valeur: CATS});
     return true;
   } catch (err) { dire('colours not saved — ' + err.message, true); return false; }
@@ -2039,7 +2058,7 @@ async function montrerSurLeDisque(id, pj) {
   const projet = (f && f.pj) || pj || '';
   if (!projet) { dire('unknown project for this block', true); return; }
   try {
-    const d = await api('/api/reveler', {projet: projet, id: id});
+    const d = await api('api/reveler', {projet: projet, id: id});
     dire(d.manquant ? 'the file is gone — its folder is open'
                     : 'shown in the file browser');
   } catch (err) { dire(err.message, true); }
@@ -2064,7 +2083,7 @@ function plierProjet(nom) {
 async function ouvrirProjetDisque(nom, discret) {
   const deja = projetOuvert(nom);
   if (deja) return deja;
-  const d = await api('/api/catalogue?projet=' + encodeURIComponent(nom));
+  const d = await api('api/catalogue?projet=' + encodeURIComponent(nom));
   const p = {nom: nom, films: d.films || [], dossiers: d.dossiers || [],
              racine: d.racine_abs || '', besoinScan: !!d.besoin_scan,
              aScanner: d.a_scanner || 0};
@@ -2101,13 +2120,13 @@ function fermerVraiment(nom) {
 async function copierRushesVers(source, cible, ids, afficher) {
   const suivi = setInterval(async () => {
     try {
-      const e = await api('/api/import_etat');
+      const e = await api('api/import_etat');
       if (e.etat === 'encours' && afficher)
         afficher(e.fait + '/' + e.total + (e.nom ? ' · ' + e.nom : ''));
     } catch (err) {}
   }, 900);
   try {
-    const r = await api('/api/importer',
+    const r = await api('api/importer',
       {projet: cible, source: source, ids: ids});
     const p = projetOuvert(cible);
     if (p) { p.films = r.films; p.dossiers = r.dossiers; }
@@ -2193,14 +2212,14 @@ async function scannerProjet(nom) {
   let disparus = 0;
   const suivi = setInterval(async () => {
     try {
-      const e = await api('/api/scan_etat');
+      const e = await api('api/scan_etat');
       if (e.etat === 'encours' && e.projet === nom)
         btns.forEach(b => { if (b) b.textContent = e.fait + '/' + e.total; });
     } catch (err) {}
   }, 1200);
   try {
     // Un scan peut durer des minutes sur un disque reseau : pas de limite.
-    const d = await api('/api/scan?projet=' + encodeURIComponent(nom), null, 0);
+    const d = await api('api/scan?projet=' + encodeURIComponent(nom), null, 0);
     p.films = d.films || []; p.dossiers = d.dossiers || [];
     p.racine = d.racine_abs || p.racine;
     p.besoinScan = false; p.aScanner = 0;
@@ -2234,15 +2253,37 @@ function majQui() {
     (MOI.admin ? ' · admin' : '') + '</span>' +
     '<button id="bSortir">Sign out</button>';
   $('#bSortir').onclick = async () => {
-    try { await api('/api/sortir', {}); } catch (err) {}
+    try { await api('api/sortir', {}); } catch (err) {}
     location.reload();
   };
+}
+
+// Les sites freres : en ligne, plusieurs bibliotheques peuvent vivre cote a
+// cote (ground-run.placenta.tv/ep-01/, /ep-02/…). Si le dossier parent publie
+// une liste « episodes.json » ([{dossier, nom}]), un menu en haut a droite
+// passe de l une a l autre. Sur le bureau ce fichier n existe pas : rien.
+async function sitesVoisins() {
+  let l;
+  try {
+    const r = await fetch('../episodes.json', {cache: 'no-store'});
+    if (!r.ok) return;
+    l = await r.json();
+  } catch (e) { return; }
+  if (!Array.isArray(l) || l.length < 2) return;
+  const ici = location.pathname.split('/').filter(Boolean).slice(-2)
+    .find(x => l.some(e => e.dossier === x)) || '';
+  const s = $('#selEpisode');
+  s.innerHTML = l.map(e => '<option value="' + echapHtml(e.dossier) + '"' +
+    (e.dossier === ici ? ' selected' : '') + '>' + echapHtml(e.nom || e.dossier) +
+    '</option>').join('');
+  s.hidden = false;
+  s.onchange = () => { location.href = '../' + encodeURIComponent(s.value) + '/'; };
 }
 
 async function ouvrirPorte() {
   let m;
   try {
-    m = await api('/api/moi');
+    m = await api('api/moi');
   } catch (err) {
     return true;          // serveur de bureau : il n y a pas de comptes
   }
@@ -2273,7 +2314,7 @@ async function ouvrirPorte() {
 // ===========================================================================
 async function boiteComptes() {
   let l = [];
-  try { l = (await api('/api/comptes')).comptes || []; }
+  try { l = (await api('api/comptes')).comptes || []; }
   catch (err) { dire('accounts unavailable — ' + err.message, true); return; }
   const b = $('#boite');
   b.innerHTML = '<h3>Accounts</h3>' +
@@ -2303,7 +2344,7 @@ async function boiteComptes() {
     const mp = b.querySelector('#cpMp').value;
     if (!id || !mp) { dire('a name and a password, please', true); return; }
     try {
-      await api('/api/compte/creer',
+      await api('api/compte/creer',
         {identifiant: id, motdepasse: mp, admin: b.querySelector('#cpAdm').checked});
       dire('account created: ' + id);
       boiteComptes();
@@ -2315,7 +2356,7 @@ async function boiteComptes() {
       'You are replacing it, not reading it — the old one is unreadable.');
     if (!mp) return;
     try {
-      await api('/api/compte/motdepasse', {identifiant: id, motdepasse: mp});
+      await api('api/compte/motdepasse', {identifiant: id, motdepasse: mp});
       dire('password replaced for ' + id);
     } catch (err) { dire('refused — ' + err.message, true); }
   });
@@ -2325,7 +2366,7 @@ async function boiteComptes() {
       'Their folders stay on the server: if you recreate the same name, ' +
       'they find their arrangement again.')) return;
     try {
-      await api('/api/compte/effacer', {identifiant: id});
+      await api('api/compte/effacer', {identifiant: id});
       dire('account removed: ' + id);
       boiteComptes();
     } catch (err) { dire('refused — ' + err.message, true); }
@@ -2344,14 +2385,14 @@ function contenuDossier(x) {
 
 async function boiteProjets() {
   let l = [];
-  try { l = (await api('/api/projets')).projets || []; }
+  try { l = (await api('api/projets')).projets || []; }
   catch (err) { dire('project list unavailable — ' + err.message, true); return; }
   // Les autres dossiers de la bibliotheque : ceux qu aucune liste ne cite
   // encore. Un clic les ouvre — rien n est cree, rien n est deplace.
   let autres = [];
   if (DOSSIERS_OK) {
     try {
-      const d = await api('/api/dossiers', null, 120000);
+      const d = await api('api/dossiers', null, 120000);
       const connus = new Set(l.map(p => p.nom));
       autres = (d.dossiers || []).filter(x => !x.projet && !connus.has(x.nom));
     } catch (err) { autres = []; }
@@ -2385,7 +2426,7 @@ async function boiteProjets() {
     const nom = b.querySelector('#pjNeuf').value.trim();
     if (!nom) return;
     try {
-      const r = await api('/api/projet/creer', {nom: nom});
+      const r = await api('api/projet/creer', {nom: nom});
       await ouvrirProjetDisque(r.nom, true);
       $('#voile').className = '';
       dire('“' + r.nom + '” created — drop the rushes into ' + r.chemin +
@@ -2403,7 +2444,7 @@ async function boiteProjets() {
     const nom = el.dataset.dos;
     $('#voile').className = '';
     try {
-      await api('/api/projet/ajouter', {nom: nom});
+      await api('api/projet/ajouter', {nom: nom});
       const p = await ouvrirProjetDisque(nom, true);
       dire('“' + nom + '” opened' +
         (p && p.besoinScan ? ' — click Scan to catalogue its ' +
@@ -2467,7 +2508,7 @@ async function rouvrirDernier() {
   const l = (typeof MONTAGES !== 'undefined' ? MONTAGES : []);
   if (!l.some(m => m.projet === pj && m.nom === nom)) return;
   try {
-    const d = await api('/api/montage?projet=' + encodeURIComponent(pj) +
+    const d = await api('api/montage?projet=' + encodeURIComponent(pj) +
       '&nom=' + encodeURIComponent(nom));
     await chargerProjet(d.montage, d.nom, d.projet);
     dire('“' + nom + '” reopened');
@@ -2482,7 +2523,7 @@ async function ouvrirMontage(pj, nom) {
   }
   await assurerSauvegarde();
   try {
-    const d = await api('/api/montage?projet=' + encodeURIComponent(pj) +
+    const d = await api('api/montage?projet=' + encodeURIComponent(pj) +
       '&nom=' + encodeURIComponent(nom));
     await chargerProjet(d.montage, d.nom, d.projet);
     noterDernier(d.projet || pj, d.nom || nom);
@@ -2497,7 +2538,7 @@ async function ouvrirMontage(pj, nom) {
 async function ajouterMontage(pj, nom) {
   let d;
   try {
-    d = await api('/api/montage?projet=' + encodeURIComponent(pj) +
+    d = await api('api/montage?projet=' + encodeURIComponent(pj) +
       '&nom=' + encodeURIComponent(nom));
   } catch (err) { dire('could not read — ' + err.message, true); return; }
   const p = d && d.montage;
@@ -2596,7 +2637,7 @@ function editerMontage(el) {
     const neuf = inp.value.trim();
     if (valider && neuf && neuf !== ancien) {
       try {
-        const r = await api('/api/montage/renommer',
+        const r = await api('api/montage/renommer',
           {projet: pj, ancien: ancien, nom: neuf});
         // Si c est le montage ouvert, il change de nom sous nos pieds.
         if (projetNom === ancien && PROJET.pj === pj) {
@@ -2636,7 +2677,7 @@ async function effacerMontage(pj, nom) {
   $('#mOk').onclick = async () => {
     $('#mOk').disabled = true;
     try {
-      const r = await api('/api/montage/effacer', {projet: pj, nom: nom});
+      const r = await api('api/montage/effacer', {projet: pj, nom: nom});
       FERMES.delete(pj + '|' + nom); noterFermes();
       rafraichirProjets();
     } catch (err) {
@@ -2780,7 +2821,7 @@ function editerDossier(d) {
     }
     if (valider && neuf && neuf !== ancien) {
       try {
-        const r = await api('/api/dossier/renommer',
+        const r = await api('api/dossier/renommer',
           {projet: pj, ancien: ancien, nom: neuf});
         const p = projetOuvert(pj);
         if (p) { p.films = r.films; p.dossiers = r.dossiers; refondre(); }
@@ -2836,7 +2877,7 @@ async function effacerDossier(pj, rel) {
     const bt = $('#eOk');
     bt.disabled = true; bt.textContent = 'running…';
     try {
-      const r = await api('/api/dossier/effacer', {projet: pj, dossier: rel});
+      const r = await api('api/dossier/effacer', {projet: pj, dossier: rel});
       p.films = r.films; p.dossiers = r.dossiers;
       if (dossierActif === pj + '/' + rel ||
           String(dossierActif).startsWith(pj + '/' + rel + '/'))
@@ -2849,7 +2890,7 @@ async function effacerDossier(pj, rel) {
       // L operation a pu passer malgre le silence : on relit le projet plutot
       // que de laisser la colonne afficher un dossier qui n existe plus.
       try {
-        const c = await api('/api/catalogue?projet=' + encodeURIComponent(pj));
+        const c = await api('api/catalogue?projet=' + encodeURIComponent(pj));
         p.films = c.films; p.dossiers = c.dossiers;
         refondre(); appliquerProfil(); rendre(); rendreTimeline();
       } catch (e2) { /* tant pis : on ne bloque pas pour autant */ }
@@ -2954,7 +2995,7 @@ colMenu.addEventListener('click', async e => {
     if (!nom) return;
     if (VUE === 'rangement') { creerDossierVirtuel(pj, rel, nom); return; }
     try {
-      const r = await api('/api/dossier/creer',
+      const r = await api('api/dossier/creer',
         {projet: pj, nom: nom, parent: rel});
       const p = projetOuvert(pj);
       if (p) { p.dossiers = r.dossiers; refondre(); }
@@ -3020,7 +3061,7 @@ colDos.addEventListener('drop', async e => {
     return;
   }
   try {
-    const r = await api('/api/deplacer',
+    const r = await api('api/deplacer',
       {projet: pj, ids: bons, dossier: d.dataset.d});
     const p = projetOuvert(pj);
     if (p) { p.films = r.films; refondre(); }
@@ -3053,7 +3094,7 @@ async function nouveauDossier(pj) {
   const nom = prompt('New folder in “' + (dedans || pj) + '” :');
   if (!nom) return;
   try {
-    const r = await api('/api/dossier/creer',
+    const r = await api('api/dossier/creer',
       {projet: pj, nom: nom, parent: dedans});
     const p = projetOuvert(pj);
     if (p) { p.dossiers = r.dossiers; refondre(); }
@@ -3071,7 +3112,7 @@ $('#porteOk').onclick = async () => {
   $('#porteOk').disabled = true;
   $('#porteMal').textContent = '';
   try {
-    await api(MOI.comptes === 0 ? '/api/compte/creer' : '/api/entrer',
+    await api(MOI.comptes === 0 ? 'api/compte/creer' : 'api/entrer',
       {identifiant: id, motdepasse: mp});
     location.reload();
   } catch (err) {
@@ -3100,7 +3141,7 @@ $('#bAjoutRush').onclick = async () => {
     sous = dossierActif.slice(pj.length + 1);
   b.disabled = true; b.textContent = 'choose in the window…';
   try {
-    const r = await api('/api/ajouter_rushes',
+    const r = await api('api/ajouter_rushes',
       {jeton: JETON, projet: pj, dossier: sous}, 0);
     if (r.annule) { dire('nothing added'); return; }
     for (const nom of Object.keys(r.projets || {})) {
@@ -3163,7 +3204,7 @@ async function retirerManquants(noms, raison) {
   const refus = [];
   for (const p of liste) {
     try {
-      const d = await api('/api/purger', {projet: p.nom});
+      const d = await api('api/purger', {projet: p.nom});
       const restent = new Set((d.films || []).map(f => f.id));
       // Ce qui est parti ne doit plus trainer dans l etat de la page : une
       // selection, un rangement renvoye plus tard au serveur.
@@ -3195,7 +3236,7 @@ $('#bPurge').onclick = () => retirerManquants(null);
 async function verifierMaj(silencieux) {
   const b = $('#bMaj');
   let r;
-  try { r = await api('/api/maj', null, 30000); }
+  try { r = await api('api/maj', null, 30000); }
   catch (err) {
     if (!silencieux) dire('update check failed — ' + err.message, true);
     return null;
@@ -3231,7 +3272,7 @@ $('#bMaj').onclick = async () => {
       'sequences, marks and folders are not touched.')) return;
   b.disabled = true; b.textContent = 'updating…';
   try {
-    const d = await api('/api/maj', {appliquer: true}, 180000);
+    const d = await api('api/maj', {appliquer: true}, 180000);
     b.classList.remove('dispo'); b.textContent = 'Relaunch to finish';
     alert('Updated to version ' + d.version + ' (' + d.faits.length +
       (d.faits.length > 1 ? ' files' : ' file') + ').\n\nClose this tab, ' +
@@ -3245,7 +3286,7 @@ $('#bAnnul').onclick = async () => {
   const pj = projetCourant();
   if (!pj) { dire('pick a project in the column first', true); return; }
   try {
-    const d = await api('/api/annuler', {projet: pj});
+    const d = await api('api/annuler', {projet: pj});
     const p = projetOuvert(pj);
     if (p) { p.films = d.films; p.dossiers = d.dossiers; refondre(); }
     rendre();
@@ -3354,7 +3395,7 @@ async function poserPolice(p) {
   const fam = famillePolice(p.nom);
   try {
     const f = new FontFace(fam,
-      'url("/polices/' + encodeURIComponent(p.nom) + '")');
+      'url("polices/' + encodeURIComponent(p.nom) + '")');
     await f.load();
     document.fonts.add(f);
   } catch (e) {
@@ -3371,7 +3412,7 @@ async function poserPolice(p) {
 
 async function chargerPolices() {
   let d;
-  try { d = await api('/api/polices'); } catch (e) { return 0; }
+  try { d = await api('api/polices'); } catch (e) { return 0; }
   let n = 0;
   for (const p of (d.polices || [])) if (await poserPolice(p)) n++;
   return n;
@@ -3808,7 +3849,7 @@ async function chargerOnde(film) {
   if (!f || ONDES[film] !== undefined) return;
   ONDES[film] = null;
   try {
-    const d = await api('/api/onde?projet=' + encodeURIComponent(f.pj || PROJET.nom) +
+    const d = await api('api/onde?projet=' + encodeURIComponent(f.pj || PROJET.nom) +
                         '&id=' + encodeURIComponent(film), null, 600000);
     ONDES[film] = (d && d.pics && d.pics.length) ? d : false;
   } catch (e) {
@@ -4175,7 +4216,7 @@ function boiteTexte(bloc) {
         let bin = '';
         for (let i = 0; i < oct.length; i += 8192)
           bin += String.fromCharCode.apply(null, oct.subarray(i, i + 8192));
-        const r = await api('/api/police', {nom: f.name, donnees: btoa(bin)});
+        const r = await api('api/police', {nom: f.name, donnees: btoa(bin)});
         const clef = await poserPolice({nom: r.nom, rendu: r.rendu});
         if (!clef) {
           dire('font saved but the browser cannot read it — ' + r.nom, true);
@@ -5809,7 +5850,7 @@ function ecrirePresetsNav(o) {
 async function chargerPresets() {
   const nav = lirePresetsNav();
   try {
-    const d = await api('/api/presets?genre=secousse');
+    const d = await api('api/presets?genre=secousse');
     PRESETS_SHK = d.presets || {};
     PRESETS_SERVEUR = true;
     chargerPresetsFx();
@@ -5822,7 +5863,7 @@ async function chargerPresets() {
   // d ecraser un fichier deja rempli : rien ne peut se perdre ici.
   if (!Object.keys(PRESETS_SHK).length && Object.keys(nav).length) {
     try {
-      const d = await api('/api/presets', {genre: 'secousse', presets: nav});
+      const d = await api('api/presets', {genre: 'secousse', presets: nav});
       PRESETS_SHK = d.presets || PRESETS_SHK;
       if (d.reprise)
         dire(Object.keys(PRESETS_SHK).length +
@@ -5842,7 +5883,7 @@ async function enregistrerPreset(nom, val) {
     return;
   }
   try {
-    const d = await api('/api/presets', {genre: 'secousse', nom: nom, valeur: val});
+    const d = await api('api/presets', {genre: 'secousse', nom: nom, valeur: val});
     PRESETS_SHK = d.presets || PRESETS_SHK;
     ecrirePresetsNav(PRESETS_SHK);
     rendreReglages();
@@ -5857,7 +5898,7 @@ async function oublierPreset(nom) {
   rendreReglages();
   if (!PRESETS_SERVEUR) return;
   try {
-    const d = await api('/api/presets',
+    const d = await api('api/presets',
       {genre: 'secousse', nom: nom, effacer: 1});
     PRESETS_SHK = d.presets || PRESETS_SHK;
     ecrirePresetsNav(PRESETS_SHK);
@@ -6551,7 +6592,7 @@ $('#menu').addEventListener('click', async e => {
   if (!url || url.length < 100) { dire('the monitor is empty', true); return; }
   if (a === 'deck') {
     try {
-      const r = await api('/api/capture', {image: url, nom: nomCapture()});
+      const r = await api('api/capture', {image: url, nom: nomCapture()});
       const p = projetOuvert(r.projet);
       if (p) p.films = r.films || p.films;
       else await ouvrirProjetDisque(r.projet, true);
@@ -7407,7 +7448,7 @@ const FX_MAISON = {
 let FX_PRESETS = {};
 async function chargerPresetsFx() {
   try {
-    const d = await api('/api/presets?genre=fx');
+    const d = await api('api/presets?genre=fx');
     FX_PRESETS = (d && d.presets) || {};
   } catch (e) { FX_PRESETS = {}; }
 }
@@ -7534,7 +7575,7 @@ function lierRackFx(r, c, sel) {
       const nom = (prompt('Name of the preset:') || '').trim();
       if (!nom) return;
       try {
-        const d = await api('/api/presets',
+        const d = await api('api/presets',
           {genre: 'fx', nom: nom, valeur: {fx: JSON.parse(JSON.stringify(liste()))}});
         FX_PRESETS = d.presets || FX_PRESETS;
         dire('preset “' + nom + '” saved');
@@ -7547,7 +7588,7 @@ function lierRackFx(r, c, sel) {
       const nom = (prompt('Preset to delete:\n' + noms.join('\n')) || '').trim();
       if (!nom) return;
       try {
-        const d = await api('/api/presets', {genre: 'fx', nom: nom, effacer: true});
+        const d = await api('api/presets', {genre: 'fx', nom: nom, effacer: true});
         FX_PRESETS = d.presets || {};
         dire('preset “' + nom + '” deleted');
         rendreReglages();
@@ -8430,7 +8471,7 @@ async function listerMontages() {
   const out = [];
   for (const p of OUVERTS) {
     try {
-      const d = await api('/api/montages?projet=' + encodeURIComponent(p.nom));
+      const d = await api('api/montages?projet=' + encodeURIComponent(p.nom));
       (d.montages || []).forEach(m => out.push(m));
     } catch (err) {}
   }
@@ -8598,7 +8639,7 @@ async function boiteUsages(film) {
   $('#voile').className = 'on';
   let u = [];
   try {
-    u = (await api('/api/usages?id=' + encodeURIComponent(film))).usages || [];
+    u = (await api('api/usages?id=' + encodeURIComponent(film))).usages || [];
   } catch (err) {
     b.innerHTML = '<h3>' + echapHtml((f.nom || 'shot').slice(0, 40)) + '</h3>' +
       '<div style="font-size:12px;color:var(--rouge)">' +
@@ -8732,7 +8773,7 @@ function boiteProjet(neuf) {
       // n apparaissait dans aucun onglet.
       if (hote) {
         try {
-          await api('/api/montage',
+          await api('api/montage',
             {projet: hote, nom: nom, montage: objetProjet()});
           noterDernier(hote, nom);
         } catch (err) {
@@ -8766,7 +8807,7 @@ async function assurerSauvegarde(silencieux) {
   sauveEnCours = true;
   try {
     PROJET.pj = hote;
-    await api('/api/montage',
+    await api('api/montage',
       {projet: hote, nom: nom, montage: objetProjet()});
     const neuf = projetNom !== nom;
     projetNom = nom; PROJET.nom = nom; modifie = false; sauveEnEchec = false;
@@ -8810,7 +8851,7 @@ function sauverAvantDeFermer() {
   if (!hote) return;
   const nom = projetNom || PROJET.nom || ('brouillon-' + horodate());
   try {
-    fetch('/api/montage', {method: 'POST', keepalive: true,
+    fetch('api/montage', {method: 'POST', keepalive: true,
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({projet: hote, nom: nom, montage: objetProjet()})
     }).catch(() => {});
@@ -8994,7 +9035,7 @@ $('#barreProjets').addEventListener('click', async e => {
   }
   await assurerSauvegarde();
   try {
-    const d = await api('/api/montage?projet=' + encodeURIComponent(pj) +
+    const d = await api('api/montage?projet=' + encodeURIComponent(pj) +
       '&nom=' + encodeURIComponent(nom));
     await chargerProjet(d.montage, d.nom, d.projet);
     noterDernier(d.projet || pj, d.nom || nom);
@@ -9019,13 +9060,13 @@ let JETON = '';
 setInterval(() => {
   // En ligne il n y a pas de processus a tenir eveille : la mesure ne sert
   // qu au serveur de bureau, qui s arrete quand l onglet se ferme.
-  if (!ENLIGNE) fetch('/api/vivant', {cache: 'no-store'}).catch(() => {});
+  if (!ENLIGNE) fetch('api/vivant', {cache: 'no-store'}).catch(() => {});
 }, 5000);
 // Un retour d onglet (ou un reveil de machine) rebat la mesure sans attendre
 // les 5 s du minuteur : c est ce qui annule un adieu parti pour rien.
 addEventListener('pageshow', () => {
   adieuEnvoye = false;
-  if (!ENLIGNE) fetch('/api/vivant', {cache: 'no-store'}).catch(() => {});
+  if (!ENLIGNE) fetch('api/vivant', {cache: 'no-store'}).catch(() => {});
 });
 // L adieu part sur « pagehide » ET sur « beforeunload » : selon la facon dont
 // l onglet est ferme, l un des deux peut ne pas se declencher. Un drapeau
@@ -9038,14 +9079,14 @@ function direAdieu() {
   const corps = JSON.stringify({jeton: JETON});
   try {
     if (navigator.sendBeacon) {
-      navigator.sendBeacon('/api/adieu',
+      navigator.sendBeacon('api/adieu',
         new Blob([corps], {type: 'application/json'}));
       return;
     }
   } catch (e) {}
   // Pas de sendBeacon : un fetch « keepalive » survit a la fermeture.
   try {
-    fetch('/api/adieu', {method: 'POST', body: corps, keepalive: true,
+    fetch('api/adieu', {method: 'POST', body: corps, keepalive: true,
       headers: {'Content-Type': 'application/json'}}).catch(() => {});
   } catch (e) {}
 }
@@ -9057,7 +9098,7 @@ function direAdieu() {
 function adieuPeutEtreAnnule() {
   setTimeout(() => {
     adieuEnvoye = false;
-    if (!ENLIGNE) fetch('/api/vivant', {cache: 'no-store'}).catch(() => {});
+    if (!ENLIGNE) fetch('api/vivant', {cache: 'no-store'}).catch(() => {});
   }, 900);
 }
 addEventListener('pagehide', () => { sauverAvantDeFermer(); direAdieu(); });
@@ -9180,7 +9221,7 @@ async function exporterJson() {
   const m = objetMontage(), nom = 'montage-' + horodate();
   telecharger(nom + '.json', JSON.stringify(m, null, 1), 'application/json');
   try {
-    await api('/api/montage',
+    await api('api/montage',
       {projet: hoteMontage(), nom: nom, montage: m});
   } catch (e) {}
   dire('JSON exported, copy in _montages/');
@@ -9274,7 +9315,7 @@ async function exporterXml() {
   telecharger(nom + '.xml', xml, 'application/xml');
   if (!hote) { dire('XML downloaded (no project open for the copy)', true); return; }
   try {
-    const r = await api('/api/texte',
+    const r = await api('api/texte',
       {projet: hote, nom: nom, ext: 'xml', contenu: xml});
     const note = nSynth ? ' — ' + nSynth + ' layer/text left' +
       (nSynth > 1 ? 's' : '') + ' aside (no file to reference)' : '';
@@ -9396,7 +9437,7 @@ bRendre.onclick = () => {
       const b2 = $('#rParcourir');
       b2.disabled = true; b2.textContent = 'on screen…';
       try {
-        const r = await api('/api/parcourir',
+        const r = await api('api/parcourir',
           {jeton: JETON, depart: $('#rDossier').value.trim()});
         if (r.chemin) $('#rDossier').value = r.chemin;
         else dire('no folder chosen');
@@ -9413,7 +9454,7 @@ bRendre.onclick = () => {
       pref.ecrire('sortieRendu', sortie);
       $('#rOk').disabled = true;
       try {
-        const r = await api('/api/rendre', {projet: hote, nom: nom,
+        const r = await api('api/rendre', {projet: hote, nom: nom,
           sortie: sortie, type: type, montage: m});
         $('#voile').className = '';
         renduEnCours = true;
@@ -9433,7 +9474,7 @@ bRendre.onclick = () => {
 
 async function suivreRendu() {
   try {
-    const e = await api('/api/rendu');
+    const e = await api('api/rendu');
     if (e.etat === 'encours') {
       const t = e.total || 0, f = e.fait || 0;
       // Les segments faits ne comptent que pour les trois quarts : le dernier
@@ -9477,6 +9518,7 @@ async function suivreRendu() {
   // Avant tout le reste : y a-t-il des comptes, et suis-je entre ? Sur le
   // serveur de bureau cette route n existe pas, et rien ne change.
   await ouvrirPorte();
+  sitesVoisins();
   await chargerPolices();
   // Les prereglages de secousse : ils viennent de la bibliotheque.
   await chargerPresets();
@@ -9484,7 +9526,7 @@ async function suivreRendu() {
   await chargerCategories();
 
   try {
-    const l = await api('/api/projets');
+    const l = await api('api/projets');
     JETON = l.jeton || '';
     // Le serveur de bureau n envoie aucun de ces trois champs : tout reste
     // exactement comme avant chez David.
@@ -9558,9 +9600,14 @@ async function suivreRendu() {
         .filter(Boolean));
       let voulus = (pref.lire('projets', '') || '').split('\t')
         .filter(n => n && dispo.indexOf(n) >= 0);
+      // Premiere visite : tous les projets qui ont des clips. N en ouvrir
+      // qu un cachait les rushes derriere « Open a project » (David, 05/10 :
+      // EP-06 s ouvrait sur « audio », sans bambozoo-Render).
       if (!voulus.length) {
-        const vu = (l.projets || []).find(p => p.scanne && p.clips);
-        voulus = vu ? [vu.nom] : (dispo.length ? [dispo[0]] : []);
+        voulus = (l.projets || []).filter(p => p.scanne && p.clips &&
+                                                dispo.indexOf(p.nom) >= 0)
+          .map(p => p.nom);
+        if (!voulus.length && dispo.length) voulus = [dispo[0]];
       }
       for (const n of voulus) {
         try { await ouvrirProjetDisque(n, true); }
