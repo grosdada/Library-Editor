@@ -617,6 +617,77 @@ if ($route === 'projets' && !$poste) {
     ));
 }
 
+// ---- marques : favori, couleur, note ---------------------------------------
+// Le catalogue est refait a chaque mise en ligne depuis le poste : une marque
+// posee ici dedans serait effacee. Elles vivent donc a part, dans
+// _marques.json, communes a tous les comptes, et passent par-dessus celles du
+// catalogue a la lecture (1.3.16 -- David : « la couleur ne prend pas »).
+function fichier_marques($pr)
+{
+    return dossier_projet($pr) . '/_marques.json';
+}
+
+function avec_marques($pr, $films)
+{
+    $m = lire_json(fichier_marques($pr), array());
+    if (!is_array($m) || !$m) {
+        return $films;
+    }
+    foreach ($films as $i => $f) {
+        $id = isset($f['id']) ? (string) $f['id'] : '';
+        if ($id !== '' && isset($m[$id]) && is_array($m[$id])) {
+            foreach (array('fav', 'coul', 'note') as $k) {
+                if (array_key_exists($k, $m[$id])) {
+                    $films[$i][$k] = $m[$id][$k];
+                }
+            }
+        }
+    }
+    return $films;
+}
+
+// ---- POST /api/marquer -----------------------------------------------------
+if ($route === 'marquer' && $poste) {
+    $pr = nom_projet(isset($d['projet']) ? $d['projet'] : '');
+    if ($pr === null) {
+        erreur('unknown project', 404);
+    }
+    $id = isset($d['id']) ? (string) $d['id'] : '';
+    $cat = lire_json(dossier_projet($pr) . '/catalogue.json',
+        array('films' => array()));
+    $film = null;
+    foreach ($cat['films'] as $f) {
+        if (isset($f['id']) && (string) $f['id'] === $id) {
+            $film = $f;
+            break;
+        }
+    }
+    if ($film === null || !preg_match('/^[0-9a-f]{6,32}$/', $id)) {
+        erreur('unknown entry', 404);
+    }
+    $fm = fichier_marques($pr);
+    $m = lire_json($fm, array());
+    if (!is_array($m)) {
+        $m = array();
+    }
+    $x = isset($m[$id]) && is_array($m[$id]) ? $m[$id] : array();
+    if (array_key_exists('fav', $d)) {
+        $x['fav'] = !empty($d['fav']);
+    }
+    if (array_key_exists('coul', $d)) {
+        $x['coul'] = max(0, min(9999, (int) $d['coul']));
+    }
+    if (array_key_exists('note', $d)) {
+        $x['note'] = mb_substr((string) $d['note'], 0, 2000);
+    }
+    $m[$id] = $x;
+    if (!ecrire_json($fm, $m)) {
+        erreur('could not save the mark', 500);
+    }
+    $l = avec_marques($pr, array($film));
+    repondre(array('ok' => true, 'film' => $l[0]));
+}
+
 // ---- GET /api/catalogue ----------------------------------------------------
 if ($route === 'catalogue' && !$poste) {
     $pr = nom_projet(isset($_GET['projet']) ? $_GET['projet'] : '');
@@ -625,6 +696,7 @@ if ($route === 'catalogue' && !$poste) {
     }
     $cat = lire_json(dossier_projet($pr) . '/catalogue.json',
         array('maj' => null, 'films' => array()));
+    $cat['films'] = avec_marques($pr, $cat['films']);
     $cat['projet'] = $pr;
     if (!isset($cat['dossiers'])) {
         $dos = array();
@@ -898,9 +970,6 @@ $bureau = array(
     'dossier/creer' => array('creating a folder', $DOSSIERS),
     'dossier/renommer' => array('renaming a folder', $DOSSIERS),
     'dossier/effacer' => array('deleting a folder', $DOSSIERS),
-    'marquer' => array('marking favourites and colours', 'marks are written '
-        . 'into the catalogue, which is rebuilt from your computer at each '
-        . 'publish, so a mark made here would be erased'),
     'purger' => array('removing missing clips', 'the catalogue here is '
         . 'rebuilt from your computer at each publish, and missing clips are '
         . 'never published'),
