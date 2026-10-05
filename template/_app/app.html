@@ -144,6 +144,22 @@ body.rangeable.lectureseule .pjt .plus{display:block}
 .addPj{width:100%;margin-top:11px}
 .titre-col{font-size:10px;letter-spacing:.14em;text-transform:uppercase;
  color:var(--sourd);margin:3px 0 6px;padding:0 9px}
+/* « Consult source » : on travaille toujours dans « My folders » ; ce bouton
+   montre un instant les vrais dossiers, et un second clic y ramene (David,
+   06/10 : les deux onglets Source / My folders preetaient a confusion). */
+.titreProjets{display:flex;align-items:center;justify-content:space-between;gap:6px}
+#bSource{display:none;align-items:center;gap:5px;background:none;border:0;
+ padding:0;margin:0;cursor:pointer;color:var(--sourd);font-size:10px;
+ letter-spacing:.06em;text-transform:lowercase;flex:0 0 auto;min-width:0}
+#bSource:hover{color:var(--encre)}
+#bSource .piste{position:relative;width:20px;height:11px;border-radius:6px;
+ background:var(--trait);transition:background .15s}
+#bSource .piste i{position:absolute;top:2px;left:2px;width:7px;height:7px;
+ border-radius:50%;background:var(--sourd);transition:left .15s,background .15s}
+body.rangeable #bSource{display:inline-flex}
+body.rangeable:not(.rangement) #bSource{color:var(--orange)}
+body.rangeable:not(.rangement) #bSource .piste{background:var(--orange)}
+body.rangeable:not(.rangement) #bSource .piste i{left:11px;background:#fff}
 
 #grille{flex:1 1 auto;overflow-y:auto;padding:11px 12px 30px;display:grid;
  grid-template-columns:repeat(auto-fill,var(--vign));gap:9px;
@@ -712,8 +728,9 @@ body.enligne.rangement .rangementSeul,
 body.rangeable.rangement .rangementSeul { display: block; }
 .adminSeul { display: none; }
 body.admin .adminSeul { display: block; }
-#vueBar { display: none; gap: 4px; padding: 6px 7px 0; }
-body.enligne #vueBar, body.rangeable #vueBar { display: flex; }
+/* Les deux onglets Source / My folders ne s affichent plus (1.3.15) : le
+   bouton « Consult source » du titre les remplace. */
+#vueBar { display: none !important; }
 /* En vue « My folders », le « + New folder » des dossiers REELS s efface
    devant celui des dossiers virtuels : deux boutons au meme nom qui ne font
    pas la meme chose, c est une erreur qui attend son heure. */
@@ -780,7 +797,10 @@ body.enligne #qui { display: flex; }
 
 <main>
   <aside>
-    <div class="titre-col">Open projects</div>
+    <div class="titre-col titreProjets"><span>Open projects</span>
+      <button id="bSource" title="look at the folders as they are on the
+machine that published this library — click again to come back to your folders"
+      role="switch" aria-checked="false"><span class="piste"><i></i></span>source</button></div>
     <div id="qui"></div>
     <div id="vueBar">
       <button data-vue="source" class="on" title="the folders as they are on
@@ -1046,7 +1066,13 @@ async function basculerVue(v) {
   dossierActif = null;
   document.body.classList.toggle('rangement', VUE === 'rangement');
   $$('[data-vue]').forEach(b => b.classList.toggle('on', b.dataset.vue === VUE));
+  majBoutonSource();
   refondre(); rendre();
+}
+
+function majBoutonSource() {
+  const b = $('#bSource');
+  if (b) b.setAttribute('aria-checked', VUE === 'source' ? 'true' : 'false');
 }
 
 function refondre() {
@@ -3266,6 +3292,7 @@ async function nouveauDossier(pj) {
 $('#bProjets').onclick = boiteProjets;
 $('#bComptes').onclick = boiteComptes;
 $$('[data-vue]').forEach(b => b.onclick = () => basculerVue(b.dataset.vue));
+$('#bSource').onclick = () => basculerVue(VUE === 'source' ? 'rangement' : 'source');
 $('#porteId').onkeydown = e => { if (e.key === 'Enter') $('#porteMp').focus(); };
 $('#porteMp').onkeydown = e => { if (e.key === 'Enter') $('#porteOk').click(); };
 $('#porteOk').onclick = async () => {
@@ -9806,11 +9833,11 @@ async function suivreRendu() {
       // s ouvre sur 145 pochettes au lieu des rushes.
       // Le rangement de chacun, projet par projet. Il ne sert qu en ligne.
       for (const p of OUVERTS) await chargerRangement(p.nom);
-      // La vue retenue ; en lecture seule on arrive sur « My folders », seul
-      // endroit ou ranger a un sens.
+      // On travaille toujours dans « My folders » : la source ne se consulte
+      // qu un moment, par le bouton du titre, et l on y revient a l ouverture.
       if (RANGEABLE) {
-        const v = pref.lire('vue', LECTURE_SEULE ? 'rangement' : 'source');
-        VUE = v === 'rangement' ? 'rangement' : 'source';
+        VUE = 'rangement';
+        majBoutonSource();
         document.body.classList.toggle('rangement', VUE === 'rangement');
         $$('[data-vue]').forEach(b =>
           b.classList.toggle('on', b.dataset.vue === VUE));

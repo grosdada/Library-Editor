@@ -267,9 +267,49 @@ function exiger_admin()
 // JAMAIS touche : « id » et « rel » restent ceux du poste de David, ce qui
 // laisse l export XML retrouver les fichiers a leur emplacement d origine,
 // quelle que soit l organisation que chacun s est faite ici.
-function fichier_rangement($pr, $qui)
+//
+// UN SEUL rangement par projet, commun a tous les comptes (1.3.15, David : un
+// collegue qui monte doit voir les memes dossiers que lui). Les rangements
+// personnels d avant (<identifiant>.json) restent sur le disque : tant que
+// le commun n existe pas, il nait de leur fusion, le plus fourni d abord.
+function fichier_rangement($pr)
 {
-    return dossier_projet($pr) . '/_rangement/' . $qui . '.json';
+    return dossier_projet($pr) . '/_rangement/_commun.json';
+}
+
+function rangement_commun($pr)
+{
+    $f = fichier_rangement($pr);
+    if (is_file($f)) {
+        return lire_json($f, array('dossiers' => array(), 'ou' => array()));
+    }
+    $l = array();
+    foreach ((array) @glob(dossier_projet($pr) . '/_rangement/*.json') as $g) {
+        $r = lire_json($g, null);
+        if (is_array($r)) {
+            $l[] = $r;
+        }
+    }
+    usort($l, function ($a, $b) {
+        $na = isset($a['ou']) && is_array($a['ou']) ? count($a['ou']) : 0;
+        $nb = isset($b['ou']) && is_array($b['ou']) ? count($b['ou']) : 0;
+        return $nb - $na;
+    });
+    $dossiers = array();
+    $ou = array();
+    foreach ($l as $r) {
+        foreach ((isset($r['dossiers']) ? (array) $r['dossiers'] : array()) as $x) {
+            if (!in_array($x, $dossiers, true)) {
+                $dossiers[] = $x;
+            }
+        }
+        foreach ((isset($r['ou']) ? (array) $r['ou'] : array()) as $id => $x) {
+            if (!isset($ou[$id])) {
+                $ou[$id] = $x;
+            }
+        }
+    }
+    return array('dossiers' => $dossiers, 'ou' => $ou);
 }
 
 function chemin_dossier($p)
@@ -488,8 +528,7 @@ if ($route === 'compte/effacer' && $poste) {
     if (!ecrire_json(fichier_comptes(), $c)) {
         erreur('could not save', 500);
     }
-    // Le rangement de cette personne reste sur le disque : effacer un compte
-    // ne doit pas effacer un travail, et le nom se recree a l identique.
+    // Le rangement est commun au projet : effacer un compte n y touche pas.
     repondre(array('ok' => true, 'identifiant' => $id));
 }
 
@@ -511,21 +550,14 @@ if ($route === 'comptes' && !$poste) {
 exiger_compte();
 
 // ---- GET /api/rangement ----------------------------------------------------
-// Le sien, ou celui de n importe qui pour un administrateur.
+// Le rangement commun du projet : le meme pour tous les comptes.
 if ($route === 'rangement' && !$poste) {
     $pr = nom_projet(isset($_GET['projet']) ? $_GET['projet'] : '');
     if ($pr === null) {
         erreur('unknown project', 404);
     }
-    $qui = isset($_GET['qui']) ? identifiant_propre($_GET['qui']) : moi();
-    if ($qui === null) {
-        erreur('unknown account', 404);
-    }
-    if ($qui !== moi() && !suis_admin()) {
-        erreur('administrator only', 403);
-    }
-    $r = lire_json(fichier_rangement($pr, $qui),
-        array('dossiers' => array(), 'ou' => new stdClass()));
+    $qui = 'commun';
+    $r = rangement_commun($pr);
     if (!isset($r['ou']) || !is_array($r['ou'])) {
         $r['ou'] = array();
     }
@@ -535,8 +567,7 @@ if ($route === 'rangement' && !$poste) {
 }
 
 // ---- POST /api/rangement ---------------------------------------------------
-// On n ecrit que le SIEN. Un administrateur peut lire celui d un autre, pas
-// le refaire : ce serait ranger a la place de quelqu un sans qu il le sache.
+// Tout compte connecte range pour tout le monde : c est le but du commun.
 if ($route === 'rangement' && $poste) {
     $pr = nom_projet(isset($d['projet']) ? $d['projet'] : '');
     if ($pr === null) {
@@ -547,10 +578,10 @@ if ($route === 'rangement' && $poste) {
     if ($t !== false && strlen($t) > MAX_RANGEMENT) {
         erreur('arrangement too large', 413);
     }
-    if (!ecrire_json(fichier_rangement($pr, moi()), $r)) {
+    if (!ecrire_json(fichier_rangement($pr), $r)) {
         erreur('could not save the arrangement', 500);
     }
-    repondre(array('ok' => true, 'projet' => $pr, 'qui' => moi(),
+    repondre(array('ok' => true, 'projet' => $pr, 'qui' => 'commun',
         'dossiers' => $r['dossiers'], 'ou' => (object) $r['ou']));
 }
 
