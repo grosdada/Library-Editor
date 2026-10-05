@@ -9598,8 +9598,24 @@ async function suivreRendu() {
       // Ceux de la derniere session, sinon le premier projet deja scanne.
       REPLIES = new Set((pref.lire('replies', '') || '').split('\t')
         .filter(Boolean));
-      let voulus = (pref.lire('projets', '') || '').split('\t')
-        .filter(n => n && dispo.indexOf(n) >= 0);
+      const sauves = (pref.lire('projets', '') || '').split('\t').filter(Boolean);
+      let voulus = sauves.filter(n => dispo.indexOf(n) >= 0);
+      // Un projet apparu depuis la derniere visite s ouvre de lui-meme : un
+      // dossier renomme disparaissait sinon de la session, son ancien nom
+      // n existant plus et le nouveau n ayant jamais ete ouvert (David, 05/10 :
+      // EP-11 sans « Vids » apres le renommage de « render »). Ceux qu on a
+      // fermes expres restent fermes : ils sont deja connus.
+      const connusTxt = pref.lire('connus', null);
+      const connus = connusTxt === null ? null : new Set(connusTxt.split('\t'));
+      const perdus = sauves.some(n => dispo.indexOf(n) < 0);
+      if (voulus.length) {
+        voulus = voulus.concat((l.projets || [])
+          .filter(p => p.scanne && p.clips && dispo.indexOf(p.nom) >= 0 &&
+                       voulus.indexOf(p.nom) < 0 &&
+                       (connus ? !connus.has(p.nom) : perdus))
+          .map(p => p.nom));
+      }
+      pref.ecrire('connus', dispo.join('\t'));
       // Premiere visite : tous les projets qui ont des clips. N en ouvrir
       // qu un cachait les rushes derriere « Open a project » (David, 05/10 :
       // EP-06 s ouvrait sur « audio », sans bambozoo-Render).
