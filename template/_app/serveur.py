@@ -240,15 +240,17 @@ def _chemin_virtuel(p):
 
 def rangement_propre(d):
     """Normalise un rangement recu. Les parents d un sous-dossier existent
-    toujours, et un rush range dans un dossier absent redevient non range."""
-    dossiers = set()
+    toujours, et un rush range dans un dossier absent redevient non range.
+    L ordre recu est garde : c est celui que David choisit a la poignee
+    (1.3.13). Avant, la liste etait triee."""
+    dossiers = {}
     for x in (d.get("dossiers") or []):
         p = _chemin_virtuel(x)
         if not p:
             continue
         bouts = p.split("/")
         for k in range(1, len(bouts) + 1):
-            dossiers.add("/".join(bouts[:k]))
+            dossiers.setdefault("/".join(bouts[:k]), True)
         if len(dossiers) > 300:
             break
     ou = {}
@@ -263,7 +265,7 @@ def rangement_propre(d):
             ou[str(i)] = p
             if len(ou) > 20000:
                 break
-    return {"maj": maintenant(), "dossiers": sorted(dossiers), "ou": ou}
+    return {"maj": maintenant(), "dossiers": list(dossiers), "ou": ou}
 
 
 def lire_rangement(pr):

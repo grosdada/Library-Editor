@@ -18,6 +18,8 @@ const renom = pren('async function renommerDossierVirtuel(pj, ancien, neuf) {',
 const effac = pren('async function effacerDossierVirtuel(pj, rel) {',
   "\n}", 'effacer');
 const refon = pren('function refondre() {', '\n}', 'refondre');
+const deplacer = pren('function deplacerDans(l, quoi, pres, apres) {', '\n}',
+  'deplacerDans');
 
 globalThis.dire = () => {};
 globalThis.dossierActif = null;
@@ -35,6 +37,7 @@ globalThis.creerDossierVirtuel = eval('(' + creer + ')');
 globalThis.renommerDossierVirtuel = eval('(' + renom + ')');
 globalThis.effacerDossierVirtuel = eval('(' + effac + ')');
 globalThis.refondre = eval('(' + refon + ')');
+globalThis.deplacerDans = eval('(' + deplacer + ')');
 
 let ok = 0, ko = 0;
 const v = (nom, cond, det) => cond
@@ -107,6 +110,41 @@ console.log('--- renommer un dossier qui a des enfants -----------------------')
   refondre();
   v('les dossiers de tournage sont revenus intacts',
     DOSSIERS.length === 2 && DOSSIERS[0].d === 'Gary-Kling');
+
+  console.log('--- ordre choisi a la poignee (1.3.13) --------------------------');
+  VUE = 'rangement';
+  creerDossierVirtuel('GARY-ALL', '', 'zeta');
+  creerDossierVirtuel('GARY-ALL', '', 'alpha');
+  creerDossierVirtuel('GARY-ALL', 'zeta', 'sous');
+  v('un dossier cree se pose a la fin, sans tri alphabetique',
+    r.dossiers.join('|') === 'zeta|alpha|zeta/sous', r.dossiers.join('|'));
+  refondre();
+  const vus = () => DOSSIERS.map(d => d.d).join('|');
+  v('un sous-dossier reste sous son parent',
+    vus() === 'zeta|zeta/sous|alpha|' + NONRANGE, vus());
+  r.dossiers = deplacerDans(r.dossiers, 'alpha', 'zeta', false);
+  refondre();
+  v('alpha passe avant zeta, qui garde son sous-dossier',
+    vus() === 'alpha|zeta|zeta/sous|' + NONRANGE, vus());
+  r.dossiers = deplacerDans(r.dossiers, 'alpha', 'zeta', true);
+  refondre();
+  v('et repasse apres', vus() === 'zeta|zeta/sous|alpha|' + NONRANGE, vus());
+  await renommerDossierVirtuel('GARY-ALL', 'zeta', 'omega');
+  refondre();
+  v('un renommage garde la place',
+    vus() === 'omega|omega/sous|alpha|' + NONRANGE, vus());
+  VUE = 'source';
+  const memo = {};
+  globalThis.pref = {lire: (c, d) => c in memo ? memo[c] : d,
+                     ecrire: (c, x) => { memo[c] = x; }};
+  memo.ordreSrc = JSON.stringify({'GARY-ALL': ['course desert', 'Gary-Kling']});
+  refondre();
+  v('vue source : l ordre memorise par le navigateur',
+    vus() === 'course desert|Gary-Kling', vus());
+  OUVERTS[0].dossiers = ['Gary-Kling', 'course desert', 'neuf'];
+  refondre();
+  v('un vrai dossier apparu depuis se range a la fin',
+    vus() === 'course desert|Gary-Kling|neuf', vus());
 
   console.log('\n' + ok + ' verifications passees, ' + ko + ' echec(s)');
   process.exit(ko ? 1 : 0);

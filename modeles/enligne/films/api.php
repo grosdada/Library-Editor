@@ -335,8 +335,9 @@ function rangement_propre($d)
             }
         }
     }
-    $l = array_keys($dossiers);
-    sort($l);
+    // L ordre recu est garde : c est celui que l on choisit a la poignee
+    // (1.3.13). Avant, la liste etait triee.
+    $l = array_map('strval', array_keys($dossiers));
     return array('maj' => date('Y-m-d H:i'), 'dossiers' => $l, 'ou' => $ou);
 }
 

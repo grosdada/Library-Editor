@@ -112,6 +112,17 @@ body.rangement.rangeable .pjt .plus{display:block}
 .pjt.on .plus:hover{color:#fff}
 .pjt.survol{outline:2px dashed var(--orange);outline-offset:-2px}
 .dos{margin-left:12px}
+/* La poignee a gauche du titre : on l attrape pour changer l ordre des
+   projets et de leurs dossiers (David, 05/10). */
+.poignee{flex:0 0 auto;width:9px;margin-left:-4px;color:var(--sourd);cursor:grab;
+ font-size:12px;line-height:1;user-select:none;opacity:.4;letter-spacing:-3px}
+.dos:hover .poignee,.pjt:hover .poignee{opacity:1}
+.poignee:hover{color:var(--encre)}
+.pjt.on .poignee,.dos.on .poignee{color:#fffb}
+.dos .poignee + b{flex:1}
+.dos.avant,.pjt.avant{box-shadow:inset 0 3px 0 var(--orange)}
+.dos.apres,.pjt.apres{box-shadow:inset 0 -3px 0 var(--orange)}
+.glisse{opacity:.35}
 /* Les montages du projet : premiere ligne sous l en-tete, couleur a part. */
 .dos.montages{margin-top:5px;background:#2b2118;border:1px solid #6b5322;
  color:var(--or)}
@@ -932,6 +943,41 @@ const NONRANGE = '— not filed —';
 const rangementDe = pj =>
   RANGEMENTS[pj] || (RANGEMENTS[pj] = {dossiers: [], ou: {}});
 
+// L ordre de la colonne : chaque dossier sous son parent, et des freres dans
+// l ordre de la liste — celui qu on choisit a la poignee (David, 05/10). Une
+// liste triee, comme toutes celles d avant, donne l ordre alphabetique.
+function ordreArbre(l) {
+  const parent = d => d.lastIndexOf('/') < 0 ? '' : d.slice(0, d.lastIndexOf('/'));
+  const enfants = new Map();
+  l.forEach(d => {
+    const p = parent(d);
+    if (!enfants.has(p)) enfants.set(p, []);
+    enfants.get(p).push(d);
+  });
+  const out = [], vus = new Set();
+  const visiter = p => (enfants.get(p) || []).forEach(d => {
+    if (vus.has(d)) return;
+    vus.add(d); out.push(d); visiter(d);
+  });
+  visiter('');
+  // Un dossier dont le parent manque a la liste ne doit pas disparaitre.
+  l.forEach(d => { if (!vus.has(d)) { vus.add(d); out.push(d); visiter(d); } });
+  return out;
+}
+
+// Vue Source : les vrais dossiers n ont pas de fichier de rangement, l ordre
+// choisi est une preference de ce navigateur. Un dossier apparu depuis se
+// range a la fin.
+function ordreSource(pj, l) {
+  let o = null;
+  try { o = JSON.parse(pref.lire('ordreSrc', '{}'))[pj]; } catch (e) {}
+  if (!Array.isArray(o)) return ordreArbre(l);
+  const rang = new Map(o.map((d, i) => [d, i]));
+  const cle = (d, i) => rang.has(d) ? rang.get(d) : 1e6 + i;
+  return ordreArbre(l.map((d, i) => [d, cle(d, i)])
+    .sort((a, b) => a[1] - b[1]).map(x => x[0]));
+}
+
 const clefDossier = f => VUE === 'rangement'
   ? f.pj + '/' + (rangementDe(f.pj).ou[f.id] || NONRANGE)
   : f.pj + (f.dossier ? '/' + f.dossier : '');
@@ -1012,13 +1058,13 @@ function refondre() {
     (p.films || []).forEach(f => { f.pj = p.nom; FILMS.push(f); });
     if (VUE === 'rangement') {
       const r = rangementDe(p.nom);
-      const l = [...r.dossiers];
+      const l = ordreArbre(r.dossiers);
       // « non range » n apparait que s il reste quelque chose dedans : une
       // ligne vide en permanence serait un reproche permanent.
       if ((p.films || []).some(f => !f.absent && !r.ou[f.id])) l.push(NONRANGE);
       l.forEach(d => DOSSIERS.push({pj: p.nom, d: d, clef: p.nom + '/' + d}));
     } else {
-      (p.dossiers || []).forEach(d =>
+      ordreSource(p.nom, p.dossiers || []).forEach(d =>
         DOSSIERS.push({pj: p.nom, d: d, clef: p.nom + '/' + d}));
     }
   });
@@ -1276,6 +1322,10 @@ function rendreDossiers() {
       (bibli ? ' bibli' : '') +
       '" data-clef="' + ech(p.nom) + '" data-pj="' + ech(p.nom) +
       '" data-d="" title="' + ech(p.racine || p.nom) + '">' +
+      // Bibliotheque et captures restent en bas : pas de poignee pour elles.
+      (bibli || estCaptures(p.nom) ? ''
+        : '<span class="poignee" draggable="true" data-ordre="pjt" ' +
+          'title="drag to move this project">⋮⋮</span>') +
       (aPlier
         ? '<span class="chev" data-plier="' + ech(p.nom) + '" title="' +
           (plie ? 'expand' : 'replier') + ' the folders">' +
@@ -1339,7 +1389,10 @@ function rendreDossiers() {
       if (!plie)
         h += '<div class="dos ' + (dossierActif === d.clef ? 'on' : '') +
           '" data-clef="' + ech(d.clef) + '" data-pj="' + ech(d.pj) +
-          '" data-d="' + ech(d.d) + '" title="double-click to rename"><b>' +
+          '" data-d="' + ech(d.d) + '" title="double-click to rename">' +
+          (d.d === NONRANGE || (VUE === 'rangement' && !RANGEABLE) ? ''
+            : '<span class="poignee" draggable="true" data-ordre="dos" ' +
+              'title="drag to move this folder">⋮⋮</span>') + '<b>' +
           ech(d.d) + '</b><i>' + (n[d.clef] || 0) + '</i></div>';
       o += '<option value="' + ech(d.clef) + '"' +
         (dossierActif === d.clef ? ' selected' : '') + '>' + ech(d.d) +
@@ -2744,7 +2797,7 @@ async function importerSousDossiers(pj) {
     ou[f.id] = f.dossier;
     ranges++;
   });
-  r.dossiers = [...new Set(r.dossiers.concat(bons))].sort();
+  r.dossiers = [...new Set(r.dossiers.concat(bons))];
   r.ou = ou;
   await enregistrerRangement(pj);
   // On montre le resultat : la vue « My folders », sur ce projet.
@@ -2764,7 +2817,7 @@ function creerDossierVirtuel(pj, parent, nom) {
   const plein = parent ? parent + '/' + p : p;
   const r = rangementDe(pj);
   if (r.dossiers.includes(plein)) { dire('this folder already exists', true); return; }
-  r.dossiers = [...r.dossiers, plein].sort();
+  r.dossiers = [...r.dossiers, plein];
   enregistrerRangement(pj).then(() => { refondre(); rendre(); });
   dire('folder created: ' + plein);
 }
@@ -2779,7 +2832,7 @@ async function renommerDossierVirtuel(pj, ancien, neuf) {
   if (r.dossiers.includes(cible)) { dire('this folder already exists', true); return; }
   const dedans = x => x === ancien || x.startsWith(ancien + '/');
   const change = x => cible + x.slice(ancien.length);
-  r.dossiers = r.dossiers.map(x => dedans(x) ? change(x) : x).sort();
+  r.dossiers = r.dossiers.map(x => dedans(x) ? change(x) : x);
   for (const id in r.ou) if (dedans(r.ou[id])) r.ou[id] = change(r.ou[id]);
   if (dossierActif === pj + '/' + ancien) dossierActif = pj + '/' + cible;
   await enregistrerRangement(pj);
@@ -2823,6 +2876,18 @@ function editerDossier(d) {
       try {
         const r = await api('api/dossier/renommer',
           {projet: pj, ancien: ancien, nom: neuf});
+        // L ordre choisi a la poignee suit le nouveau nom, sous-dossiers compris.
+        try {
+          const tous = JSON.parse(pref.lire('ordreSrc', '{}')) || {};
+          if (Array.isArray(tous[pj])) {
+            const bouts = ancien.split('/');
+            bouts[bouts.length - 1] = neuf;
+            const cible = bouts.join('/');
+            tous[pj] = tous[pj].map(x => x === ancien ? cible
+              : x.startsWith(ancien + '/') ? cible + x.slice(ancien.length) : x);
+            pref.ecrire('ordreSrc', JSON.stringify(tous));
+          }
+        } catch (e) {}
         const p = projetOuvert(pj);
         if (p) { p.films = r.films; p.dossiers = r.dossiers; refondre(); }
         if (dossierActif === pj + '/' + ancien) dossierActif = pj + '/' + neuf;
@@ -3005,7 +3070,91 @@ colMenu.addEventListener('click', async e => {
 });
 
 const cibles = () => $$('.dos, .pjt');
+
+// ---- la poignee : changer l ordre des projets et des dossiers ------------
+// Un projet se pose entre deux projets ; un dossier entre deux freres (meme
+// projet, meme parent) et emporte ses sous-dossiers. Les projets : l ordre
+// des projets ouverts, deja memorise par ce navigateur. Les dossiers « My
+// folders » : l ordre de la liste du rangement, enregistre avec lui. Les vrais
+// dossiers (vue Source) : une preference de ce navigateur.
+let GLISSE = null;
+const parentDe = d => d.lastIndexOf('/') < 0 ? '' : d.slice(0, d.lastIndexOf('/'));
+function cibleOrdre(e) {
+  if (!GLISSE) return null;
+  const l = e.target.closest(GLISSE.genre === 'pjt' ? '.pjt' : '.dos');
+  if (!l || !colDos.contains(l)) return null;
+  if (GLISSE.genre === 'pjt') {
+    const n = l.dataset.pj;
+    if (!n || n === GLISSE.pj || estBibli(n) || estCaptures(n)) return null;
+  } else {
+    const d = l.dataset.d;
+    if (l.dataset.pj !== GLISSE.pj || !d || d === NONRANGE || d === GLISSE.d ||
+        l.dataset.mont || l.dataset.montages ||
+        parentDe(d) !== parentDe(GLISSE.d)) return null;
+  }
+  const b = l.getBoundingClientRect();
+  return {ligne: l, apres: e.clientY > b.top + b.height / 2};
+}
+function effacerMarques() {
+  cibles().forEach(x => x.classList.remove('avant', 'apres', 'glisse', 'survol'));
+}
+// Deplace « quoi » juste avant ou juste apres « pres » dans une liste.
+function deplacerDans(l, quoi, pres, apres) {
+  const r = l.filter(x => x !== quoi);
+  const i = r.indexOf(pres);
+  if (i < 0) return l;
+  r.splice(apres ? i + 1 : i, 0, quoi);
+  return r;
+}
+colDos.addEventListener('dragstart', e => {
+  const h = e.target.closest && e.target.closest('.poignee');
+  if (!h) return;
+  const l = h.closest('.pjt, .dos');
+  GLISSE = {genre: h.dataset.ordre, pj: l.dataset.pj, d: l.dataset.d || ''};
+  e.dataTransfer.setData('text/plain', JSON.stringify({type: 'ordre'}));
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setDragImage(l, 12, 10); } catch (err) {}
+  setTimeout(() => l.classList.add('glisse'), 0);
+});
+colDos.addEventListener('dragend', () => { GLISSE = null; effacerMarques(); });
+async function deposerOrdre(c) {
+  const g = GLISSE;
+  GLISSE = null; effacerMarques();
+  if (!c) return;
+  if (g.genre === 'pjt') {
+    const noms = deplacerDans(OUVERTS.map(p => p.nom), g.pj, c.ligne.dataset.pj, c.apres);
+    OUVERTS.sort((a, b) => noms.indexOf(a.nom) - noms.indexOf(b.nom));
+    memoriserOuverts();
+    refondre(); rendre();
+    return;
+  }
+  const pres = c.ligne.dataset.d;
+  if (VUE === 'rangement') {
+    const r = rangementDe(g.pj);
+    r.dossiers = deplacerDans(r.dossiers, g.d, pres, c.apres);
+    refondre(); rendre();
+    await enregistrerRangement(g.pj);
+    refondre(); rendre();
+    return;
+  }
+  const p = projetOuvert(g.pj);
+  if (!p) return;
+  let tous = {};
+  try { tous = JSON.parse(pref.lire('ordreSrc', '{}')) || {}; } catch (err) {}
+  tous[g.pj] = deplacerDans(ordreSource(g.pj, p.dossiers || []), g.d, pres, c.apres);
+  pref.ecrire('ordreSrc', JSON.stringify(tous));
+  refondre(); rendre();
+}
+
 colDos.addEventListener('dragover', e => {
+  if (GLISSE) {
+    const c = cibleOrdre(e);
+    cibles().forEach(x => x.classList.remove('avant', 'apres'));
+    if (!c) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    c.ligne.classList.add(c.apres ? 'apres' : 'avant');
+    return;
+  }
   const d = e.target.closest('.dos, .pjt');
   if (!d) return;
   e.preventDefault(); e.dataTransfer.dropEffect = 'move';
@@ -3016,6 +3165,7 @@ colDos.addEventListener('dragleave', e => {
     cibles().forEach(x => x.classList.remove('survol'));
 });
 colDos.addEventListener('drop', async e => {
+  if (GLISSE) { e.preventDefault(); deposerOrdre(cibleOrdre(e)); return; }
   const d = e.target.closest('.dos, .pjt');
   cibles().forEach(x => x.classList.remove('survol'));
   if (!d || !d.dataset.pj) return;
