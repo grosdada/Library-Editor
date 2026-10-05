@@ -106,7 +106,9 @@ body.edit [data-rz="aside"]{display:none}
 .pjt .plus{display:none;font-size:16px}
 body:not(.enligne):not(.lectureseule):not(.rangement) .pjt .plus,
 body.rangement.enligne .pjt .plus,
-body.rangement.rangeable .pjt .plus{display:block}
+body.rangement.rangeable .pjt .plus,
+body.rangeable.enligne .pjt .plus,
+body.rangeable.lectureseule .pjt .plus{display:block}
 .pjt .plus:hover{color:var(--vert)}
 .pjt.on .plus{color:#fff9}
 .pjt.on .plus:hover{color:#fff}
@@ -3235,6 +3237,16 @@ async function nouveauDossier(pj) {
   const dedans = dossierActif && dossierActif.indexOf('/') > 0 &&
     dossierActif.slice(0, dossierActif.indexOf('/')) === pj
     ? dossierActif.slice(pj.length + 1) : '';
+  // En ligne ou en lecture seule, la vue Source ne peut pas creer de vrai
+  // dossier : le « + » y cree un dossier « My folders » et bascule dans cette
+  // vue, plutot que de disparaitre (David, 06/10 : « les dossiers ont perdu
+  // leur + »).
+  if (VUE !== 'rangement' && (ENLIGNE || LECTURE_SEULE) && RANGEABLE) {
+    await basculerVue('rangement');
+    const nom = prompt('New folder in “' + pj + '” (My folders):');
+    if (nom) creerDossierVirtuel(pj, '', nom);
+    return;
+  }
   if (VUE === 'rangement') {
     const parent = dedans === NONRANGE ? '' : dedans;
     const nom = prompt('New folder in “' + (parent || pj) + '” :');
