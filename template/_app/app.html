@@ -9481,6 +9481,12 @@ $('#bProjet').onclick = () => boiteProjet(false);
 $('#bExport').onclick = e => {
   const m = $('#menu');
   m.innerHTML = '<div class="lbl">Export the sequence</div>' +
+    // Le film : en ligne, enregistre dans ce navigateur (temps reel) ; au
+    // bureau, le rendu ffmpeg en pleine qualite (le bouton Render).
+    '<div class="it" data-exp="mp4">⏺ MP4 film<span class="pousse" ' +
+    'style="color:var(--sourd);font-size:10px">' + (ENLIGNE
+      ? 'recorded here, in real time' : 'full quality render') + '</span></div>' +
+    '<div class="sep"></div>' +
     '<div class="it" data-exp="json">↓ JSON<span class="pousse" ' +
     'style="color:var(--sourd);font-size:10px">the timeline as data</span></div>' +
     '<div class="it" data-exp="xml">↓ XML<span class="pousse" ' +
@@ -9499,7 +9505,8 @@ $('#menu').addEventListener('click', e => {
   if (!it) return;
   $('#menu').className = '';
   const a = it.dataset.exp;
-  if (a === 'json') exporterJson();
+  if (a === 'mp4') bRendre.onclick();
+  else if (a === 'json') exporterJson();
   else if (a === 'xml') exporterXml();
   else if (a === 'ffmpeg') exporterFfmpeg();
 });
@@ -9829,7 +9836,7 @@ async function exporterNavigateur() {
       image.getTracks().forEach(x => x.stop());
       EXPORT_W = 0; EXPORT_NAV = null; boucleIO = boucle;
       dimensionnerMoniteur(); dessiner();
-      etatRendu('⏺ Render', null);
+      etatRendu(ENLIGNE ? '⏺ Export MP4' : '⏺ Render', null);
       if (annule) { dire('export stopped — nothing was saved'); return; }
       const blob = new Blob(morceaux, {type: type.split(';')[0]});
       const lien = document.createElement('a');
@@ -9960,12 +9967,12 @@ async function suivreRendu() {
       return;
     }
     renduEnCours = false;
-    etatRendu('⏺ Render', null);
+    etatRendu(ENLIGNE ? '⏺ Export MP4' : '⏺ Render', null);
     if (e.etat === 'fini') dire('render finished → ' + e.fichier);
     else if (e.etat === 'erreur') dire('render failed: ' + (e.message || ''), true);
   } catch (err) {
     renduEnCours = false;
-    etatRendu('⏺ Render', null);
+    etatRendu(ENLIGNE ? '⏺ Export MP4' : '⏺ Render', null);
     dire('render tracking lost — ' + err.message, true);
   }
 }
@@ -10012,6 +10019,12 @@ async function suivreRendu() {
     // En ligne, le navigateur calcule l onde lui-meme (ondeNavigateur).
     ONDE_OK = ENLIGNE ? !!(window.AudioContext || window.webkitAudioContext)
                       : !!l.onde;
+    // En ligne, « Render » enregistre le film dans le navigateur : on le dit.
+    if (ENLIGNE) {
+      $('#bRendre .txt').textContent = '⏺ Export MP4';
+      $('#bRendre').title = 'export an MP4 of the sequence, recorded in this ' +
+        'browser in real time — keep this tab in front';
+    }
     DOSSIERS_OK = !ENLIGNE && !!l.dossiers;
     REVELER_OK = !ENLIGNE && !!l.reveler;
     AJOUT_OK = !ENLIGNE && !!l.ajout;
