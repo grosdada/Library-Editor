@@ -315,6 +315,88 @@ def apercu(racine, rel):
     return APERCUS[cle]
 
 
+# ---- exporter du site (1.3.20) ---------------------------------------------
+# Le serveur de la bibliotheque, charge ici sans etre lance : sa session sur le
+# site, son moteur de rendu, ses catalogues. Un par bibliotheque, garde le
+# temps de Library Editor — la session (un cookie) aussi, jamais le mot de
+# passe.
+EXPORT = {}
+
+
+def module_export(racine):
+    import le_films as F
+    m = EXPORT.get(racine)
+    if m is None:
+        m = F.charger_serveur(racine)
+        EXPORT[racine] = m
+    return m
+
+
+def faire_export(tache, m, pr, nom, sortie):
+    sess = m.SESSION_ENLIGNE["s"]
+    if not sess:
+        raise RuntimeError("Connexion au site perdue : reconnectez-vous.")
+    os.makedirs(sortie, exist_ok=True)
+    tache.etape_suivante("Rendu de « %s » en pleine qualité" % nom)
+    fini = threading.Event()
+
+    def suivre():
+        while not fini.wait(0.5):
+            r = m.RENDU
+            if r.get("total"):
+                tache.progres(r.get("fait") or 0, r.get("total"))
+    threading.Thread(target=suivre, daemon=True).start()
+    try:
+        f = m.exporter_enligne(sess, pr, nom, sortie)
+    finally:
+        fini.set()
+    tache.terminer_etapes()
+    tache.ligne("Écrit : " + f, "ok")
+    return {"fichier": f, "dossier": os.path.dirname(f)}
+
+
+def route_export(chemin, d):
+    racine = inspecter(d.get("chemin", ""))["chemin"]
+    m = module_export(racine)
+    if not hasattr(m, "exporter_enligne"):
+        EXPORT.pop(racine, None)
+        raise ValueError("Cette bibliothèque a un serveur trop ancien pour "
+                         "l'export : mettez-la d'abord à jour (Mettre à jour).")
+    if chemin == "/api/export/etat":
+        s = m.SESSION_ENLIGNE["s"]
+        return {"chemin": racine, "site": m.site_enligne(), "titre": m.TITRE,
+                "qui": s.qui if s else ""}
+    if chemin == "/api/export/connecter":
+        site = m.site_enligne()
+        if not site:
+            raise ValueError("Cette bibliothèque n'a pas de site.")
+        s = m.Enligne(site)
+        s.connecter(str(d.get("identifiant") or ""),
+                    str(d.get("motdepasse") or ""))
+        m.SESSION_ENLIGNE["s"] = s
+        return {"ok": True, "qui": s.qui}
+    s = m.SESSION_ENLIGNE["s"]
+    if not s:
+        raise PermissionError("Connectez-vous d'abord au site.")
+    if chemin == "/api/export/liste":
+        seqs = []
+        for p in (s.appel("projets").get("projets") or []):
+            pr = p.get("nom") if isinstance(p, dict) else p
+            for x in s.montages(pr):
+                seqs.append({"projet": pr, "nom": x.get("nom"),
+                             "maj": x.get("maj") or ""})
+        seqs.sort(key=lambda x: x["maj"], reverse=True)
+        return {"qui": s.qui, "sequences": seqs,
+                "sortie": os.path.join(racine, "exports")}
+    if chemin == "/api/export/lancer":
+        pr, nom = str(d.get("projet") or ""), str(d.get("nom") or "")
+        sortie = os.path.abspath(str(d.get("sortie") or
+                                     os.path.join(racine, "exports")))
+        return lancer_tache("export", "Export « %s »" % nom, faire_export,
+                            m, pr, nom, sortie)
+    raise LookupError("route inconnue")
+
+
 def lancer_tache(genre, titre, fonction, *args):
     t = C.Tache.lancer(genre, titre, fonction, *args)
     return {"tache": t.id}
@@ -403,6 +485,8 @@ def route_post(chemin, d):
             raise ValueError("Adresse refusée.")
         webbrowser.open(u)
         return {"ok": True}
+    if chemin.startswith("/api/export/"):
+        return route_export(chemin, d)
     if chemin == "/api/enligne/etat":
         return E.etat(inspecter(d.get("chemin", ""))["chemin"])
     if chemin == "/api/enligne/guide":

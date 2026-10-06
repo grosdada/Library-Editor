@@ -17,6 +17,8 @@ prend le relais pour les posters.
 
 import array
 import base64
+import hashlib
+import http.cookiejar
 import io
 import json
 import math
@@ -30,6 +32,7 @@ import sys
 import threading
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 import uuid
 import webbrowser
@@ -73,6 +76,17 @@ RACINE_BIBLIS = os.path.normpath(
 # Liste blanche : quand les rushes vivent a la racine, a cote de dossiers
 # d images et de prompts, on nomme ceux qui sont des projets.
 SEULS = [str(x) for x in (REGLAGES.get("projets") or [])]
+# Dossiers partages avec d autres bibliotheques, ailleurs sur le disque
+# (1.3.20) : {"nom": {"chemin": "relatif a la bibliotheque", "bibli": bool}}.
+# Ex. GROUND RUN : GR-MUSIC et GR-Stock-shots, communs aux 13 episodes,
+# comme en ligne. Ils ne sont jamais modifies (voir _agir).
+PARTAGES = {}
+for _n, _v in (REGLAGES.get("partages") or {}).items():
+    _c = _v.get("chemin") if isinstance(_v, dict) else _v
+    if _c:
+        PARTAGES[str(_n)] = {
+            "chemin": os.path.normpath(os.path.join(BASE, str(_c))),
+            "bibli": bool(isinstance(_v, dict) and _v.get("bibli"))}
 # Donnees (catalogue, vignettes, sequences, rangement) HORS du dossier de
 # rushes : un dossier de rendus peut etre vide ou regenere par un autre outil.
 DONNEES = REGLAGES.get("donnees") or ""
@@ -179,6 +193,8 @@ def racine_de(pr):
     """Sous quelle racine vit ce dossier. Les noms sont uniques entre les deux
     racines, donc le nom seul suffit a retrouver le chemin. Par defaut
     projets/ : c est la qu on cree."""
+    if pr in PARTAGES:
+        return os.path.dirname(PARTAGES[pr]["chemin"])
     r = _OU.get(pr)
     if r and os.path.isdir(os.path.join(r, pr)):
         return r
@@ -198,6 +214,8 @@ def captures_pretes():
 
 
 def media_de(pr):
+    if pr in PARTAGES:
+        return PARTAGES[pr]["chemin"]
     return os.path.join(racine_de(pr), pr)
 
 
@@ -458,14 +476,18 @@ def inscrire_projet(nom):
 
 
 def projets_disque():
-    """Les projets : les dossiers de projets/."""
-    return _dossiers(RACINE_PROJETS)
+    """Les projets : les dossiers de projets/, plus les partages."""
+    out = _dossiers(RACINE_PROJETS)
+    return out + [n for n, v in PARTAGES.items() if not v["bibli"]
+                  and n not in out and os.path.isdir(v["chemin"])]
 
 
 def biblis_disque():
     """Les bibliotheques partagees : les dossiers de bibliotheques/. Toujours
     ouvertes, jamais dans la liste « ouvrir / creer »."""
-    return _dossiers(RACINE_BIBLIS)
+    out = _dossiers(RACINE_BIBLIS)
+    return out + [n for n, v in PARTAGES.items() if v["bibli"]
+                  and n not in out and os.path.isdir(v["chemin"])]
 
 
 def sur(pr, rel):
@@ -2471,6 +2493,250 @@ def ajouter_rushes(chemins):
                                       [a["pj"] for a in deja])}}
 
 
+# ---- le site en ligne : synchro et export (1.3.20) --------------------------
+# La bibliotheque publiee sur un site (« Mettre en ligne ») et celle-ci
+# partagent les memes projets, les memes identifiants de fiches, le meme
+# format de sequence. La synchro fait passer sequences et rangements d un cote
+# a l autre ; l export rend en pleine qualite, ici, une sequence montee en
+# ligne. Le mot de passe ne sert qu a ouvrir la session : il n est ni garde ni
+# ecrit, seule la session (un cookie) reste en memoire le temps du serveur.
+def site_enligne():
+    s = str(REGLAGES.get("site") or "").strip()
+    if not s:
+        try:
+            with io.open(os.path.join(BASE, "_enligne", "_paquet.json"),
+                         encoding="utf-8") as fh:
+                s = str((json.load(fh) or {}).get("site") or "")
+        except Exception:
+            s = ""
+    return s.rstrip("/")
+
+
+class Enligne(object):
+    """Une session sur le site publie."""
+
+    def __init__(self, site):
+        self.site = site.rstrip("/")
+        self.qui = ""
+        self._ouvreur = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+
+    def appel(self, route, corps=None, delai=120):
+        h = {"Accept": "application/json", "User-Agent": "Library-Editor"}
+        data = None
+        if corps is not None:
+            data = json.dumps(corps).encode("utf-8")
+            h["Content-Type"] = "application/json"
+        req = urllib.request.Request(self.site + "/api/" + route, data=data,
+                                     headers=h,
+                                     method="GET" if data is None else "POST")
+        try:
+            with self._ouvreur.open(req, timeout=delai) as r:
+                brut = r.read()
+        except urllib.error.HTTPError as e:
+            brut = e.read()
+            try:
+                msg = json.loads(brut.decode("utf-8")).get("erreur")
+            except Exception:
+                msg = None
+            raise RuntimeError(msg or "HTTP %d" % e.code)
+        try:
+            d = json.loads(brut.decode("utf-8"))
+        except ValueError:
+            raise RuntimeError("the site did not answer in JSON — is the "
+                               "address right? %s" % self.site)
+        if isinstance(d, dict) and d.get("erreur"):
+            raise RuntimeError(d["erreur"])
+        return d
+
+    def connecter(self, identifiant, motdepasse):
+        d = self.appel("entrer", {"identifiant": identifiant,
+                                  "motdepasse": motdepasse})
+        self.qui = d.get("identifiant") or identifiant
+        return self.qui
+
+    def montages(self, pr):
+        return self.appel("montages?projet=" + urllib.parse.quote(pr)
+                          ).get("montages") or []
+
+    def montage(self, pr, nom):
+        return self.appel("montage?projet=%s&nom=%s" % (
+            urllib.parse.quote(pr), urllib.parse.quote(nom))).get("montage")
+
+
+SESSION_ENLIGNE = {"s": None}
+FICHIER_SYNCHRO = os.path.join(ICI, "_synchro.json")
+
+
+def _empreinte(obj):
+    return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False,
+                                   separators=(",", ":")).encode("utf-8")
+                        ).hexdigest()
+
+
+def _rangement_net(r):
+    return {"dossiers": list((r or {}).get("dossiers") or []),
+            "ou": dict((r or {}).get("ou") or {})}
+
+
+def _montage_local(pr, nom):
+    c = os.path.join(montages_de(pr), nom + ".json")
+    if not os.path.isfile(c):
+        return None
+    try:
+        with io.open(c, encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return None
+
+
+def _ecrire_montage_local(pr, nom, m):
+    d = montages_de(pr)
+    os.makedirs(d, exist_ok=True)
+    c = os.path.join(d, nom + ".json")
+    if os.path.isfile(c):
+        shutil.copy2(c, c + ".avant-synchro")
+    tmp = c + ".tmp"
+    with io.open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(m, fh, ensure_ascii=False)
+    os.replace(tmp, c)
+
+
+def synchro_enligne(sess):
+    """Sequences et rangements, dans les deux sens, projet par projet.
+
+    On compare chaque cote a ce qu il etait a la derniere synchro (empreinte
+    gardee dans _synchro.json) : le cote qui a change gagne. Si les deux ont
+    change, rien n est perdu — la version en ligne arrive ici sous un autre
+    nom pour les sequences, et les rangements sont fusionnes. Rien n est
+    jamais efface, d aucun cote."""
+    try:
+        with io.open(FICHIER_SYNCHRO, encoding="utf-8") as fh:
+            etat = json.load(fh) or {}
+    except Exception:
+        etat = {}
+    rap = {"tires": [], "pousses": [], "conflits": [], "fusions": [],
+           "absents": [], "egaux": 0}
+    locaux = set(projets_disque() + biblis_disque())
+    try:
+        for p in (sess.appel("projets").get("projets") or []):
+            pr = p.get("nom") if isinstance(p, dict) else p
+            if not pr or pr not in locaux:
+                if pr:
+                    rap["absents"].append(pr)
+                continue
+            _synchro_projet(sess, pr, etat, rap)
+    finally:
+        tmp = FICHIER_SYNCHRO + ".tmp"
+        with io.open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(etat, fh, ensure_ascii=False, indent=1)
+        os.replace(tmp, FICHIER_SYNCHRO)
+    return rap
+
+
+def _synchro_projet(sess, pr, etat, rap):
+    # --- les sequences ---
+    en = {x["nom"]: x for x in sess.montages(pr)}
+    ici = set()
+    if os.path.isdir(montages_de(pr)):
+        ici = {f[:-5] for f in os.listdir(montages_de(pr))
+               if f.lower().endswith(".json")}
+    for nom in sorted(set(en) | ici):
+        cle = "m|%s|%s" % (pr, nom)
+        base = etat.get(cle)
+        L = _montage_local(pr, nom) if nom in ici else None
+        O = sess.montage(pr, nom) if nom in en else None
+        hL = _empreinte(L) if L is not None else None
+        hO = _empreinte(O) if O is not None else None
+        if L is not None and O is not None:
+            if hL == hO:
+                rap["egaux"] += 1
+                etat[cle] = hL
+            elif base == hL:
+                _ecrire_montage_local(pr, nom, O)
+                rap["tires"].append(pr + " / " + nom)
+                etat[cle] = hO
+            elif base == hO:
+                sess.appel("montage", {"projet": pr, "nom": nom, "montage": L})
+                rap["pousses"].append(pr + " / " + nom)
+                etat[cle] = hL
+            else:
+                # Les deux ont change : la version du site part sous un autre
+                # nom, des deux cotes ; celle d ici garde le sien, des deux
+                # cotes aussi. Rien n est perdu, et c est regle une fois pour
+                # toutes.
+                autre = nom_propre(nom + " (online " +
+                                   time.strftime("%Y-%m-%d %H%M") + ")")
+                _ecrire_montage_local(pr, autre, O)
+                sess.appel("montage", {"projet": pr, "nom": autre,
+                                       "montage": O})
+                sess.appel("montage", {"projet": pr, "nom": nom, "montage": L})
+                etat[cle] = hL
+                etat["m|%s|%s" % (pr, autre)] = hO
+                rap["conflits"].append(pr + " / " + nom + "  ->  " + autre)
+        elif L is not None:
+            # Deja synchronisee et disparue en ligne : effacee la-bas. On ne
+            # la renvoie pas, on ne l efface pas ici non plus.
+            if base is None:
+                sess.appel("montage", {"projet": pr, "nom": nom, "montage": L})
+                rap["pousses"].append(pr + " / " + nom)
+                etat[cle] = hL
+        elif O is not None:
+            if base is None:
+                _ecrire_montage_local(pr, nom, O)
+                rap["tires"].append(pr + " / " + nom)
+                etat[cle] = hO
+    # --- le rangement « My folders » ---
+    cle = "r|" + pr
+    L = _rangement_net(lire_rangement(pr))
+    O = _rangement_net(sess.appel("rangement?projet=" +
+                                  urllib.parse.quote(pr)))
+    hL, hO, base = _empreinte(L), _empreinte(O), etat.get(cle)
+    vide = {"dossiers": [], "ou": {}}
+    if hL == hO:
+        etat[cle] = hL
+    elif L == vide or base == hL:
+        ecrire_rangement(pr, rangement_propre(O))
+        rap["tires"].append(pr + " / My folders")
+        etat[cle] = _empreinte(_rangement_net(lire_rangement(pr)))
+    elif O == vide or base == hO:
+        d = sess.appel("rangement", {"projet": pr, "dossiers": L["dossiers"],
+                                     "ou": L["ou"]})
+        rap["pousses"].append(pr + " / My folders")
+        etat[cle] = _empreinte(_rangement_net(d))
+    else:
+        dos = L["dossiers"] + [x for x in O["dossiers"]
+                               if x not in L["dossiers"]]
+        ou = dict(L["ou"])
+        ou.update(O["ou"])
+        r = rangement_propre({"dossiers": dos, "ou": ou})
+        ecrire_rangement(pr, r)
+        sess.appel("rangement", {"projet": pr, "dossiers": r["dossiers"],
+                                 "ou": r["ou"]})
+        rap["fusions"].append(pr + " / My folders")
+        etat[cle] = _empreinte(_rangement_net(r))
+
+
+def exporter_enligne(sess, pr, nom, cible, mode="mp4"):
+    """Rend ICI, depuis les originaux, une sequence montee en ligne. Synchrone :
+    l appelant suit RENDU. La sequence porte ce qu il faut au moteur
+    (« rendu », ecrit par l application a chaque enregistrement)."""
+    m = sess.montage(pr, nom) or {}
+    r = m.get("rendu")
+    if not r or not r.get("plans"):
+        raise RuntimeError(
+            "« %s » has no render data yet: it was saved by an older version "
+            "of the page. Open it once online (after Ctrl+F5), change anything "
+            "so it saves again, then retry." % nom)
+    if os.path.isdir(cible) or not os.path.splitext(cible)[1]:
+        cible = os.path.join(cible, (nom_propre(nom) or "sequence") +
+                             EXT_MODE[mode][0])
+    rendre(r, nom, pr, cible, mode)
+    if RENDU.get("etat") != "fini":
+        raise RuntimeError(RENDU.get("message") or "the render failed")
+    return RENDU.get("fichier") or cible
+
+
 def _destination(pr, nom, demande, mode):
     """Ou ecrire le rendu.
 
@@ -3023,6 +3289,11 @@ class Poste(BaseHTTPRequestHandler):
                                # sait dessiner l onde d un son (/api/onde) :
                                # sans ce champ, le menu ne la propose pas.
                                "onde": bool(FFMPEG),
+                               # Le site ou cette bibliotheque est publiee,
+                               # et qui y est connecte : le bouton de synchro.
+                               "synchro": site_enligne(),
+                               "synchro_qui": (SESSION_ENLIGNE["s"].qui
+                                               if SESSION_ENLIGNE["s"] else ""),
                                # sait lister TOUS les dossiers (/api/dossiers)
                                # et en ouvrir un (/api/projet/ajouter).
                                "dossiers": True,
@@ -3201,6 +3472,35 @@ class Poste(BaseHTTPRequestHandler):
                     return self._json(dict(ajouter_rushes(l), ok=True))
             except Exception as e:
                 return self._erreur("%s: %s" % (type(e).__name__, e), 500)
+        # Le site en ligne (1.3.20). Se connecter parle au reseau : hors du
+        # verrou. La synchro ecrit sequences et rangements : sous le verrou.
+        # Le mot de passe traverse cette requete et rien d autre : il n est
+        # ni journalise ni garde.
+        if chemin in ("/api/enligne/connecter", "/api/enligne/synchro"):
+            if d.get("jeton") != JETON:
+                return self._erreur("invalid token", 403)
+            if chemin == "/api/enligne/connecter":
+                site = site_enligne()
+                if not site:
+                    return self._erreur("this library has no website yet — "
+                                        "publish it first", 400)
+                try:
+                    s = Enligne(site)
+                    qui = s.connecter(str(d.get("identifiant") or ""),
+                                      str(d.get("motdepasse") or ""))
+                except Exception as e:
+                    return self._erreur(str(e), 401)
+                SESSION_ENLIGNE["s"] = s
+                return self._json({"ok": True, "qui": qui, "site": site})
+            s = SESSION_ENLIGNE["s"]
+            if not s:
+                return self._erreur("sign in to the website first", 401)
+            try:
+                with _verrou:
+                    rap = synchro_enligne(s)
+            except Exception as e:
+                return self._erreur("sync stopped: %s" % e, 502)
+            return self._json(dict(rap, ok=True))
         with _verrou:
             try:
                 return self._agir(chemin, d)
@@ -3214,6 +3514,13 @@ class Poste(BaseHTTPRequestHandler):
             return self._erreur(
                 "this library never modifies the rushes folders — "
                 "organise them with My folders instead", 403)
+        # Un dossier partage sert a plusieurs bibliotheques : aucune ne le
+        # modifie.
+        if (chemin in ECRIT_DANS_LES_RUSHES
+                and str(d.get("projet") or "") in PARTAGES):
+            return self._erreur(
+                "this folder is shared with other libraries — it is never "
+                "modified from here; organise it with My folders", 403)
         # Installer la version publiee sur GitHub : le programme seulement,
         # chaque fichier sauvegarde avant d etre remplace. Il prend effet au
         # prochain lancement de la bibliotheque.

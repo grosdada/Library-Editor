@@ -5,6 +5,7 @@
 | `inverse.js` | `node tests/inverse.js template/_app/app.html` | vitesse signée, lecture inversée, découpe et rognage à l'envers (26) |
 | `rangement.js` | `node tests/rangement.js template/_app/app.html` | dossiers virtuels : créer, ranger, renommer, effacer, ordre à la poignée (25) |
 | `serveur_essais.py` | `python tests/serveur_essais.py "<racine>"` | le vrai serveur d'une bibliothèque installée, sur ses vrais rushes, dont chaque effet du rack, les masques, les rushes incrustés, l'image figée, les captures, « + Add rush » et la pose sur la piste de base (63 sur la bibliothèque d'essai) |
+| `synchro_essais.py` | `python tests/synchro_essais.py "<bibliothèque d'essai>"` | la synchro avec le site, contre un faux site en mémoire : les deux sens, conflit, fusion des dossiers, rien d'effacé (19). **Efface les séquences et rangements de ProjA/ProjB** : jamais sur une vraie bibliothèque |
 | `installeur_essais.py` | `python tests/installeur_essais.py` | analyse, installation et mise à jour des trois genres de bibliothèque, racine à onglets, monteur, mise en ligne (198) |
 | `maj_editeur_essais.py` | `python tests/maj_editeur_essais.py` | la mise à jour de Library Editor lui-même, sur une copie et un dépôt local (10) |
 

@@ -255,6 +255,7 @@ dl.infos dt{color:var(--faible)} dl.infos dd{margin:0;word-break:break-all}
     <button class="nav" data-vue="nouvelle" aria-current="page"><svg class="i"><use href="#i-plus"/></svg>Nouvelle bibliothèque</button>
     <button class="nav" data-vue="maj"><svg class="i"><use href="#i-refresh"/></svg>Mettre à jour</button>
     <button class="nav" data-vue="enligne"><svg class="i"><use href="#i-cloud"/></svg>Mettre en ligne</button>
+    <button class="nav" data-vue="export"><svg class="i"><use href="#i-film"/></svg>Exporter du site</button>
   </nav>
   <div class="rubrique">Bibliothèques</div>
   <div id="recents"></div>
@@ -377,6 +378,7 @@ function aller(vue) {
   if (vue === "nouvelle") vueNouvelle();
   if (vue === "maj") vueMaj();
   if (vue === "enligne") vueEnligne();
+  if (vue === "export") vueExport();
   rafraichir();
 }
 $$(".nav").forEach(b => b.onclick = () => aller(b.dataset.vue));
@@ -997,7 +999,7 @@ async function montrerFiche(chemin) {
       ${racine ? `<button class="btn" id="x-preparer">${ico("plus")} Préparer une bibliothèque</button>` : ""}
       <button class="btn" id="x-dossier">${ico("dossier")} Dossier</button>
       <button class="btn" id="x-raccourci">${ico("raccourci")} Raccourci</button><span class="ressort"></span>
-      <button class="btn" id="x-maj">${ico("refresh")} Mettre à jour</button><button class="btn" id="x-enligne">${ico("cloud")} Mettre en ligne</button></div></div>
+      <button class="btn" id="x-maj">${ico("refresh")} Mettre à jour</button><button class="btn" id="x-enligne">${ico("cloud")} Mettre en ligne</button>${films ? `<button class="btn" id="x-export">${ico("film")} Exporter du site</button>` : ""}</div></div>
     <div class="actions"><span class="ressort"></span><button class="btn discret" id="x-oublier">Retirer de la liste</button></div>`;
   if ($("#x-preparer")) $("#x-preparer").onclick = e => essayer(async () => { await api("/api/preparer", {chemin: info.chemin}); toast("Le préparateur s'ouvre dans sa propre fenêtre."); }, e.currentTarget);
   $("#x-ouvrir").onclick = e => essayer(async () => { await api("/api/ouvrir", {chemin: info.chemin}); toast("La bibliothèque démarre dans sa propre fenêtre."); }, e.currentTarget);
@@ -1005,6 +1007,7 @@ async function montrerFiche(chemin) {
   $("#x-raccourci").onclick = e => essayer(async () => { const x = await api("/api/raccourci", {chemin: info.chemin}); toast("Raccourci créé : " + x.raccourci); }, e.currentTarget);
   $("#x-maj").onclick = () => { aller("maj"); choisirMaj(info.chemin); };
   $("#x-enligne").onclick = () => { aller("enligne"); choisirEnligne(info.chemin); };
+  if ($("#x-export")) $("#x-export").onclick = () => { aller("export"); choisirExport(info.chemin); };
   $("#x-oublier").onclick = async () => { await api("/api/oublier", {chemin: info.chemin}); toast("Retirée de la liste (le dossier n'est pas touché)."); aller("nouvelle"); };
 }
 
@@ -1094,6 +1097,70 @@ async function choisirMaj(chemin) {
 // =============================================================================
 //  METTRE EN LIGNE — module à part
 // =============================================================================
+// =============================================================================
+//  EXPORTER DU SITE (1.3.20)
+// =============================================================================
+// Une sequence montee en ligne, rendue ICI en pleine qualite depuis les
+// originaux, sans ouvrir la bibliotheque. Le mot de passe va au site pour
+// ouvrir la session, et n est garde nulle part.
+function vueExport() {
+  $("#vue").innerHTML = entete("Exporter du site", "Rendre une séquence montée en ligne",
+    "Choisissez la bibliothèque, connectez-vous à son site : ses séquences s'affichent. Le rendu se fait sur cet ordinateur, en pleine qualité, à partir des fichiers d'origine — avec le même moteur que le bouton Render de la bibliothèque.") +
+    selecteurBibliotheque() + `<div id="x-contenu"></div>`;
+  brancherSelecteur(chemin => essayer(() => choisirExport(chemin)));
+}
+async function choisirExport(chemin) {
+  if (S.vue !== "export") aller("export");
+  const zone = $("#x-contenu");
+  zone.innerHTML = `<div class="carte" style="margin-top:14px"><div class="progres indetermine"><i></i></div></div>`;
+  let e;
+  try { e = await api("/api/export/etat", {chemin}); } catch (err) { zone.innerHTML = encart("alerte", `<p>${esc(err.message)}</p>`); return; }
+  if (!e.site) { zone.innerHTML = encart("alerte", "<p>Cette bibliothèque n'a pas encore de site : publiez-la d'abord avec <b>Mettre en ligne</b>.</p>"); return; }
+  S.export = {chemin: e.chemin, site: e.site};
+  if (e.qui) return listerExport();
+  zone.innerHTML = `<div class="carte" style="margin-top:14px"><h3>${esc(e.titre)}</h3>
+    <p class="petit" style="margin:-6px 0 12px">Site : <code>${esc(e.site)}</code></p>
+    <div style="display:flex;flex-direction:column;gap:8px;max-width:340px">
+      <input type="text" id="x-id" placeholder="Identifiant du site" autocomplete="username">
+      <input type="password" id="x-mp" placeholder="Mot de passe" autocomplete="current-password">
+      <div class="actions"><button class="btn principal" id="x-entrer">Se connecter</button></div>
+    </div>
+    <p class="petit faible">Le mot de passe part directement au site pour ouvrir la session. Library Editor ne le garde pas : il faudra le retaper à la prochaine ouverture.</p></div>`;
+  const go = ev => essayer(async () => {
+    await api("/api/export/connecter", {chemin: S.export.chemin, identifiant: $("#x-id").value.trim(), motdepasse: $("#x-mp").value});
+    await listerExport();
+  }, ev && ev.currentTarget);
+  $("#x-entrer").onclick = go;
+  $("#x-mp").onkeydown = ev => { if (ev.key === "Enter") go(); };
+  $("#x-id").focus();
+}
+async function listerExport() {
+  const zone = $("#x-contenu");
+  zone.innerHTML = `<div class="carte" style="margin-top:14px"><div class="progres indetermine"><i></i></div></div>`;
+  const l = await api("/api/export/liste", {chemin: S.export.chemin});
+  if (!l.sequences.length) { zone.innerHTML = encart("info", "<p>Aucune séquence sur le site pour l'instant.</p>"); return; }
+  zone.innerHTML = `<div class="carte" style="margin-top:14px"><h3>Séquences en ligne <span class="petit faible">— connecté : ${esc(l.qui)}</span></h3>
+    <div class="tableau"><table><thead><tr><th></th><th>Séquence</th><th>Projet</th><th>Modifiée</th></tr></thead><tbody>${
+      l.sequences.map((s, i) => `<tr><td><input type="radio" name="x-seq" value="${i}" ${i === 0 ? "checked" : ""}></td><td><b>${esc(s.nom)}</b></td><td>${esc(s.projet)}</td><td>${esc(s.maj || "")}</td></tr>`).join("")}</tbody></table></div>
+    <p style="margin:14px 0 6px">Dossier où écrire le film</p>
+    <span class="ligne-champ"><input type="text" id="x-sortie" value="${esc(l.sortie)}"><button class="btn" id="x-parcourir">${ico("dossier")} Parcourir…</button></span>
+    <div class="actions"><button class="btn principal" id="x-lancer">${ico("film")} Exporter</button></div></div>
+    <div id="x-suivi"></div>`;
+  $("#x-parcourir").onclick = ev => essayer(async () => { const r = await api("/api/choisir", {depart: $("#x-sortie").value, titre: "Où écrire le film"}); if (r.chemin) $("#x-sortie").value = r.chemin; }, ev.currentTarget);
+  $("#x-lancer").onclick = ev => essayer(async () => {
+    const s = l.sequences[+$('input[name="x-seq"]:checked').value];
+    await api("/api/export/lancer", {chemin: S.export.chemin, projet: s.projet, nom: s.nom, sortie: $("#x-sortie").value});
+    $("#x-lancer").disabled = true;
+    suivre($("#x-suivi"), t => {
+      $("#x-lancer").disabled = false;
+      if (t.etat === "fini" && t.resultat) {
+        $("#x-suivi").insertAdjacentHTML("beforeend", `<div class="carte" style="margin-top:14px"><div class="resultat"><span class="grand">${ico("check")}</span><div style="flex:1;min-width:0"><h2>Film prêt</h2><p><code>${esc(t.resultat.fichier)}</code></p><div class="actions"><button class="btn" id="x-voir">${ico("dossier")} Ouvrir le dossier</button></div></div></div></div>`);
+        $("#x-voir").onclick = () => essayer(() => api("/api/explorer", {chemin: t.resultat.dossier}));
+      }
+    });
+  }, ev.currentTarget);
+}
+
 function vueEnligne() {
   $("#vue").innerHTML = entete("Mettre en ligne", "Mettre une bibliothèque en ligne",
     "Pour que des collègues la consultent sans passer par votre ordinateur. Library Editor prépare un paquet prêt à envoyer, et vous guide pas à pas sur Hostinger. Il ne demande, ne reçoit et ne garde aucun mot de passe.") +

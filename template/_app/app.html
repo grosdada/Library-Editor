@@ -787,6 +787,8 @@ body.enligne #qui { display: flex; }
   <button id="bScan" class="rushOnly bureauSeul">Rescan</button>
   <button id="bAjoutRush" class="bureauSeul" hidden
     title="pick one or more new rushes in the project's folder — only those are read, no rescan">+ Add rush</button>
+  <button id="bSynchro" class="bureauSeul" hidden
+    title="send your sequences and folders to the website, and bring back the ones made there">⇅ Sync online</button>
   <button id="bPurge" class="rushOnly bureauSeul" hidden
     title="remove from the library the clips whose file is no longer on disk">Remove missing</button>
   <button id="bAnnul" class="rushOnly bureauSeul ecritRushes">Undo on disk</button>
@@ -957,6 +959,9 @@ let DOSSIERS_OK = false;
 let REVELER_OK = false;
 // Le serveur sait ajouter des rushes choisis un par un (champ « ajout »).
 let AJOUT_OK = false;
+// Le site ou cette bibliotheque est publiee (champ « synchro »), et le compte
+// connecte depuis ce serveur. Vide : pas de bouton de synchro.
+let SYNCHRO = '', SYNCHRO_QUI = '';
 // Le serveur sait se mettre a jour depuis GitHub (champ « maj »).
 let MAJ_DISPO = false;
 // Le faux dossier qui recueille ce qui n a pas encore ete range. Il n est
@@ -3319,6 +3324,116 @@ $('#bFav').onclick = () => {
 // dans la colonne (le projet, ou son sous-dossier), et seuls les fichiers
 // pris sont lus — un rescan relit tout le projet. Les fichiers doivent deja
 // etre dans le dossier d un projet : rien n est copie ni deplace.
+// ---- ⇅ Sync online (1.3.20) ------------------------------------------------
+// Sequences et dossiers « My folders » passent dans les deux sens ; le serveur
+// tranche (voir synchro_enligne). Le mot de passe va au serveur de bureau, qui
+// ouvre la session sur le site et l oublie aussitot.
+function boiteConnexionSite() {
+  return new Promise(res => {
+    const b = $('#boite');
+    b.innerHTML = '<h3>Sign in to the website</h3>' +
+      '<div style="font-size:12px;color:var(--sourd);margin-bottom:10px">' +
+      echapHtml(SYNCHRO) + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px">' +
+      '<input id="syId" placeholder="name" autocomplete="username">' +
+      '<input id="syMp" type="password" placeholder="password" ' +
+      'autocomplete="current-password">' +
+      '<div id="syMal" style="color:var(--rouge);font-size:12px;min-height:1em"></div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+      '<button id="syAnnule">Cancel</button>' +
+      '<button id="syOk" class="on">Sign in and sync</button></div></div>';
+    $('#voile').className = 'on';
+    const fin = v => { $('#voile').className = ''; res(v); };
+    $('#syAnnule').onclick = () => fin(false);
+    const go = async () => {
+      const id = $('#syId').value.trim(), mp = $('#syMp').value;
+      if (!id || !mp) { $('#syMal').textContent = 'a name and a password'; return; }
+      $('#syOk').disabled = true;
+      try {
+        const d = await api('api/enligne/connecter',
+                            {jeton: JETON, identifiant: id, motdepasse: mp}, 60000);
+        SYNCHRO_QUI = d.qui || id;
+        fin(true);
+      } catch (err) {
+        $('#syMal').textContent = err.message;
+        $('#syOk').disabled = false;
+        $('#syMp').value = '';
+        $('#syMp').focus();
+      }
+    };
+    $('#syOk').onclick = go;
+    $('#syMp').onkeydown = e => { if (e.key === 'Enter') go(); };
+    $('#syId').onkeydown = e => { if (e.key === 'Enter') $('#syMp').focus(); };
+    $('#syId').focus();
+  });
+}
+
+async function synchroniser() {
+  const b = $('#bSynchro');
+  if (!SYNCHRO || b.disabled) return;
+  if (!SYNCHRO_QUI && !(await boiteConnexionSite())) return;
+  await assurerSauvegarde(true);
+  b.disabled = true;
+  const avant = b.textContent;
+  b.textContent = '⇅ syncing…';
+  try {
+    let d;
+    try {
+      d = await api('api/enligne/synchro', {jeton: JETON}, 900000);
+    } catch (err) {
+      // La session du site a expire : on se reconnecte une fois.
+      if (!/sign in|401|signed/i.test(err.message)) throw err;
+      SYNCHRO_QUI = '';
+      if (!(await boiteConnexionSite())) return;
+      d = await api('api/enligne/synchro', {jeton: JETON}, 900000);
+    }
+    // La sequence ouverte vient d etre remplacee par celle du site : on la
+    // recharge, sinon le prochain enregistrement l ecraserait.
+    const ouverte = PROJET.pj && projetNom ? PROJET.pj + ' / ' + projetNom : '';
+    if (ouverte && d.tires.includes(ouverte)) {
+      try {
+        const m = await api('api/montage?projet=' + encodeURIComponent(PROJET.pj) +
+                            '&nom=' + encodeURIComponent(projetNom));
+        await chargerProjet(m.montage, m.nom, m.projet);
+      } catch (e) {}
+    }
+    for (const p of OUVERTS) await chargerRangement(p.nom);
+    refondre(); rendre();
+    rafraichirProjets();
+    rapportSynchro(d);
+  } catch (err) {
+    dire('sync — ' + err.message, true);
+  } finally {
+    b.disabled = false;
+    b.textContent = avant;
+  }
+}
+
+function rapportSynchro(d) {
+  const l = (titre, x) => x.length
+    ? '<div style="margin-top:9px"><b>' + titre + '</b> (' + x.length + ')<br>' +
+      x.map(echapHtml).join('<br>') + '</div>' : '';
+  const rien = !d.tires.length && !d.pousses.length && !d.conflits.length &&
+    !d.fusions.length;
+  const b = $('#boite');
+  b.innerHTML = '<h3>Sync with the website</h3>' +
+    '<div style="font-size:12px;line-height:1.6;max-height:55vh;overflow:auto">' +
+    (rien ? 'Everything was already the same on both sides.' : '') +
+    l('Brought back from the website', d.tires) +
+    l('Sent to the website', d.pousses) +
+    l('Changed on both sides — the website version is kept here under ' +
+      'another name', d.conflits) +
+    l('Folders merged', d.fusions) +
+    (d.absents.length ? '<div style="margin-top:9px;color:var(--sourd)">' +
+      'Only on the website, not in this library: ' +
+      d.absents.map(echapHtml).join(', ') + '</div>' : '') +
+    '</div><div style="display:flex;justify-content:flex-end;margin-top:14px">' +
+    '<button id="syFerme" class="on">OK</button></div>';
+  $('#voile').className = 'on';
+  $('#syFerme').onclick = () => { $('#voile').className = ''; };
+}
+$('#bSynchro').onclick = synchroniser;
+
 $('#bAjoutRush').onclick = async () => {
   const b = $('#bAjoutRush');
   const pj = projetCourant() || '';
@@ -8680,6 +8795,19 @@ function hoteMontage() {
   return p ? p.nom : '';
 }
 
+// Ce qu attend le moteur de rendu, joint a chaque enregistrement (1.3.20) :
+// l export de bureau rend une sequence montee en ligne sans rouvrir la page.
+// Au-dela de 2,5 Mo (beaucoup de masques), on le garde sans les images de
+// masque plutot que de risquer le refus de l enregistrement.
+function renduJoint() {
+  if (!CLIPS.length) return null;
+  try {
+    let r = objetMontage(true);
+    if (JSON.stringify(r).length > 2500000) r = objetMontage(false);
+    return r;
+  } catch (e) { return null; }
+}
+
 function objetProjet() {
   return {
     version: 5, genere: new Date().toISOString(),
@@ -8693,6 +8821,7 @@ function objetProjet() {
     tIn: tIn, tOut: tOut, PPS: PPS,
     marqueurs: MARQUEURS,
     pistes: PISTES,
+    rendu: renduJoint(),
     clips: CLIPS.map(c => {
       const n = {};
       for (const k in c) if (k[0] !== '_') n[k] = c[k];
@@ -9778,6 +9907,9 @@ async function suivreRendu() {
     REVELER_OK = !ENLIGNE && !!l.reveler;
     AJOUT_OK = !ENLIGNE && !!l.ajout;
     $('#bAjoutRush').hidden = !AJOUT_OK;
+    SYNCHRO = ENLIGNE ? '' : (l.synchro || '');
+    SYNCHRO_QUI = l.synchro_qui || '';
+    $('#bSynchro').hidden = !SYNCHRO;
     MAJ_DISPO = !ENLIGNE && !!l.maj;
     if (MAJ_DISPO) {
       // Le bouton apparait tout de suite ; la verification aupres de GitHub
