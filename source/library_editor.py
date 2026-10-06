@@ -355,7 +355,41 @@ def faire_export(tache, m, pr, nom, sortie):
     return {"fichier": f, "dossier": os.path.dirname(f)}
 
 
+def site_de(racine):
+    """Le site ou une bibliotheque est publiee, sans charger son serveur :
+    reglage « site » de bibliotheque.json, sinon _enligne/_paquet.json."""
+    for f in (os.path.join(racine, "_app", "bibliotheque.json"),
+              os.path.join(racine, "_enligne", "_paquet.json")):
+        s = str((C.lire_json(f, {}) or {}).get("site") or "").strip()
+        if s:
+            return s.rstrip("/")
+    return ""
+
+
+def sites_export():
+    """Les bibliotheques de films connues, rangees par site : GROUND RUN et
+    ses 13 episodes, montage-cdc et les Coulisses... Sans site a la fin."""
+    groupes = {}
+    for r in recents():
+        if not r.get("existe") or r.get("genre") != "films":
+            continue
+        s = site_de(r["chemin"])
+        hote = urllib.parse.urlparse(s).netloc if s else ""
+        g = groupes.setdefault(hote, {"hote": hote, "bibliotheques": []})
+        g["bibliotheques"].append({"chemin": r["chemin"], "titre": r.get("titre"),
+                                   "site": s,
+                                   "sous": urllib.parse.urlparse(s).path.strip("/")})
+    out = sorted((g for h, g in groupes.items() if h), key=lambda g: g["hote"])
+    for g in out:
+        g["bibliotheques"].sort(key=lambda b: (b["sous"], b["titre"] or ""))
+    if "" in groupes:
+        out.append(groupes[""])
+    return {"sites": out}
+
+
 def route_export(chemin, d):
+    if chemin == "/api/export/sites":
+        return sites_export()
     racine = inspecter(d.get("chemin", ""))["chemin"]
     m = module_export(racine)
     if not hasattr(m, "exporter_enligne"):

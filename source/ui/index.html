@@ -1103,11 +1103,27 @@ async function choisirMaj(chemin) {
 // Une sequence montee en ligne, rendue ICI en pleine qualite depuis les
 // originaux, sans ouvrir la bibliotheque. Le mot de passe va au site pour
 // ouvrir la session, et n est garde nulle part.
-function vueExport() {
+async function vueExport() {
   $("#vue").innerHTML = entete("Exporter du site", "Rendre une séquence montée en ligne",
     "Choisissez la bibliothèque, connectez-vous à son site : ses séquences s'affichent. Le rendu se fait sur cet ordinateur, en pleine qualité, à partir des fichiers d'origine — avec le même moteur que le bouton Render de la bibliothèque.") +
-    selecteurBibliotheque() + `<div id="x-contenu"></div>`;
+    `<div id="x-sites"><div class="carte"><div class="progres indetermine"><i></i></div></div></div>
+    <details style="margin-top:10px"><summary class="petit">Une autre bibliothèque…</summary>${selecteurBibliotheque()}</details>
+    <div id="x-contenu"></div>`;
   brancherSelecteur(chemin => essayer(() => choisirExport(chemin)));
+  // Rangees par site : un site (GROUND RUN, montage-cdc…) et les
+  // bibliotheques qu il contient — les episodes, par exemple.
+  try {
+    const r = await api("/api/export/sites");
+    $("#x-sites").innerHTML = r.sites.length ? r.sites.map((s, i) => `
+      <div class="carte" style="margin-bottom:12px">
+        <h3 style="margin:0 0 10px">${ico(s.hote ? "cloud" : "film")} ${esc(s.hote || "Sans site")}</h3>
+        <div class="puces">${s.bibliotheques.map((b, j) => `<button class="puce" data-s="${i}" data-b="${j}" title="${esc(b.chemin)}">${ico("film")}<span>${esc(b.titre || b.chemin)}</span></button>`).join("")}</div>
+      </div>`).join("") : encart("info", "<p>Aucune bibliothèque de films connue : choisissez-la ci-dessous.</p>");
+    $$("#x-sites .puce").forEach(b => b.onclick = () => {
+      const x = r.sites[+b.dataset.s].bibliotheques[+b.dataset.b];
+      essayer(() => choisirExport(x.chemin));
+    });
+  } catch (e) { $("#x-sites").innerHTML = encart("alerte", `<p>${esc(e.message)}</p>`); }
 }
 async function choisirExport(chemin) {
   if (S.vue !== "export") aller("export");
