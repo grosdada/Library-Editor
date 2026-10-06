@@ -4038,13 +4038,44 @@ async function chargerOnde(film) {
   if (!f || ONDES[film] !== undefined) return;
   ONDES[film] = null;
   try {
-    const d = await api('api/onde?projet=' + encodeURIComponent(f.pj || PROJET.nom) +
-                        '&id=' + encodeURIComponent(film), null, 600000);
+    const d = ENLIGNE ? await ondeNavigateur(f)
+      : await api('api/onde?projet=' + encodeURIComponent(f.pj || PROJET.nom) +
+                  '&id=' + encodeURIComponent(film), null, 600000);
     ONDES[film] = (d && d.pics && d.pics.length) ? d : false;
   } catch (e) {
     ONDES[film] = false;
   }
   if (ONDES[film]) dessinerOndes();
+}
+
+// En ligne il n y a pas de ffmpeg : le navigateur decode lui-meme le son du
+// proxy et en tire les pics, au meme format que /api/onde (50 par seconde,
+// 0 a 255), pour que la timeline les dessine pareil qu au bureau (1.3.19).
+async function ondeNavigateur(f) {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return false;
+  const brut = await fetch(urlMedia(f)).then(r => {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.arrayBuffer();
+  });
+  const ctx = new Ctx();
+  try {
+    const buf = await ctx.decodeAudioData(brut);
+    const n = buf.length, hz = buf.sampleRate, par = Math.max(1, Math.round(hz / 50));
+    const canaux = [];
+    for (let k = 0; k < buf.numberOfChannels; k++) canaux.push(buf.getChannelData(k));
+    const pics = [];
+    for (let i = 0; i < n; i += par) {
+      let m = 0;
+      const j2 = Math.min(n, i + par);
+      for (const ch of canaux)
+        for (let j = i; j < j2; j++) { const v = ch[j] < 0 ? -ch[j] : ch[j]; if (v > m) m = v; }
+      pics.push(Math.min(255, Math.round(m * 255)));
+    }
+    return {id: f.id, pas: 1 / 50, pics: pics, s: n / hz};
+  } finally {
+    try { ctx.close(); } catch (e) {}
+  }
 }
 
 function dessinerOndes() {
@@ -9740,7 +9771,9 @@ async function suivreRendu() {
     ENLIGNE = !!l.enligne;
     RANGEABLE = ENLIGNE || !!l.rangement;
     PURGE = !ENLIGNE && !!l.purge;
-    ONDE_OK = !ENLIGNE && !!l.onde;
+    // En ligne, le navigateur calcule l onde lui-meme (ondeNavigateur).
+    ONDE_OK = ENLIGNE ? !!(window.AudioContext || window.webkitAudioContext)
+                      : !!l.onde;
     DOSSIERS_OK = !ENLIGNE && !!l.dossiers;
     REVELER_OK = !ENLIGNE && !!l.reveler;
     AJOUT_OK = !ENLIGNE && !!l.ajout;
