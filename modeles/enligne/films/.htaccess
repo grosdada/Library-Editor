@@ -10,6 +10,16 @@ RewriteRule ^api/(.*)$ api.php [QSA,L]
 # La page d accueil est l application elle-meme.
 DirectoryIndex app.html index.php
 
+# L application ne se garde jamais en cache : apres une mise a jour, le
+# navigateur reprenait l ancienne page, qui ne savait plus parler au serveur
+# (« Cannot reach the server », montage-cdc, 06/10). Elle est revalidee a
+# chaque ouverture ; les medias, eux, restent en cache.
+<IfModule mod_headers.c>
+<FilesMatch "^(app\.html|index\.html)?$">
+Header set Cache-Control "no-cache, must-revalidate"
+</FilesMatch>
+</IfModule>
+
 # Types MIME. L hebergeur ne connaissait pas .m4a : il le servait en text/plain
 # et SANS Range — donc illisible par un lecteur audio et impossible a scruber.
 # Trouve en ligne le 12/09 ; invisible en local, ou le serveur d essai type
