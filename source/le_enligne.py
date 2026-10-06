@@ -46,6 +46,8 @@ AUDIO = ["-vn", "-map", "0:a:0", "-c:a", "aac", "-b:a", "192k",
 # illisible pour l application, qui la charge comme une image.
 IMAGE = ["-map", "0:v:0", "-frames:v", "1",
          "-vf", "scale='min(1280,iw)':-2:flags=lanczos", "-q:v", "4"]
+# Les formats d image qui peuvent avoir une couche alpha.
+ALPHA = (".png", ".webp", ".gif", ".tif", ".tiff")
 
 
 def dossier_enligne(racine, genre):
@@ -166,9 +168,11 @@ def fabriquer_proxy(source, cible, son_seul, image=False):
 
 def rel_proxy(f):
     if f.get("image"):
-        # Les JPEG restent des JPEG ; tout le reste (PNG, WebP, TIFF...) part
-        # en JPEG aussi : c est ce que l application affichera.
-        return os.path.splitext(f["rel"])[0] + ".jpg"
+        # Les JPEG restent des JPEG. Ce qui peut porter de la transparence
+        # (PNG, WebP, GIF, TIFF) part en PNG : en JPEG, les cartons du kit
+        # graphique arrivaient sur fond noir au moniteur (1.3.17).
+        base, ext = os.path.splitext(f["rel"])
+        return base + (".png" if ext.lower() in ALPHA else ".jpg")
     return os.path.splitext(f["rel"])[0] + (".m4a" if f.get("son_seul") else ".mp4")
 
 

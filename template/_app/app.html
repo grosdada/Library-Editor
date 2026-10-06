@@ -4375,6 +4375,15 @@ function boiteTexte(bloc) {
       (edite ? 'Apply' : 'Place text') + '</button></div></div>';
     const rafraichir = () => { lire(); apercu(); };
     $('#txCorps').oninput = rafraichir;
+    // L apercu noir ressemble a une zone ou ecrire : un clic dessus renvoie
+    // au champ (David, 06/10, tapait dans l apercu).
+    const zone = b.querySelector('.apercu');
+    zone.style.cursor = 'text';
+    zone.title = 'preview — type in the field below';
+    zone.onclick = () => {
+      const z = $('#txCorps');
+      z.focus(); z.setSelectionRange(z.value.length, z.value.length);
+    };
     $('#txTaille').oninput = rafraichir;
     $('#txOmbre').onchange = rafraichir;
     $('#txPolice').onchange = e => { police = e.target.value; noterPol(); apercu(); };
