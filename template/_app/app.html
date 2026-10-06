@@ -4937,8 +4937,16 @@ $('#lanes').addEventListener('pointerdown', e => {
 
   const poi = modeA ? null : e.target.closest('[data-poi]');
   if (!modeA) {
-    if (!e.shiftKey && !clipsSel.has(c.uid)) clipsSel.clear();
-    groupeLie(c).forEach(x => clipsSel.add(x.uid));
+    if (e.altKey) {
+      // Alt+clic : ce bloc seul, sans son partenaire lie — l image sans son
+      // son, ou l inverse, comme dans Premiere (David, 06/10). Le lien reste :
+      // un clic simple reprend les deux.
+      if (!e.shiftKey) clipsSel.clear();
+      clipsSel.add(c.uid);
+    } else {
+      if (!e.shiftKey && !clipsSel.has(c.uid)) clipsSel.clear();
+      groupeLie(c).forEach(x => clipsSel.add(x.uid));
+    }
     rendreLanes(); rendreReglages();
   }
 
@@ -6189,6 +6197,7 @@ function rendreReglages() {
       'Ctrl+D duplicate<br>' +
       'Ctrl+Z undo<br>Ctrl+wheel zoom<br>' +
       'Alt+wheel track height<br>' +
+      'Alt+click: the block alone,<br>without its linked sound<br>' +
       'Tab held: the settings of the<br>selected block pop up<br>' +
       'Arrows ← →: frame by frame<br>' +
       'Arrows ↑ ↓: previous / next range<br>' +
