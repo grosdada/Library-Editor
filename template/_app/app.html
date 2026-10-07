@@ -354,11 +354,13 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
  font:9px/21px ui-monospace,monospace;color:var(--sourd);padding-left:3px}
 .hEntete{height:21px;border-bottom:1px solid var(--trait);background:#1c1b19}
 /* La poignee de hauteur, au bas du nom de la piste (comme celles des panneaux). */
-.pPoignee{position:absolute;left:0;right:0;bottom:-3px;height:7px;z-index:4;
+.pPoignee{position:absolute;left:0;right:0;bottom:-4px;height:9px;z-index:4;
  cursor:row-resize}
-.pPoignee::after{content:"";position:absolute;left:50%;top:2px;width:28px;
- height:2px;margin-left:-14px;border-radius:2px;background:var(--trait)}
-.pEntete:hover .pPoignee::after,.pPoignee.tire::after{background:var(--pc,var(--or))}
+.pPoignee::after{content:"";position:absolute;left:50%;top:2px;width:34px;
+ height:4px;margin-left:-17px;border-radius:3px;background:var(--pc,var(--or));
+ opacity:.65;box-shadow:0 0 0 1px #0008}
+.pEntete:hover .pPoignee::after,.pPoignee.tire::after{opacity:1}
+.pPoignee:hover::after,.pPoignee.tire::after{height:5px}
 .pEntete{position:relative;display:flex;align-items:center;gap:4px;padding:0 6px;
  border-bottom:1px solid var(--trait);font:11px/1 ui-monospace,monospace;
  flex-wrap:wrap;align-content:center;row-gap:4px}
@@ -4462,7 +4464,7 @@ $('#minimap').addEventListener('pointerdown', e => {
     const r = mm.getBoundingClientRect();
     const frac = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
     let t = frac * etendue();
-    if (ev.shiftKey) t = accrocher(t, pointsDeCoupe(), 6 * (etendue() * PPS / r.width));
+    if (ev.shiftKey) t = accrocher(t, pointsTete(), 6 * (etendue() * PPS / r.width));
     allerAuTemps(t);
   };
   aller(e);
@@ -4478,7 +4480,7 @@ $('#minimap').addEventListener('pointerdown', e => {
 // jusqu au dernier plan : on peut se placer dans le vide et y laisser du noir.
 function poserTete(x, colle) {
   let t = x / PPS;
-  if (colle) t = accrocher(t, pointsDeCoupe());
+  if (colle) t = accrocher(t, pointsTete());
   tLect = Math.max(0, Math.min(etendue(), t));
   if (enLecture) { t0Lect = tLect; horloge0 = performance.now(); }
   majTete(); resynchroniser(true);
@@ -8834,6 +8836,17 @@ function pointsDeCoupe() {
   if (tIn !== null) t.add(+tIn.toFixed(3));
   if (tOut !== null) t.add(+tOut.toFixed(3));
   return [...t].sort((a, b) => a - b);
+}
+// Ce sur quoi la tete de lecture s aimante (Shift) : les coupes, et aussi les
+// images-cles de tous les blocs — cadre et effets — et les marqueurs (David,
+// 07/10). Les fleches haut/bas, elles, restent de coupe en coupe.
+function pointsTete() {
+  const s = new Set(pointsDeCoupe());
+  CLIPS.forEach(c => clesDuBloc(c).forEach(k => {
+    if (k.t >= -0.001 && k.t <= dur(c) + 0.001) s.add(+(c.t0 + k.t).toFixed(3));
+  }));
+  (MARQUEURS || []).forEach(x => s.add(+(+x).toFixed(3)));
+  return [...s].sort((a, b) => a - b);
 }
 function plagePrecedente() {
   const l = pointsDeCoupe().filter(x => x < tLect - 0.03);
