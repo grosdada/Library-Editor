@@ -9029,15 +9029,24 @@ document.addEventListener('keydown', e => {
 // garde-fou, ouvrir la musique avant les projets suffisait a y enregistrer
 // les montages.
 function hoteMontage() {
+  // Les sequences vont dans le dossier des rushes video : « Vids » quand il
+  // est ouvert (convention de David), sinon un projet qui a de la video —
+  // jamais un kit d images ni un dossier de son, meme si le premier bloc en
+  // vient (David, 07/10 : une sequence rangee sous kit-graphique).
+  const vids = OUVERTS.find(x => /^vids$/i.test(x.nom));
+  if (vids) return vids.nom;
+  const video = n => ((projetOuvert(n) || {}).films || [])
+    .some(f => !f.absent && !f.son_seul && !f.image);
   const bon = n => n && projetOuvert(n) && !estBibli(n) && !estCaptures(n);
-  if (bon(PROJET.pj)) return PROJET.pj;
-  // Le premier plan qui vient d un vrai projet, la musique et les captures
-  // mises a part.
+  if (bon(PROJET.pj) && video(PROJET.pj)) return PROJET.pj;
+  // Le premier plan qui vient d un vrai projet video, la musique et les
+  // captures mises a part.
   const c = CLIPS.find(x => {
     const pj = (PAR_ID[x.film] || {}).pj;
-    return pj && !estBibli(pj) && !estCaptures(pj);
+    return pj && !estBibli(pj) && !estCaptures(pj) && video(pj);
   });
   if (c) return PAR_ID[c.film].pj;
+  if (bon(PROJET.pj)) return PROJET.pj;
   const cour = projetCourant();
   if (bon(cour)) return cour;
   const p = OUVERTS.find(x => !estBibli(x.nom) && !estCaptures(x.nom));
@@ -9422,9 +9431,19 @@ async function assurerSauvegarde(silencieux) {
   if (!hote) return false;
   sauveEnCours = true;
   try {
+    // Une sequence qui vivait ailleurs (sous un kit, par exemple) change de
+    // dossier : elle est ecrite a sa nouvelle place, puis l ancienne copie
+    // part a la corbeille de son dossier — rien n est detruit.
+    const ancien = (projetNom && PROJET.pj && PROJET.pj !== hote) ? PROJET.pj : '';
     PROJET.pj = hote;
     await api('api/montage',
       {projet: hote, nom: nom, montage: objetProjet()});
+    if (ancien) {
+      try {
+        await api('api/montage/effacer', {projet: ancien, nom: nom});
+        rafraichirProjets();
+      } catch (e) {}
+    }
     const neuf = projetNom !== nom;
     projetNom = nom; PROJET.nom = nom; modifie = false; sauveEnEchec = false;
     noterDernier(hote, nom);
