@@ -514,6 +514,10 @@ body.regPop .colReg{border-left:1px dashed var(--trait)}
 #edCles svg .tenu{fill:none;stroke-width:1;stroke-dasharray:3 3;opacity:.5}
 #edCles svg .cle{stroke:#000;stroke-width:1;cursor:grab}
 #edCles svg .cle.prise{cursor:grabbing;stroke:#fff}
+#edCles svg .cle.sel{stroke:#fff;stroke-width:2}
+#edCles svg .anse{stroke:#fff;stroke-width:1;fill:#1b1a18;cursor:move}
+#edCles svg .anseT{stroke-width:1;opacity:.7}
+#edCles .lassoK{position:absolute;border:1px dashed #fff;background:#ffffff14;pointer-events:none;z-index:2}
 #edCles svg .teteK{stroke:var(--orange);stroke-width:1.5}
 #edCles .videK{color:var(--sourd);font-size:12px;padding:18px 4px}
 .reglages label{font-size:11px;color:var(--sourd);display:flex;
@@ -5032,6 +5036,8 @@ function annulerMontage() {
   uidSuivant = s.uidSuivant; lienSuivant = s.lienSuivant;
   clipsSel.clear();
   rendreTimeline(); resynchroniser(true);
+  // L editeur de cles ouvert montrait encore les cles d avant l annulation.
+  if (ED_CLES) { ED_CLES.sel = new Set(); rendreEdCles(); }
   dire('undone (' + HISTO.length + ' steps left)');
 }
 
@@ -5559,9 +5565,26 @@ function couper(c, t) {
     const couperListe = (g, dr) => {
       if (!g || !g.length) return [g, dr];
       const v = interpCles(g, decoupe);
-      return [g.filter(p => p.t < decoupe - 0.008).concat([{t: +decoupe.toFixed(3), v: v}]),
-              [{t: 0, v: v}].concat(dr.filter(p => p.t > decoupe + 0.008)
-                .map(p => ({t: +(p.t - decoupe).toFixed(3), v: p.v})))];
+      const gau = g.filter(p => p.t < decoupe - 0.008).map(p => Object.assign({}, p));
+      const dro = dr.filter(p => p.t > decoupe + 0.008)
+        .map(p => Object.assign({}, p, {t: +(p.t - decoupe).toFixed(3)}));
+      const kg = {t: +decoupe.toFixed(3), v: v}, kd = {t: 0, v: v};
+      // Coupe dans une courbe Bezier : on la scinde (de Casteljau), chaque
+      // moitie garde exactement sa part de la courbe.
+      const j = g.findIndex(p => p.t > decoupe + 0.008);
+      if (j > 0 && g[j - 1].t < decoupe - 0.008 && gau.length && dro.length) {
+        const k = ctrlSeg(g[j - 1], g[j]);
+        if (k) {
+          const u = uSeg(k, decoupe), m = (a, b) => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+          const P0 = [k[0], k[1]], P1 = [k[2], k[3]], P2 = [k[4], k[5]], P3 = [k[6], k[7]];
+          const A = m(P0, P1), B = m(P1, P2), C = m(P2, P3), AB = m(A, B), BC = m(B, C), M = m(AB, BC);
+          gau[gau.length - 1].o = [A[0] - P0[0], A[1] - P0[1]];
+          kg.i = [AB[0] - M[0], AB[1] - M[1]];
+          kd.o = [BC[0] - M[0], BC[1] - M[1]];
+          dro[0].i = [C[0] - P3[0], C[1] - P3[1]];
+        }
+      }
+      return [gau.concat([kg]), [kd].concat(dro)];
     };
     if (x.anim) for (const k in x.anim)
       [x.anim[k], droite.anim[k]] = couperListe(x.anim[k], droite.anim[k]);
@@ -6775,17 +6798,11 @@ function valAnim(c, k, t) {
   const stat = (c[k] === undefined || c[k] === null) ? d : c[k];
   const l = cles(c, k);
   if (!l || !l.length) return stat;
-  const x = t - c.t0;
-  if (x <= l[0].t) return l[0].v;
-  const der = l[l.length - 1];
-  if (x >= der.t) return der.v;
-  for (let i = 1; i < l.length; i++) {
-    if (x <= l[i].t) {
-      const p = l[i - 1], q = l[i], e = q.t - p.t;
-      return e <= 0.0001 ? q.v : p.v + (q.v - p.v) * (x - p.t) / e;
-    }
-  }
-  return stat;
+  const v = interpCles(l, t - c.t0);
+  // Une courbe Bezier peut deborder : l opacite et le volume restent permis.
+  if (k === 'opac') return Math.max(0, Math.min(1, v));
+  if (k === 'gain') return Math.max(0, v);
+  return v;
 }
 
 function poserCle(c, k, t, v) {
@@ -7386,7 +7403,7 @@ function rendreReglages() {
     const k = b.dataset.copieVal, x = cibleDe(k);
     if (!x) return;
     const l = ANIMABLES[k] ? (cles(x, k) || []) : [];
-    PRESSE_PARAM[k] = {v: valeurDe(x, k), cles: l.map(p => ({t: p.t, v: p.v}))};
+    PRESSE_PARAM[k] = {v: valeurDe(x, k), cles: l.map(p => Object.assign({}, p))};
     rendreReglages();
     dire(fmtVal(k, PRESSE_PARAM[k].v) + ' copied' +
       (l.length ? ' with its ' + l.length + ' key(s)' : ''));
@@ -7400,7 +7417,7 @@ function rendreReglages() {
       if (p.cles.length) {
         x.anim = x.anim || {};
         // Une cle posee au-dela de la duree du bloc revient a sa fin.
-        x.anim[k] = p.cles.map(q => ({t: Math.min(q.t, dur(x)), v: q.v}));
+        x.anim[k] = p.cles.map(q => Object.assign({}, q, {t: Math.min(q.t, dur(x))}));
       } else {
         if (ANIMABLES[k]) viderAnim(x, k);
         x[k] = p.v;
@@ -7428,7 +7445,7 @@ function rendreReglages() {
   r.querySelectorAll('[data-copie-anim]').forEach(b => b.onclick = () => {
     const k = b.dataset.copieAnim, t = cibleDe(k), l = cles(t, k);
     if (!l || !l.length) { dire('nothing to copy on this parameter'); return; }
-    presseAnim = {cle: k, liste: l.map(p => ({t: p.t, v: p.v}))};
+    presseAnim = {cle: k, liste: l.map(p => Object.assign({}, p))};
     rendreReglages();
     dire(l.length + ' key(s) copied — select another block and paste');
   });
@@ -7442,7 +7459,7 @@ function rendreReglages() {
       // Une clé posée au-delà de la durée du bloc est ramenée à sa fin :
       // coller sur un bloc plus court ne doit pas perdre le mouvement.
       x.anim[k] = presseAnim.liste.map(p =>
-        ({t: Math.min(p.t, dur(x)), v: p.v}));
+        Object.assign({}, p, {t: Math.min(p.t, dur(x))}));
       n++;
     });
     rendreReglages(); rendreLanes(); dessiner(); resynchroniser(true);
@@ -7659,7 +7676,7 @@ function ouvrirEdCles() {
   if (!c) { dire('select a block first'); return; }
   let el = $('#edCles');
   if (!el) { el = document.createElement('div'); el.id = 'edCles'; document.body.appendChild(el); }
-  ED_CLES = {uid: c.uid};
+  ED_CLES = {uid: c.uid, sel: new Set()};
   el.className = 'on';
   rendreEdCles();
 }
@@ -7681,7 +7698,9 @@ function rendreEdCles() {
   let h = '<div class="enteteK"><b>' + echapHtml(estSynth(c) ? (c.genre === 'texte' ? 'Text' : 'Layer')
       : (f ? f.nom : 'block')) + '</b><span style="color:var(--sourd)">' + c.piste + ' · ' +
     D.toFixed(2) + ' s</span><span class="aide">drag a key: ←→ time, ↑↓ value (Shift: one axis) · ' +
-    'double-click a key: remove · double-click the line: add · click the ruler: move the playhead</span>' +
+    'drag in the empty: select several keys, then drag one to move them all · right-click a key: ' +
+    'Bezier / Linear · drag a handle (Alt: break it) · double-click a key: remove · double-click ' +
+    'the line: add · Del: remove the selected keys · click the ruler: move the playhead</span>' +
     '<button data-ed-ferme title="close (E or Esc)">✕</button></div>';
   // La regle du bloc : des reperes ronds selon sa duree.
   const pas = D <= 2 ? 0.25 : D <= 6 ? 0.5 : D <= 15 ? 1 : D <= 40 ? 2 : 5;
@@ -7717,7 +7736,6 @@ function dessinerEdCles() {
     const X = tt => Math.max(0, Math.min(W, tt / D * W));
     const Y = v => P + (1 - (v - L.min) / ((L.max - L.min) || 1)) * (H - 2 * P);
     const l = L.liste;
-    const pts = l.map(q => X(q.t).toFixed(1) + ',' + Y(q.v).toFixed(1)).join(' ');
     let s = '<line class="teteK" x1="' + X(tLect - c.t0) + '" x2="' + X(tLect - c.t0) +
       '" y1="0" y2="' + H + '"/>';
     // Avant la premiere et apres la derniere cle, la valeur est tenue.
@@ -7725,13 +7743,43 @@ function dessinerEdCles() {
       Y(l[0].v) + '" y2="' + Y(l[0].v) + '"/>';
     s += '<line class="tenu" stroke="' + L.coul + '" x1="' + X(l[l.length - 1].t) + '" x2="' + W +
       '" y1="' + Y(l[l.length - 1].v) + '" y2="' + Y(l[l.length - 1].v) + '"/>';
-    if (l.length > 1) s += '<polyline class="trait" stroke="' + L.coul + '" points="' + pts + '"/>';
+    // Le trait : droit entre deux cles lineaires, courbe des qu une poignee
+    // s en mele (une cubique reste une cubique a l ecran).
+    if (l.length > 1) {
+      let d = 'M' + X(l[0].t).toFixed(1) + ' ' + Y(l[0].v).toFixed(1);
+      for (let j = 1; j < l.length; j++) {
+        const k = ctrlSeg(l[j - 1], l[j]);
+        d += k ? ' C' + [X(k[2]), Y(k[3]), X(k[4]), Y(k[5]), X(k[6]), Y(k[7])]
+                   .map(n => n.toFixed(1)).join(' ')
+               : ' L' + X(l[j].t).toFixed(1) + ' ' + Y(l[j].v).toFixed(1);
+      }
+      s += '<path class="trait" stroke="' + L.coul + '" d="' + d + '"/>';
+    }
+    const sel = ED_CLES.sel || new Set();
+    // Les poignees des cles Bezier : la sortie si une cle suit, l entree si
+    // une cle precede (de l autre cote, la valeur est tenue).
+    l.forEach((q, j) => {
+      [['i', j > 0], ['o', j < l.length - 1]].forEach(([cote, utile]) => {
+        if (!q[cote] || !utile) return;
+        const x = X(q.t), y = Y(q.v), hx = X(q.t + q[cote][0]), hy = Y(q.v + q[cote][1]);
+        s += '<line class="anseT" stroke="' + L.coul + '" x1="' + x + '" y1="' + y + '" x2="' + hx +
+          '" y2="' + hy + '"/><circle class="anse" data-j="' + j + '" data-cote="' + cote +
+          '" cx="' + hx + '" cy="' + hy + '" r="3.6"><title>drag: shape the curve · Alt: ' +
+          'move this handle alone</title></circle>';
+      });
+    });
     l.forEach((q, j) => {
       const x = X(q.t), y = Y(q.v);
-      s += '<rect class="cle' + (ED_CLES.prise === q ? ' prise' : '') + '" data-j="' + j +
-        '" x="' + (x - 5) + '" y="' + (y - 5) + '" width="10" height="10" fill="' + L.coul +
-        '" transform="rotate(45 ' + x + ' ' + y + ')"><title>' + q.t.toFixed(2) + 's · ' +
-        echapHtml(L.fmt(q.v)) + '</title></rect>';
+      const cl = 'cle' + (ED_CLES.prise === q ? ' prise' : '') + (sel.has(q) ? ' sel' : '');
+      const bulle = '<title>' + q.t.toFixed(2) + 's · ' + echapHtml(L.fmt(q.v)) +
+        (q.o || q.i ? ' · Bezier' : '') + '</title>';
+      // Bezier : un rond ; lineaire : un losange.
+      s += (q.o || q.i)
+        ? '<circle class="' + cl + '" data-j="' + j + '" cx="' + x + '" cy="' + y + '" r="5.5" fill="' +
+          L.coul + '">' + bulle + '</circle>'
+        : '<rect class="' + cl + '" data-j="' + j + '" x="' + (x - 5) + '" y="' + (y - 5) +
+          '" width="10" height="10" fill="' + L.coul + '" transform="rotate(45 ' + x + ' ' + y +
+          ')">' + bulle + '</rect>';
     });
     sv.innerHTML = s;
   });
@@ -7755,28 +7803,57 @@ document.addEventListener('pointerdown', e => {
     dessinerEdCles();
     return;
   }
-  const cle = e.target.closest('rect.cle');
-  if (!cle) return;
+  if (!ED_CLES.sel) ED_CLES.sel = new Set();
+  const sel = ED_CLES.sel;
+  // Une poignee de cle Bezier.
+  const anse = e.target.closest('circle.anse');
+  if (anse && e.button === 0) { tirerAnse(e, c, anse); return; }
+  const cle = e.target.closest('.cle');
+  if (!cle) {
+    // Dans le vide d une ligne : le lasso, qui prend toutes les cles qu il
+    // couvre, sur toutes les lignes.
+    if (e.button === 0 && e.target.closest('svg[data-ed-ligne]')) lassoCles(e, el);
+    return;
+  }
   const sv = cle.closest('svg');
   const L = ED_CLES.lignes[+sv.dataset.edLigne];
   const q = L.liste[+cle.dataset.j];
   if (!q) return;
   e.preventDefault();
+  // Ctrl ou Shift au clic : ajouter ou retirer la cle de la selection.
+  if (e.button === 0 && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+    sel.has(q) ? sel.delete(q) : sel.add(q);
+    dessinerEdCles();
+    return;
+  }
+  if (!sel.has(q)) { sel.clear(); sel.add(q); }
+  if (e.button !== 0) { dessinerEdCles(); return; }
   memoriser();
   ED_CLES.prise = q;
   const r = sv.getBoundingClientRect();
-  const x0 = e.clientX, y0 = e.clientY, t0 = q.t, v0 = q.v, D = ED_CLES.D;
+  const x0 = e.clientX, y0 = e.clientY, D = ED_CLES.D;
+  // Tout ce qui est selectionne bouge ensemble, chaque cle dans sa ligne.
+  const grp = [];
+  ED_CLES.lignes.forEach(M => M.liste.forEach(k => {
+    if (sel.has(k)) grp.push({k: k, M: M, t0: k.t, v0: k.v});
+  }));
+  const tmin = Math.min(...grp.map(g => g.t0)), tmax = Math.max(...grp.map(g => g.t0));
+  const t0 = q.t;
   const bouger = ev => {
     let dx = ev.clientX - x0, dy = ev.clientY - y0;
     // Shift : un seul axe, le plus franc.
     if (ev.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
-    let nt = Math.max(0, Math.min(D, t0 + dx / r.width * D));
-    // La tete de lecture aimante a 6 px.
+    let dt = dx / r.width * D;
+    // La tete de lecture aimante la cle tenue a 6 px.
     const tete = tLect - c.t0;
-    if (Math.abs(nt - tete) * r.width / D < 6) nt = Math.max(0, Math.min(D, tete));
-    q.t = +nt.toFixed(3);
-    q.v = Math.max(L.min, Math.min(L.max, v0 - dy / (r.height - 18) * (L.max - L.min)));
-    L.liste.sort((a, b) => a.t - b.t);
+    if (Math.abs(t0 + dt - tete) * r.width / D < 6) dt = tete - t0;
+    dt = Math.max(-tmin, Math.min(D - tmax, dt));
+    const fr = dy / (r.height - 18);
+    grp.forEach(g => {
+      g.k.t = +(g.t0 + dt).toFixed(3);
+      g.k.v = Math.max(g.M.min, Math.min(g.M.max, g.v0 - fr * (g.M.max - g.M.min)));
+    });
+    ED_CLES.lignes.forEach(M => M.liste.sort((a, b) => a.t - b.t));
     dessinerEdCles(); dessiner(); majValeursAnim();
   };
   const lacher = () => {
@@ -7797,8 +7874,9 @@ document.addEventListener('dblclick', e => {
   e.preventDefault();
   const c = parUid(ED_CLES.uid), L = ED_CLES.lignes[+sv.dataset.edLigne];
   memoriser();
-  const cle = e.target.closest('rect.cle');
+  const cle = e.target.closest('.cle');
   if (cle) {
+    if (ED_CLES.sel) ED_CLES.sel.delete(L.liste[+cle.dataset.j]);
     L.liste.splice(+cle.dataset.j, 1);
     if (!L.liste.length) L.vider();
   } else {
@@ -7810,6 +7888,182 @@ document.addEventListener('dblclick', e => {
   rendreEdCles(); apresEdCles(); rendreReglages();
 }, true);
 addEventListener('resize', () => dessinerEdCles());
+
+// Tirer une poignee : la courbe suit. Les deux poignees restent alignees
+// (chacune garde sa longueur) ; Alt les casse, et la cle s en souvient.
+function tirerAnse(e, c, anse) {
+  e.preventDefault();
+  const sv = anse.closest('svg');
+  const L = ED_CLES.lignes[+sv.dataset.edLigne];
+  const j = +anse.dataset.j, q = L.liste[j], cote = anse.dataset.cote;
+  if (!q || !q[cote]) return;
+  memoriser();
+  const D = ED_CLES.D, H = 92, P = 9;
+  const autre = cote === 'o' ? 'i' : 'o';
+  const prec = L.liste[j - 1], suiv = L.liste[j + 1];
+  // Une poignee ne depasse pas la cle voisine : la courbe reste une
+  // fonction du temps.
+  const borne = (cs, dt) => cs === 'o' ? Math.max(0, Math.min(suiv ? suiv.t - q.t : D - q.t, dt))
+                                       : Math.min(0, Math.max(prec ? prec.t - q.t : -q.t, dt));
+  const bouger = ev => {
+    const r = sv.getBoundingClientRect(), W = r.width;
+    const sx = W / D, sy = (H - 2 * P) / ((L.max - L.min) || 1);
+    const px = ev.clientX - r.left, py = Math.max(0, Math.min(H, ev.clientY - r.top));
+    const dt = borne(cote, px / sx - q.t);
+    const dv = (L.min + (1 - (py - P) / (H - 2 * P)) * (L.max - L.min)) - q.v;
+    q[cote] = [+dt.toFixed(4), dv];
+    if (ev.altKey) q.c = 1;
+    if (!q.c && q[autre]) {
+      // L autre poignee prend la direction opposee, a sa propre longueur
+      // (mesuree a l ecran, la ou on la voit).
+      const ax = dt * sx, ay = -dv * sy, la = Math.hypot(ax, ay);
+      const b = q[autre], lb = Math.hypot(b[0] * sx, b[1] * sy) || la;
+      if (la > 0.5) {
+        let bt = -ax / la * lb / sx, bv = ay / la * lb / sy;
+        const bb = borne(autre, bt);
+        if (Math.abs(bt) > 1e-9 && bb !== bt) { bv *= bb / bt; bt = bb; }
+        q[autre] = [+bt.toFixed(4), bv];
+      }
+    }
+    dessinerEdCles(); dessiner(); majValeursAnim();
+  };
+  const lacher = () => {
+    window.removeEventListener('pointermove', bouger);
+    window.removeEventListener('pointerup', lacher);
+    rendreEdCles(); apresEdCles();
+  };
+  window.addEventListener('pointermove', bouger);
+  window.addEventListener('pointerup', lacher);
+}
+
+// Le lasso : un rectangle tire dans le vide prend les cles qu il couvre,
+// sur toutes les lignes. Ctrl ou Shift : il ajoute a la selection.
+function lassoCles(e, el) {
+  e.preventDefault();
+  const sel = ED_CLES.sel;
+  const garder = e.ctrlKey || e.metaKey || e.shiftKey;
+  const avant = garder ? new Set(sel) : new Set();
+  const x0 = e.clientX, y0 = e.clientY;
+  let boite = null;
+  const bouger = ev => {
+    const a = Math.min(x0, ev.clientX), b = Math.max(x0, ev.clientX);
+    const h = Math.min(y0, ev.clientY), g = Math.max(y0, ev.clientY);
+    if (!boite && b - a < 3 && g - h < 3) return;
+    ev.preventDefault();
+    if (!boite) {
+      boite = document.createElement('div');
+      boite.className = 'lassoK';
+      el.appendChild(boite);
+    }
+    const re = el.getBoundingClientRect();
+    boite.style.left = (a - re.left + el.scrollLeft - el.clientLeft) + 'px';
+    boite.style.top = (h - re.top + el.scrollTop - el.clientTop) + 'px';
+    boite.style.width = (b - a) + 'px';
+    boite.style.height = (g - h) + 'px';
+    sel.clear();
+    avant.forEach(k => sel.add(k));
+    el.querySelectorAll('svg[data-ed-ligne] .cle').forEach(n => {
+      const rc = n.getBoundingClientRect(), cx = rc.left + rc.width / 2, cy = rc.top + rc.height / 2;
+      if (cx >= a && cx <= b && cy >= h && cy <= g) {
+        const L = ED_CLES.lignes[+n.closest('svg').dataset.edLigne];
+        const k = L && L.liste[+n.dataset.j];
+        if (k) sel.add(k);
+      }
+    });
+    dessinerEdCles();
+  };
+  const lacher = () => {
+    window.removeEventListener('pointermove', bouger);
+    window.removeEventListener('pointerup', lacher);
+    if (boite) boite.remove();
+    // Un simple clic dans le vide vide la selection.
+    else if (!garder && sel.size) { sel.clear(); dessinerEdCles(); }
+  };
+  window.addEventListener('pointermove', bouger);
+  window.addEventListener('pointerup', lacher);
+}
+
+// Les cles selectionnees, avec leur ligne.
+function clesChoisies() {
+  const out = [];
+  if (!ED_CLES || !ED_CLES.lignes || !ED_CLES.sel) return out;
+  ED_CLES.lignes.forEach(L => L.liste.forEach(k => { if (ED_CLES.sel.has(k)) out.push({k: k, L: L}); }));
+  return out;
+}
+
+// Bezier « easy ease » : deux poignees a plat, chacune au tiers de l ecart
+// avec la cle voisine — le mouvement ralentit en arrivant et repart en douceur.
+function rendreBezier(k, L) {
+  const l = L.liste, j = l.indexOf(k), D = ED_CLES.D;
+  const ap = j > 0 ? k.t - l[j - 1].t : 0, av = j < l.length - 1 ? l[j + 1].t - k.t : 0;
+  const def = Math.min(0.5, D / 6);
+  k.i = [-+((ap || av || def) / 3).toFixed(4), 0];
+  k.o = [+((av || ap || def) / 3).toFixed(4), 0];
+  delete k.c;
+}
+
+function supprimerClesChoisies() {
+  const l = clesChoisies();
+  if (!l.length) return;
+  memoriser();
+  l.forEach(({k, L}) => {
+    const j = L.liste.indexOf(k);
+    if (j >= 0) L.liste.splice(j, 1);
+    if (!L.liste.length) L.vider();
+  });
+  ED_CLES.sel.clear();
+  rendreEdCles(); apresEdCles(); rendreReglages();
+  dire(l.length + ' key' + (l.length > 1 ? 's' : '') + ' removed — Ctrl+Z to undo');
+}
+
+// Clic droit sur une cle : Bezier, lineaire, recoller les poignees, retirer.
+// S applique a toute la selection quand la cle en fait partie.
+document.addEventListener('contextmenu', e => {
+  const el = $('#edCles');
+  if (!ED_CLES || !el || !el.contains(e.target)) return;
+  e.preventDefault();
+  const cle = e.target.closest('.cle');
+  if (!cle) return;
+  const l = clesChoisies();
+  if (!l.length) return;
+  const n = l.length, de = n > 1 ? ' (' + n + ' keys)' : '';
+  const bez = l.filter(x => x.k.o || x.k.i).length, casse = l.filter(x => x.k.c).length;
+  menu.innerHTML = '<div class="lbl">Keyframe' + de + '</div>' +
+    '<div class="it" data-ed-act="bez">● Bezier (smooth)' + (bez === n ? ' — reset the handles' : '') + '</div>' +
+    (bez ? '<div class="it" data-ed-act="lin">◆ Linear</div>' : '') +
+    (casse ? '<div class="it" data-ed-act="joindre">⟷ Rejoin the handles</div>' : '') +
+    '<div class="sep"></div><div class="it" data-ed-act="suppr">✕ Remove' + de + '</div>';
+  menu.className = 'on';
+  const rp = menu.getBoundingClientRect();
+  menu.style.left = Math.min(e.clientX, innerWidth - rp.width - 8) + 'px';
+  menu.style.top = Math.min(e.clientY, innerHeight - rp.height - 8) + 'px';
+}, true);
+menu.addEventListener('click', e => {
+  const b = e.target.closest('[data-ed-act]');
+  if (!b || !ED_CLES) return;
+  e.stopImmediatePropagation();
+  fermerMenu();
+  const a = b.dataset.edAct;
+  if (a === 'suppr') { supprimerClesChoisies(); return; }
+  const l = clesChoisies();
+  if (!l.length) return;
+  memoriser();
+  l.forEach(({k, L}) => {
+    if (a === 'bez') rendreBezier(k, L);
+    else if (a === 'lin') { delete k.i; delete k.o; delete k.c; }
+    else if (a === 'joindre' && k.c) {
+      delete k.c;
+      // L entree s aligne sur la sortie, a sa propre longueur.
+      if (k.o && k.i) {
+        const lo = Math.hypot(k.o[0], k.o[1]) || 1, li = Math.hypot(k.i[0], k.i[1]);
+        k.i = [-k.o[0] / lo * li, -k.o[1] / lo * li];
+      }
+    }
+  });
+  rendreEdCles(); apresEdCles();
+  dire(a === 'bez' ? 'Bezier — drag the handles to shape the curve'
+     : a === 'lin' ? 'back to linear' : 'handles rejoined');
+}, true);
 
 // Le panneau déplié sous un curseur : poser une clé, naviguer, copier, vider.
 function panneauAnim(k, t) {
@@ -8343,6 +8597,35 @@ const fxNum = (x, k, d) => {
 // debut du bloc ; meme interpolation que valAnim — et que _valeur_cles() dans
 // serveur.py, qui rend le bloc en tranches.
 const clesFx = (x, k) => (x && x.anim && x.anim[k] && x.anim[k].length) ? x.anim[k] : null;
+// Une cle Bezier porte deux poignees : q.i (entree) et q.o (sortie), en
+// [secondes, valeur] relatives a la cle ; q.c = poignees cassees (Alt). Sans
+// poignee d un cote, ce cote est lineaire. Entre deux cles, le segment est une
+// cubique (t, v) : on cherche le u dont l instant vaut x, puis sa valeur.
+// La meme chose existe cote serveur (_valeur_cles) pour le rendu ffmpeg.
+function ctrlSeg(p, q) {
+  if (!p.o && !q.i) return null;
+  const e = q.t - p.t;
+  if (e <= 0.0001) return null;
+  let a = p.o ? [Math.max(0, p.o[0]), p.o[1]] : [e / 3, (q.v - p.v) / 3];
+  let b = q.i ? [Math.min(0, q.i[0]), q.i[1]] : [-e / 3, -(q.v - p.v) / 3];
+  // Une poignee plus longue que le segment (cles rapprochees depuis) est
+  // raccourcie dans sa direction : la courbe reste une fonction du temps.
+  if (a[0] > e) a = [e, a[1] * e / a[0]];
+  if (-b[0] > e) b = [-e, b[1] * e / -b[0]];
+  return [p.t, p.v, p.t + a[0], p.v + a[1], q.t + b[0], q.v + b[1], q.t, q.v];
+}
+function bez(a, b, c, d, u) {
+  const w = 1 - u;
+  return w * w * w * a + 3 * w * w * u * b + 3 * w * u * u * c + u * u * u * d;
+}
+function uSeg(k, x) {
+  let lo = 0, hi = 1;
+  for (let n = 0; n < 40; n++) {
+    const m = (lo + hi) / 2;
+    if (bez(k[0], k[2], k[4], k[6], m) < x) lo = m; else hi = m;
+  }
+  return (lo + hi) / 2;
+}
 function interpCles(l, x) {
   if (x <= l[0].t) return l[0].v;
   const der = l[l.length - 1];
@@ -8350,7 +8633,11 @@ function interpCles(l, x) {
   for (let i = 1; i < l.length; i++) {
     if (x <= l[i].t) {
       const p = l[i - 1], q = l[i], e = q.t - p.t;
-      return e <= 0.0001 ? q.v : p.v + (q.v - p.v) * (x - p.t) / e;
+      if (e <= 0.0001) return q.v;
+      const k = ctrlSeg(p, q);
+      if (!k) return p.v + (q.v - p.v) * (x - p.t) / e;
+      const u = uSeg(k, x);
+      return bez(k[1], k[3], k[5], k[7], u);
     }
   }
   return der.v;
@@ -9750,6 +10037,19 @@ document.addEventListener('keydown', e => {
     else if (!modifie) dire('“' + (projetNom || PROJET.nom) + '” already saved');
     else assurerSauvegarde(false);
     return;
+  }
+  // Dans l editeur de cles : Ctrl+A prend toutes les cles, Suppr retire
+  // celles qui sont selectionnees (et pas les blocs).
+  if (ED_CLES && ED_CLES.lignes && ctrl && k === 'a') {
+    e.preventDefault();
+    ED_CLES.sel = new Set();
+    ED_CLES.lignes.forEach(L => L.liste.forEach(q => ED_CLES.sel.add(q)));
+    dessinerEdCles();
+    return;
+  }
+  if (ED_CLES && ED_CLES.sel && ED_CLES.sel.size && !ctrl &&
+      (e.key === 'Delete' || e.key === 'Backspace')) {
+    e.preventDefault(); supprimerClesChoisies(); return;
   }
   if (ctrl && k === 'a') {
     e.preventDefault();

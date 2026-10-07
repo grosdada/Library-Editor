@@ -1185,22 +1185,93 @@ FX_CONNUS = ("flou", "etal", "nb", "vignette", "grain", "halation",
 PAS_FX_ANIME = 0.2
 
 
+def _cles_triees(l):
+    """Les cles en (t, v, entree, sortie) : poignees Bezier en [dt, dv]
+    relatives a la cle, ou None de ce cote (lineaire)."""
+    out = []
+    for k in l or []:
+        if not isinstance(k, dict):
+            continue
+        try:
+            a = k.get("i")
+            b = k.get("o")
+            a = (float(a[0]), float(a[1])) if a else None
+            b = (float(b[0]), float(b[1])) if b else None
+            out.append((float(k["t"]), float(k["v"]), a, b))
+        except (KeyError, TypeError, ValueError, IndexError):
+            continue
+    out.sort(key=lambda c: c[0])
+    return out
+
+
+def _ctrl_seg(p, q):
+    """Les points de controle du segment p -> q, comme ctrlSeg() dans
+    app.html ; None si le segment est lineaire."""
+    t1, v1, _, o = p
+    t2, v2, i, _ = q
+    e = t2 - t1
+    if (not o and not i) or e <= 1e-4:
+        return None
+    a = (max(0.0, o[0]), o[1]) if o else (e / 3, (v2 - v1) / 3)
+    b = (min(0.0, i[0]), i[1]) if i else (-e / 3, -(v2 - v1) / 3)
+    if a[0] > e:
+        a = (e, a[1] * e / a[0])
+    if -b[0] > e:
+        b = (-e, b[1] * e / -b[0])
+    return (t1, v1, t1 + a[0], v1 + a[1], t2 + b[0], v2 + b[1], t2, v2)
+
+
+def _bez(a, b, c, d, u):
+    w = 1 - u
+    return w * w * w * a + 3 * w * w * u * b + 3 * w * u * u * c + u * u * u * d
+
+
+def _val_seg(k, x):
+    lo, hi = 0.0, 1.0
+    for _ in range(40):
+        m = (lo + hi) / 2
+        if _bez(k[0], k[2], k[4], k[6], m) < x:
+            lo = m
+        else:
+            hi = m
+    return _bez(k[1], k[3], k[5], k[7], (lo + hi) / 2)
+
+
 def _valeur_cles(l, x, defaut):
-    try:
-        l = sorted(((float(k["t"]), float(k["v"])) for k in l
-                    if isinstance(k, dict)), key=lambda c: c[0])
-    except (KeyError, TypeError, ValueError):
-        return defaut
+    """Maintien avant la premiere cle et apres la derniere, lineaire ou
+    Bezier entre les deux — exactement interpCles() de app.html."""
+    l = _cles_triees(l)
     if not l:
         return defaut
     if x <= l[0][0]:
         return l[0][1]
     if x >= l[-1][0]:
         return l[-1][1]
-    for (t1, v1), (t2, v2) in zip(l, l[1:]):
-        if x <= t2:
-            return v2 if t2 - t1 < 1e-4 else v1 + (v2 - v1) * (x - t1) / (t2 - t1)
+    for p, q in zip(l, l[1:]):
+        if x <= q[0]:
+            if q[0] - p[0] < 1e-4:
+                return q[1]
+            k = _ctrl_seg(p, q)
+            if k is None:
+                return p[1] + (q[1] - p[1]) * (x - p[0]) / (q[0] - p[0])
+            return _val_seg(k, x)
     return l[-1][1]
+
+
+def _points_cles(l):
+    """Les cles en points (t, v) pour une expression ffmpeg lineaire : un
+    segment Bezier y est decoupe en petites rampes (24 au plus)."""
+    l = _cles_triees(l)
+    pts = [(c[0], c[1]) for c in l[:1]]
+    for p, q in zip(l, l[1:]):
+        k = _ctrl_seg(p, q)
+        if k is not None:
+            n = max(2, min(24, int((q[0] - p[0]) / 0.04)))
+            for j in range(1, n):
+                x = p[0] + (q[0] - p[0]) * j / n
+                pts.append((x, _val_seg(k, x)))
+        pts.append((q[0], q[1]))
+    return pts
 
 
 def _fx_anime(plan):
@@ -1271,7 +1342,8 @@ def _etaler_fx(plans, fps):
             q["_duree_bloc"] = D
             if (p.get("anim") or {}).get("gain"):
                 q["anim"] = dict(p["anim"], gain=[
-                    {"t": float(k["t"]) - a, "v": k["v"]} for k in p["anim"]["gain"]])
+                    dict(k, t=float(k["t"]) - a) for k in p["anim"]["gain"]
+                    if isinstance(k, dict)])
             out.append(q)
     return out
 
@@ -1464,15 +1536,11 @@ def _expr_vol(cles, echelle, decalage):
     Les images-cles arrivent en secondes depuis le debut du bloc ; « decalage »
     retranche ce que les bornes I/O ont rogne en tete. Maintien avant la
     premiere cle, rampes lineaires entre les cles, maintien apres la derniere —
-    exactement ce que fait l application dans le moniteur."""
+    exactement ce que fait l application dans le moniteur. Une courbe Bezier
+    arrive deja decoupee en petites rampes (_points_cles)."""
     pts = []
-    for k in (cles or []):
-        try:
-            t = float(k.get("t", 0)) - decalage
-            v = max(0.0, float(k.get("v", 1))) * echelle
-        except Exception:
-            continue
-        pts.append((t, v))
+    for (t, v) in _points_cles(cles):
+        pts.append((t - decalage, max(0.0, v) * echelle))
     pts.sort()
     if not pts:
         return None
