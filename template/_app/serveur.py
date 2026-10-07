@@ -1097,7 +1097,7 @@ LIMITE_INVERSE = 60.0
 
 
 def _placement(entree, sortie, cadrage, duree, pre, alpha=False,
-               vitesse=1.0, rev=False, gel=None, decalage=0.0):
+               vitesse=1.0, rev=False, gel=None, decalage=0.0, duree_shk=None):
     """Le plan pose dans le cadre exactement comme au moniteur (dessiner) :
     taille de base (contain / cover) x echelle x marge de secousse, centre,
     decale de dx / dy et de la secousse, puis tourne autour du centre du
@@ -1112,8 +1112,10 @@ def _placement(entree, sortie, cadrage, duree, pre, alpha=False,
     k = ech * _marge_secousse(cad)
     dx = float(cad.get("dx", 0) or 0) * LARGE / 200.0
     dy = float(cad.get("dy", 0) or 0) * HAUT / 200.0
-    sx, sy = _secousse(cad, decalage, duree)
-    sr = _rotation_secousse(cad, decalage, duree)
+    # Une tranche d un bloc decoupe (effets animes) : la secousse garde le
+    # temps et la duree du bloc entier, sinon elle repartirait a chaque tranche.
+    sx, sy = _secousse(cad, decalage, duree_shk or duree)
+    sr = _rotation_secousse(cad, decalage, duree_shk or duree)
     et = []
     if gel is not None:
         et.append(_prefixe_gel(duree).rstrip(","))
@@ -1170,6 +1172,108 @@ def _placement(entree, sortie, cadrage, duree, pre, alpha=False,
 #   vignette (rgb24) : exactement cos^4(angle x distance/demi-diagonale).
 FX_CONNUS = ("flou", "etal", "nb", "vignette", "grain", "halation",
              "aberration")
+
+
+# ---- effets animes (1.3.25) -------------------------------------------------
+# Un effet porte ses images-cles : x["anim"] = {reglage: [{t, v}, ...]}, « t »
+# depuis le debut du bloc, interpolation lineaire, valeurs tenues avant la
+# premiere et apres la derniere — comme valFx() dans app.html. ffmpeg ne sait
+# pas faire varier la plupart de ces filtres en cours de lecture : le bloc est
+# donc rendu en TRANCHES de quelques images, chacune avec les valeurs de son
+# milieu. Les fondus restent entiers dans la premiere et la derniere tranche,
+# la secousse garde le temps du bloc (_decalage, _duree_bloc).
+PAS_FX_ANIME = 0.2
+
+
+def _valeur_cles(l, x, defaut):
+    try:
+        l = sorted(((float(k["t"]), float(k["v"])) for k in l
+                    if isinstance(k, dict)), key=lambda c: c[0])
+    except (KeyError, TypeError, ValueError):
+        return defaut
+    if not l:
+        return defaut
+    if x <= l[0][0]:
+        return l[0][1]
+    if x >= l[-1][0]:
+        return l[-1][1]
+    for (t1, v1), (t2, v2) in zip(l, l[1:]):
+        if x <= t2:
+            return v2 if t2 - t1 < 1e-4 else v1 + (v2 - v1) * (x - t1) / (t2 - t1)
+    return l[-1][1]
+
+
+def _fx_anime(plan):
+    return any(isinstance(x, dict) and any((x.get("anim") or {}).values())
+               for x in (plan.get("fx") or []))
+
+
+def _fx_a(fx, x):
+    out = []
+    for f in fx or []:
+        if not isinstance(f, dict):
+            continue
+        g = dict(f)
+        for k, l in (f.get("anim") or {}).items():
+            if l:
+                g[k] = _valeur_cles(l, x, g.get(k))
+        g.pop("anim", None)
+        out.append(g)
+    return out
+
+
+def _etaler_fx(plans, fps):
+    """Remplace chaque plan aux effets animes par ses tranches."""
+    img = 1.0 / max(1, fps)
+    pas = max(img, round(PAS_FX_ANIME / img) * img)
+    out = []
+    for p in plans:
+        D = float(p.get("duree") or 0)
+        if not _fx_anime(p) or D <= 2 * pas:
+            if _fx_anime(p):
+                p = dict(p, fx=_fx_a(p.get("fx"), D / 2))
+            out.append(p)
+            continue
+        fi = float(p.get("fondu_entree") or 0)
+        fo = float(p.get("fondu_sortie") or 0)
+        debut = min(D, fi) if fi > 0.02 else 0.0
+        finz = max(debut, D - fo) if fo > 0.02 else D
+        bornes = [0.0]
+        if debut > 1e-6:
+            bornes.append(debut)
+        x = debut
+        while x + pas < finz - 1e-6:
+            x = round((x + pas) / img) * img
+            bornes.append(x)
+        for b in (finz, D):
+            if b > bornes[-1] + 1e-6:
+                bornes.append(b)
+        vit = abs(float(p.get("vitesse", 1) or 1)) or 1.0
+        rev = bool(p.get("rev"))
+        e0 = float(p.get("entree", 0) or 0)
+        o0 = float(p.get("sortie", 0) or 0)
+        n = len(bornes) - 1
+        for i in range(n):
+            a, b = bornes[i], bornes[i + 1]
+            q = dict(p)
+            q["position"] = round(float(p.get("position", 0) or 0) + a, 4)
+            q["duree"] = round(b - a, 4)
+            if rev:
+                q["sortie"] = o0 - a * vit
+                q["entree"] = q["sortie"] - (b - a) * vit
+            else:
+                q["entree"] = e0 + a * vit
+                q["sortie"] = q["entree"] + (b - a) * vit
+            q["fondu_entree"] = fi if i == 0 else 0
+            q["fondu_sortie"] = fo if i == n - 1 else 0
+            q["fx"] = _fx_a(p.get("fx"), (a + b) / 2)
+            q["_decalage"] = a
+            q["_duree_bloc"] = D
+            if (p.get("anim") or {}).get("gain"):
+                q["anim"] = dict(p["anim"], gain=[
+                    {"t": float(k["t"]) - a, "v": k["v"]} for k in p["anim"]["gain"]])
+            out.append(q)
+    return out
 
 
 def _fx_actifs(plan):
@@ -1496,7 +1600,9 @@ def _segment(plan, dossier, i, avec_son, fi=0.0, fo=0.0, pr_defaut=""):
     # du noir revient a multiplier les canaux.
     morceaux = [_placement("%d:v" % iv, "p", plan.get("cadrage"), duree, "b",
                            vitesse=1.0 if (image or gel is not None) else vit,
-                           rev=rev and gel is None and not image, gel=gel)]
+                           rev=rev and gel is None and not image, gel=gel,
+                           decalage=-float(plan.get("_decalage") or 0),
+                           duree_shk=plan.get("_duree_bloc"))]
     cur = "p"
     graphe = _graphe_fx(fx, "p", "q", duree) if fx else None
     if graphe:
@@ -1976,7 +2082,9 @@ def _incruster(base, sortie, calques, a0, b0, travail, pr_defaut=""):
             chaine.append(_placement("%d:v" % idx, cur, cad, d, "o%d" % n,
                                      alpha=True,
                                      vitesse=1.0 if image else vit,
-                                     rev=rev and not image, gel=gel))
+                                     rev=rev and not image, gel=gel,
+                                     decalage=-float(plan.get("_decalage") or 0),
+                                     duree_shk=plan.get("_duree_bloc")))
             fxl = _fx_actifs(plan)
             if fxl:
                 # Les effets travaillent en RVB : l alpha est mis de cote
@@ -2806,7 +2914,7 @@ def rendre(montage, nom, pr, cible=None, mode="mp4"):
         LARGE -= LARGE % 2
         HAUT -= HAUT % 2
         FPS_SORTIE = max(1, min(120, int(round(float(montage.get("fps") or 24)))))
-        plans = montage.get("plans") or []
+        plans = _etaler_fx(montage.get("plans") or [], FPS_SORTIE)
         pistes = {p["id"]: p for p in (montage.get("pistes") or [])}
 
         # piste video retenue : la plus basse qui porte des plans (voir plus bas)

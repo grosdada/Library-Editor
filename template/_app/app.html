@@ -5408,6 +5408,28 @@ function couper(c, t) {
     const v = vAbs(x);
     const droite = {};
     for (const k in x) if (k[0] !== '_') droite[k] = x[k];
+    // Copies propres : sans elles, la moitie droite partageait le rack, le
+    // masque et les cles de la gauche — regler l une reglait l autre.
+    if (x.fx) droite.fx = JSON.parse(JSON.stringify(x.fx));
+    if (x.masque) droite.masque = JSON.parse(JSON.stringify(x.masque));
+    if (x.anim) droite.anim = JSON.parse(JSON.stringify(x.anim));
+    // Les cles suivent la coupe : chaque moitie recoit une cle a la coupe, a
+    // la valeur qu avait l animation a cet instant, et la droite decale les
+    // siennes. Le mouvement continue sans saut d un morceau a l autre.
+    const couperListe = (g, dr) => {
+      if (!g || !g.length) return [g, dr];
+      const v = interpCles(g, decoupe);
+      return [g.filter(p => p.t < decoupe - 0.008).concat([{t: +decoupe.toFixed(3), v: v}]),
+              [{t: 0, v: v}].concat(dr.filter(p => p.t > decoupe + 0.008)
+                .map(p => ({t: +(p.t - decoupe).toFixed(3), v: p.v})))];
+    };
+    if (x.anim) for (const k in x.anim)
+      [x.anim[k], droite.anim[k]] = couperListe(x.anim[k], droite.anim[k]);
+    (x.fx || []).forEach((f, n) => {
+      if (!f || !f.anim) return;
+      for (const k in f.anim)
+        [f.anim[k], droite.fx[n].anim[k]] = couperListe(f.anim[k], droite.fx[n].anim[k]);
+    });
     droite.uid = uidSuivant++;
     droite.t0 = x.t0 + decoupe;
     droite.lien = lien;
@@ -6403,7 +6425,7 @@ function basculerCle(c, k, t) {
 }
 
 const aDesAnims = c => !!(c.anim && Object.keys(c.anim)
-  .some(k => c.anim[k] && c.anim[k].length));
+  .some(k => c.anim[k] && c.anim[k].length)) || fxAnime(c);
 
 function rendreReglages() {
   majBoutonMasque();
@@ -7122,6 +7144,16 @@ let REG = null;
 function majValeursAnim() {
   if (!REG || !REG.c) return;
   const r = $('#reglages');
+  // Les reglages d effet animes suivent aussi la tete de lecture.
+  if (Array.isArray(REG.c.fx)) r.querySelectorAll('input[type=range][data-fx-p]')
+    .forEach(s => {
+      const x = REG.c.fx[+s.dataset.fxI];
+      if (!x || !clesFx(x, s.dataset.fxP) || s === document.activeElement) return;
+      const v = valFx(REG.c, x, s.dataset.fxP, tLect);
+      s.value = v;
+      if (s.nextElementSibling)
+        s.nextElementSibling.textContent = fmtFx(v, +s.step, s.dataset.fxU);
+    });
   [['ech', '#rEch'], ['dx', '#rDx'], ['dy', '#rDy'], ['opac', '#rOpac'],
    ['gain', '#rGain']].forEach(([k, sl]) => {
     const t = k === 'gain' ? REG.son[0] : REG.c;
@@ -7568,6 +7600,41 @@ const fxNum = (x, k, d) => {
   return isNaN(v) ? d : v;
 };
 
+// ---- effets animes (1.3.25) ------------------------------------------------
+// x.anim = {reglage: [{t, v}, ...]} sur l EFFET lui-meme : ses cles le suivent
+// quand on le deplace dans la pile ou qu on copie le bloc. « t » depuis le
+// debut du bloc ; meme interpolation que valAnim — et que _valeur_cles() dans
+// serveur.py, qui rend le bloc en tranches.
+const clesFx = (x, k) => (x && x.anim && x.anim[k] && x.anim[k].length) ? x.anim[k] : null;
+function interpCles(l, x) {
+  if (x <= l[0].t) return l[0].v;
+  const der = l[l.length - 1];
+  if (x >= der.t) return der.v;
+  for (let i = 1; i < l.length; i++) {
+    if (x <= l[i].t) {
+      const p = l[i - 1], q = l[i], e = q.t - p.t;
+      return e <= 0.0001 ? q.v : p.v + (q.v - p.v) * (x - p.t) / e;
+    }
+  }
+  return der.v;
+}
+function valFx(c, x, k, t) {
+  const def = FX[x.t] ? FX[x.t].neuf()[k] : 0;
+  const l = clesFx(x, k);
+  return l ? interpCles(l, t - c.t0) : fxNum(x, k, def);
+}
+// Les effets actifs d un bloc, avec les valeurs de leurs reglages a l instant t.
+function fxA(c, t) {
+  return fxActifs(c).map(x => {
+    if (!x.anim) return x;
+    const y = Object.assign({}, x);
+    for (const k in x.anim) if (clesFx(x, k)) y[k] = valFx(c, x, k, t);
+    return y;
+  });
+}
+const fxAnime = c => Array.isArray(c && c.fx) &&
+  c.fx.some(x => x && x.anim && Object.keys(x.anim).some(k => clesFx(x, k)));
+
 // Les etapes de couleur d un effet — le MEME calcul que _etapes_couleur()
 // dans serveur.py. {pente, origine} : v' = v*pente + origine, par canal ;
 // {m} : matrice 3x3 sur (R,V,B). Tout en 0..1, borne apres chaque etape.
@@ -7849,7 +7916,7 @@ function appliquerFx(t1, fx, w, h) {
 // dessous, pendant sa duree. Sa transparence dose l effet — 0 %, rien ; 100 %,
 // l effet entier ; les fondus l amenent et le retirent en douceur.
 function reglageSur(c, cw, ch) {
-  const fx = fxActifs(c);
+  const fx = fxA(c, tLect);
   if (!fx.length) return;
   const a = alpha(c, tLect) * valAnim(c, 'opac', tLect);
   if (a <= 0.005) return;
@@ -7942,12 +8009,19 @@ function rackFx(c, sel) {
     const regl = x.t === 'flou' ? FX_REGLAGES.flou[mode] : FX_REGLAGES[x.t];
     const def = FX[x.t].neuf();
     regl.forEach(([k, et, mn, mx, pas, u]) => {
-      const v = fxNum(x, k, def[k]);
-      h += '<div><label>' + et + '</label><div class="rang">' +
+      const v = valFx(c, x, k, tLect);
+      const l = clesFx(x, k) || [];
+      const id = i + ':' + k;
+      const ouvert = FX_ANIM_OUVERTS.has(id);
+      h += '<div><label>' + et +
+        '<button class="fleche ' + (ouvert ? 'on' : '') + '" data-fx-anim="' + id +
+        '" title="keyframes">' + (ouvert ? '▾' : '▸') + '</button>' +
+        (l.length ? '<i class="nbcle">◆' + l.length + '</i>' : '') + '</label>' +
+        '<div class="rang">' +
         '<input type="range" data-fx-p="' + k + '" data-fx-i="' + i +
         '" data-fx-u="' + u + '" min="' + mn + '" max="' + mx + '" step="' + pas +
         '" value="' + v + '"><span class="val">' + fmtFx(v, pas, u) +
-        '</span></div></div>';
+        '</span></div>' + (ouvert ? panneauFx(c, x, i, k, pas, u) : '') + '</div>';
     });
     h += '</div>';
   });
@@ -7960,6 +8034,52 @@ function rackFx(c, sel) {
   return h + '</div>';
 }
 
+// Les reglages d effet dont le panneau de cles est deplie, par « index:reglage ».
+const FX_ANIM_OUVERTS = new Set();
+
+// Le panneau de cles d un reglage d effet : le meme que celui des reglages de
+// cadre (panneauAnim), pose sous le curseur.
+function panneauFx(c, x, i, k, pas, u) {
+  const l = clesFx(x, k) || [];
+  const dedans = tLect >= c.t0 - 0.001 && tLect <= fin(c) + 0.001;
+  const ici = +(tLect - c.t0).toFixed(3);
+  const j = l.findIndex(p => Math.abs(p.t - ici) < 0.008);
+  const id = i + ':' + k;
+  return '<div class="animPan"><div class="animBar">' +
+    '<button data-fx-cle="' + id + '" class="' + (j >= 0 ? 'on' : '') + '"' +
+    (dedans ? '' : ' disabled') + ' title="add or remove a key at the playhead">◆</button>' +
+    '<button data-fx-cle-prec="' + id + '" title="previous key">◂</button>' +
+    '<button data-fx-cle-suiv="' + id + '" title="next key">▸</button>' +
+    '<span style="flex:1"></span>' +
+    '<button data-fx-vide="' + id + '"' + (l.length ? '' : ' disabled') +
+    ' title="clear the animation">✕</button></div>' +
+    (l.length
+      ? '<div class="animCles">' + l.map((p, q) =>
+          '<span class="cle' + (Math.abs(p.t - ici) < 0.008 ? ' ici' : '') +
+          '" data-fx-aller="' + id + ':' + q + '" title="go to this key">' +
+          p.t.toFixed(2) + 's · ' + fmtFx(p.v, pas, u) +
+          '<b data-fx-ote="' + id + ':' + q + '" title="remove">×</b></span>').join('') +
+        '</div>'
+      : '<div class="animVide">no keyframe' +
+        (dedans ? ' — click ◆ to add one here' : ' — put the playhead on the block') +
+        '</div>');
+}
+
+// Pose (ou remplace) une cle d effet a l instant t.
+function poserCleFx(c, x, k, t, v) {
+  x.anim = x.anim || {};
+  const l = x.anim[k] = x.anim[k] || [];
+  const ici = +Math.max(0, Math.min(dur(c), t - c.t0)).toFixed(3);
+  const j = l.findIndex(p => Math.abs(p.t - ici) < 0.008);
+  if (j >= 0) l[j].v = v; else l.push({t: ici, v: v});
+  l.sort((p, q) => p.t - q.t);
+}
+function viderCleFx(x, k) {
+  if (!x.anim) return;
+  delete x.anim[k];
+  if (!Object.keys(x.anim).length) delete x.anim;
+}
+
 function lierRackFx(r, c, sel) {
   const rack = r.querySelector('.rack');
   if (!rack) return;
@@ -7970,12 +8090,64 @@ function lierRackFx(r, c, sel) {
     if (refaire) rendreReglages();
   };
   let glisse = false;
+  // ---- les cles des reglages d effet ----
+  rack.addEventListener('click', e => {
+    const b = e.target.closest('[data-fx-anim],[data-fx-cle],[data-fx-cle-prec],' +
+      '[data-fx-cle-suiv],[data-fx-vide],[data-fx-aller],[data-fx-ote]');
+    if (!b || b.disabled) return;
+    e.stopPropagation();
+    const d = b.dataset;
+    const id = d.fxAnim || d.fxCle || d.fxClePrec || d.fxCleSuiv || d.fxVide ||
+               d.fxAller || d.fxOte;
+    const [i, k, q] = id.split(':');
+    const x = liste()[+i];
+    if (!x) return;
+    if (d.fxAnim) {
+      FX_ANIM_OUVERTS.has(i + ':' + k) ? FX_ANIM_OUVERTS.delete(i + ':' + k)
+                                       : FX_ANIM_OUVERTS.add(i + ':' + k);
+      rendreReglages(); return;
+    }
+    const l = clesFx(x, k) || [];
+    if (d.fxClePrec || d.fxCleSuiv) {
+      const ici = tLect - c.t0, sens = d.fxCleSuiv ? 1 : -1;
+      const c2 = sens > 0 ? l.find(p => p.t > ici + 0.008)
+                          : [...l].reverse().find(p => p.t < ici - 0.008);
+      if (!c2) { dire(sens > 0 ? 'last key' : 'first key'); return; }
+      allerAuTemps(c.t0 + c2.t); rendreReglages(); return;
+    }
+    if (d.fxAller && !e.target.dataset.fxOte) {
+      if (l[+q]) { allerAuTemps(c.t0 + l[+q].t); rendreReglages(); }
+      return;
+    }
+    memoriser();
+    if (d.fxCle) {
+      const ici = +(tLect - c.t0).toFixed(3);
+      const j = l.findIndex(p => Math.abs(p.t - ici) < 0.008);
+      // Une cle posee prend la valeur effective a cet instant : la premiere
+      // fige la valeur fixe, la deuxieme cree le mouvement.
+      if (j >= 0) { l.splice(j, 1); if (!l.length) viderCleFx(x, k); }
+      else poserCleFx(c, x, k, tLect, valFx(c, x, k, tLect));
+    } else if (d.fxVide) {
+      // On garde comme valeur fixe celle qui est a l ecran.
+      x[k] = valFx(c, x, k, tLect);
+      viderCleFx(x, k);
+    } else if (d.fxOte) {
+      l.splice(+q, 1); if (!l.length) viderCleFx(x, k);
+    }
+    modifie = true;
+    rendreReglages(); rendreLanes(); dessiner();
+  }, true);
   rack.oninput = e => {
     const s = e.target.closest('input[type=range][data-fx-p]');
     if (s) {
       if (!glisse) { memoriser(); glisse = true; }
       const v = parseFloat(s.value);
-      liste()[+s.dataset.fxI][s.dataset.fxP] = v;
+      const x = liste()[+s.dataset.fxI];
+      // Un reglage anime : le curseur pose (ou corrige) la cle a la tete de
+      // lecture, comme pour le cadre. Sinon il change la valeur fixe.
+      if (clesFx(x, s.dataset.fxP) && tLect >= c.t0 - 0.001 && tLect <= fin(c) + 0.001)
+        poserCleFx(c, x, s.dataset.fxP, tLect, v);
+      else x[s.dataset.fxP] = v;
       s.nextElementSibling.textContent =
         fmtFx(v, +(s.dataset.pas || s.step), s.dataset.fxU);
       fini(false);
@@ -8139,7 +8311,7 @@ function dessiner() {
     // Un plan avec effets se dessine d abord seul, sur une toile a part, a sa
     // place dans le cadre ; on lui applique ses effets, puis on le pose avec
     // sa transparence — l ordre du rendu. Sans effet, rien ne change.
-    const fx = fxActifs(c);
+    const fx = fxA(c, tLect);
     const toile = (fx.length || masqueActif(c)) ? toileFx(1, cw, ch) : null;
     const g = toile ? toile.getContext('2d') : ctx;
     if (toile) g.clearRect(0, 0, cw, ch); else ctx.globalAlpha = a;
