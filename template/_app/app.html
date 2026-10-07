@@ -504,14 +504,16 @@ body.regPop .colReg{border-left:1px dashed var(--trait)}
  border-radius:5px;background:#1b1a18}
 .animBar{display:flex;gap:4px;align-items:center;margin-bottom:5px}
 .animBar button{padding:1px 6px;font-size:11px;line-height:1.6;border-radius:3px}
-.animBar button.on{background:var(--or);border-color:var(--or);color:#1a1917}
+.animBar button.on{background:var(--kc,var(--or));border-color:var(--kc,var(--or));
+ color:#1a1917}
 .animBar button:disabled{opacity:.35;cursor:default}
 .animCles{display:flex;flex-wrap:wrap;gap:4px}
 .animCles .cle{display:inline-flex;align-items:center;gap:5px;font-size:10px;
  font-family:ui-monospace,monospace;background:var(--carte);cursor:pointer;
  border:1px solid var(--trait);border-radius:9px;padding:1px 7px}
 .animCles .cle:hover{border-color:var(--or)}
-.animCles .cle.ici{background:var(--or);border-color:var(--or);color:#1a1917}
+.animCles .cle.ici{background:var(--kc,var(--or));border-color:var(--kc,var(--or));
+ color:#1a1917}
 .animCles .cle b{color:var(--sourd);font-weight:400}
 .animCles .cle.ici b{color:#1a1917}
 .animCles .cle b:hover{color:var(--rouge)}
@@ -7497,7 +7499,7 @@ function panneauAnim(k, t) {
   const x = +(tLect - t.t0).toFixed(3);
   const i = l.findIndex(p => Math.abs(p.t - x) < 0.008);
   const collable = presseAnim && presseAnim.cle === k;
-  return '<div class="animPan"><div class="animBar">' +
+  return '<div class="animPan" style="--kc:' + couleurCle(k) + '"><div class="animBar">' +
     '<button data-cle="' + k + '" class="' + (i >= 0 ? 'on' : '') + '"' +
     (dedans ? '' : ' disabled') +
     ' title="add or remove a key at the playhead">◆</button>' +
@@ -8460,7 +8462,7 @@ function panneauFx(c, x, i, k, pas, u) {
   const ici = +(tLect - c.t0).toFixed(3);
   const j = l.findIndex(p => Math.abs(p.t - ici) < 0.008);
   const id = i + ':' + k;
-  return '<div class="animPan"><div class="animBar">' +
+  return '<div class="animPan" style="--kc:' + couleurCle(x.t) + '"><div class="animBar">' +
     '<button data-fx-cle="' + id + '" class="' + (j >= 0 ? 'on' : '') + '"' +
     (dedans ? '' : ' disabled') + ' title="add or remove a key at the playhead">◆</button>' +
     '<button data-fx-cle-prec="' + id + '" title="previous key">◂</button>' +
