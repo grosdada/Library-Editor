@@ -327,7 +327,10 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
 .minimap .bulle{position:absolute;top:2px;z-index:7;background:#12110fee;
  border:1px solid var(--or);border-radius:3px;color:var(--or);
  font:9px/1.6 ui-monospace,monospace;padding:0 4px;white-space:nowrap;
- pointer-events:none;margin-left:5px}
+ margin-left:5px;cursor:text}
+.minimap input.duree{position:absolute;top:1px;bottom:1px;z-index:8;width:92px;
+ min-width:0;padding:0 5px;font:10px/1 ui-monospace,monospace;background:#12110f;
+ color:var(--or);border:1px solid var(--or);border-radius:3px}
 .minimap .bulle.gauche{margin-left:0;transform:translateX(-100%) translateX(-5px)}
 .minimap .mt{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;
  background:var(--or);box-shadow:0 0 4px #e8b93a99;pointer-events:none}
@@ -4337,7 +4340,67 @@ function allerAuTemps(t) {
   resynchroniser(true);
 }
 
+// Double-clic sur la bulle jaune : on tape la duree exacte de la sequence
+// (David, 07/10). Elle devient le point de sortie O, compte depuis le point
+// d entree s il y en a un — l export et le Render s arretent la. Vide : le
+// point de sortie est retire. Formats : 30, 30.5, 0:30, 01:02.50, 750f.
+function lireDuree(s) {
+  s = String(s || '').trim().toLowerCase().replace(',', '.').replace(/\s*(s|img)$/, '');
+  if (!s) return null;
+  const im = s.match(/^(\d+)\s*f$/);
+  if (im) return +im[1] / (PROJET.fps || 25);
+  if (unite === 'img' && /^\d+$/.test(s)) return +s / (PROJET.fps || 25);
+  const p = s.split(':').map(Number);
+  if (!p.length || p.length > 3 || p.some(x => isNaN(x) || x < 0)) return NaN;
+  return p.reduce((a, x) => a * 60 + x, 0);
+}
+
+function saisirDuree() {
+  const mm = $('#minimap');
+  if (mm.querySelector('input.duree')) return;
+  const a = tIn !== null ? tIn : 0;
+  const actuelle = (tOut !== null ? tOut : dureeTotale()) - a;
+  const inp = document.createElement('input');
+  inp.className = 'duree';
+  inp.value = fmt(Math.max(0, actuelle));
+  inp.title = 'exact length of the sequence' + (tIn !== null ? ', from the in point' : '') +
+    ' — Enter to set, Esc to cancel, empty to remove the out point';
+  const bu = $('#bulleMt');
+  const x = bu ? bu.offsetLeft : 0;
+  inp.style.left = Math.max(0, Math.min(mm.clientWidth - 94, x)) + 'px';
+  mm.appendChild(inp);
+  inp.focus(); inp.select();
+  let fini = false;
+  const fermer = valider => {
+    if (fini) return;
+    fini = true;
+    const v = lireDuree(inp.value);
+    inp.remove();
+    if (!valider) return;
+    if (v !== null && (isNaN(v) || v <= 0.04)) {
+      dire('length not understood — e.g. 30, 0:30, 01:02.50 or 750f', true); return;
+    }
+    memoriser();
+    if (v === null) { tOut = null; majIO(); majTete(); dire('out point removed'); return; }
+    tOut = a + v;
+    majIO(); majTete();
+    dire('sequence length ' + fmt(v) + ' — out point at ' + tc(tOut));
+  };
+  inp.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') fermer(true);
+    if (e.key === 'Escape') fermer(false);
+  });
+  inp.addEventListener('pointerdown', e => e.stopPropagation());
+  inp.addEventListener('blur', () => fermer(false));
+}
+$('#minimap').addEventListener('dblclick', e => {
+  if (e.target.closest('#bulleMt')) { e.preventDefault(); saisirDuree(); }
+});
+
 $('#minimap').addEventListener('pointerdown', e => {
+  // La bulle jaune se double-clique : elle ne deplace pas la tete.
+  if (e.target.closest('#bulleMt') || e.target.closest('input.duree')) return;
   e.preventDefault();
   const mm = $('#minimap');
   const aller = ev => {
@@ -4892,9 +4955,22 @@ function ajouterAuMontage(ids, pisteId, t0) {
   return n;
 }
 
+// « Add » pose les rushes choisis a la tete de lecture (David, 07/10), comme
+// un depot a la souris, puis avance la tete a la fin de ce qui vient d etre
+// pose : deux « Add » de suite mettent les plans bout a bout.
 $('#bAjouter').onclick = () => {
-  const n = ajouterAuMontage([...selection]);
-  if (n) dire(n + (n > 1 ? ' shots added' : ' shot added'));
+  const avant = new Set(CLIPS.map(c => c.uid));
+  const n = ajouterAuMontage([...selection], null, tLect);
+  if (!n) return;
+  const neufs = CLIPS.filter(c => !avant.has(c.uid));
+  if (neufs.length) {
+    tLect = Math.max(...neufs.map(fin));
+    majTete();
+    const d = $('#tlDefile'), x = tLect * PPS;
+    if (x > d.scrollLeft + d.clientWidth - 30) d.scrollLeft = Math.max(0, x - d.clientWidth / 2);
+    resynchroniser(true);
+  }
+  dire(n + (n > 1 ? ' shots added' : ' shot added') + ' at the playhead');
 };
 
 $('#lanes').addEventListener('dragover', e => {
