@@ -134,6 +134,12 @@ body.rangeable.lectureseule .pjt .plus{display:block}
 .dos.montages .chev{flex:0 0 auto;width:12px;text-align:center;font-size:9px;
  line-height:1}
 .dos.mont{margin-left:26px;font-size:11px}
+/* La section « Sequences », au niveau des projets. */
+.pjt.sequences{background:#2b2118;border-color:#6b5322}
+.pjt.sequences:hover{border-color:var(--or)}
+.pjt.sequences b{color:var(--or)}
+.pjt.sequences i{color:var(--or);opacity:.8}
+.dos.mont.seq{margin-left:12px}
 .dos.mont b{font-weight:400}
 .dos.mont.on{background:var(--or);color:#1a1917}
 .dos.mont.on b{color:#1a1917}
@@ -1348,6 +1354,29 @@ function rendreDossiers() {
     h += '<div class="dos ' + (dossierActif === null ? 'on' : '') +
       '" data-clef=""><b>All projects</b><i>' + vivants + '</i></div>';
 
+  // Les sequences : UNE section a part, toutes les sequences de la
+  // bibliotheque (de l episode), quel que soit le dossier ou elles sont
+  // rangees (David, 07/10 : une ligne « Sequences » sous un projet etait
+  // confuse). Repliee ou depliee, l etat est retenu.
+  const toutes = (typeof MONTAGES !== 'undefined' ? MONTAGES : []);
+  if (toutes.length || OUVERTS.some(p => !estBibli(p.nom) && !estCaptures(p.nom))) {
+    const ouv = !MONT_OUVERTS.has('*replie');
+    const plusieurs = new Set(toutes.map(x => x.projet)).size > 1;
+    h += '<div class="pjt sequences" data-montages="*replie" title="all the ' +
+      'sequences of this library">' +
+      '<span class="chev">' + (ouv ? '▼' : '▶') + '</span>' +
+      '<b>Sequences</b><i>' + toutes.length + '</i></div>';
+    if (ouv) h += (toutes.length
+      ? toutes.map(x => '<div class="dos mont seq' +
+          (x.nom === projetNom && x.projet === PROJET.pj ? ' on' : '') +
+          '" data-mont="1" data-pj="' + ech(x.projet) + '" data-mnom="' +
+          ech(x.nom) + '" title="modified on ' + ech(x.maj) +
+          ' — click to open, double-click to rename, right-click for the menu">' +
+          '<b>' + ech(x.nom) + '</b>' +
+          (plusieurs ? '<i>' + ech(x.projet) + '</i>' : '') + '</div>').join('')
+      : '<div class="dosVide">no saved sequence yet</div>');
+  }
+
   // OUVERTS est deja trie par refondre() : les bibliotheques en dernier.
   for (const p of OUVERTS) {
     const bibli = estBibli(p.nom);
@@ -1375,38 +1404,6 @@ function rendreDossiers() {
       (bibli || estCaptures(p.nom) ? ''
         : '<button class="x" data-fermer="' + ech(p.nom) +
           '" title="close this project">×</button>') + '</div>';
-    if (!plie) {
-      const mm = (typeof MONTAGES !== 'undefined' ? MONTAGES : [])
-        .filter(x => x.projet === p.nom);
-      const om = MONT_OUVERTS.has(p.nom);
-    // Une bibliotheque n a pas de montages a elle : les musiques sont
-    // enregistrees avec le montage qui les utilise, dans son projet.
-    // Un dossier qui ne contient que du son non plus : on ne monte pas DANS
-    // sa musique. La ligne reste si des sequences y dorment deja — on ne
-    // cache jamais du travail existant.
-    // La ligne « Sequences » ne va qu ou l on monte : le dossier des rushes
-    // video. Une bibliotheque qui a un dossier « Vids » (la convention de David
-    // depuis le 05/10) ne la montre que la ; ailleurs, sous les dossiers qui
-    // ont de la video — jamais sous un kit d images ni sous du son.
-    const aDeLaVideo = (p.films || []).some(f => !f.absent && !f.son_seul &&
-                                                 !f.image);
-    const avecVids = OUVERTS.some(x => /^vids$/i.test(x.nom));
-    const ouMonter = avecVids ? /^vids$/i.test(p.nom) : aDeLaVideo;
-    if (!bibli && !estCaptures(p.nom) && (ouMonter || mm.length)) {
-      h += '<div class="dos montages" data-montages="' + ech(p.nom) +
-        '" title="sequences in this project"><span class="chev">' +
-        (om ? '▼' : '▶') + '</span><b>Sequences</b><i>' + mm.length +
-        '</i></div>';
-      if (om) h += (mm.length
-        ? mm.map(x => '<div class="dos mont' +
-            (x.nom === projetNom && x.projet === PROJET.pj ? ' on' : '') +
-            '" data-mont="1" data-pj="' + ech(x.projet) + '" data-mnom="' +
-            ech(x.nom) + '" title="modified on ' + ech(x.maj) +
-            ' — click to open, double-click to rename, right-click for ' +
-            'the menu"><b>' + ech(x.nom) + '</b></div>').join('')
-        : '<div class="dosVide">no saved sequence</div>');
-    }
-    }
     if (!plie && estCaptures(p.nom) && !(p.films || []).length)
       h += '<div class="dosVide">no screenshot yet — right-click the monitor</div>';
     else if (!plie && (p.besoinScan || !(p.films || []).length))
