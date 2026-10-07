@@ -387,6 +387,12 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
 .lane.va{background-color:#1d1c1a}
 .lane.aa{background-color:#1a1c1d}
 .lane.cible{background-color:#2a2320}
+/* La couleur de la piste : un voile sur la piste, un liseré et le nom en
+   couleur dans l en-tete. */
+.lane::before{content:"";position:absolute;inset:0;background:var(--pc,transparent);
+ opacity:.07;pointer-events:none}
+.pEntete{box-shadow:inset 4px 0 0 var(--pc,transparent)}
+.pEntete b{color:var(--pc,inherit)}
 .clip{position:absolute;top:2px;bottom:2px;background:var(--carte);
  border:1px solid var(--c0);border-radius:3px;overflow:hidden;cursor:grab;
  min-width:6px}
@@ -4025,12 +4031,25 @@ function alpha(c, t) {
 // ===========================================================================
 //  Rendu de la timeline
 // ===========================================================================
+// Une couleur par piste (David, 07/10) : un liseré sur son nom, un voile sur
+// toute sa longueur. Vidéo dans les bleus et violets, son dans les verts,
+// musique dans les ors : on reconnaît la famille, et chaque piste la sienne.
+const COUL_PISTES = {
+  v: ['#4fa3ff', '#a07bff', '#2ed3d3', '#6f86ff', '#d27bff', '#3fb8ff'],
+  a: ['#57c27a', '#a6d65a', '#3fbf9f', '#7bd8a8', '#c2d84a', '#2fa36b'],
+  m: ['#e8b93a', '#ff9f43', '#ffd166', '#e07b39']
+};
+function couleurPiste(p) {
+  const l = COUL_PISTES[p.type] || COUL_PISTES.v;
+  return l[(Math.max(1, numPiste(p.id)) - 1) % l.length];
+}
+
 function rendreEntetes() {
   $('#entetes').innerHTML = pistesOrdonnees().map(p => {
     const v = volPiste(p);
     return '<div class="pEntete' + (p.id === pisteActive ? ' active' : '') +
       '" data-piste="' + p.id + '" style="height:' + hauteurPiste(p) +
-      'px" title="' + p.id + (p.id === pisteActive
+      'px;--pc:' + couleurPiste(p) + '" title="' + p.id + (p.id === pisteActive
         ? ' — target track for Add (click to release)'
         : ' — click to make it the target track for Add') + '">' +
       '<b>' + p.id + '</b>' +
@@ -4141,7 +4160,7 @@ function rendreLanes() {
   $('#lanes').style.position = 'relative';
   $('#lanes').innerHTML = pistesOrdonnees().map(p =>
     '<div class="lane ' + classePiste(p) + '" data-piste="' + p.id +
-    '" style="height:' + hauteurPiste(p) + 'px">' +
+    '" style="height:' + hauteurPiste(p) + 'px;--pc:' + couleurPiste(p) + '">' +
     clipsDe(p.id).map(blocClip).join('') + '</div>').join('');
   dessinerOndes();
 }
@@ -4289,6 +4308,7 @@ function rendreTimeline() {
   recalculerFondus();
   rendreEntetes(); rendreRegle(); rendreLanes(); majMinimap(); majTete();
   majIO(); majMarqueurs(); rendreReglages();
+  if (typeof calerEntetes === 'function') calerEntetes();
   // majEtatSauve vit dans un bloc <script> plus bas : au chargement il
   // n existe pas encore.
   if (typeof majEtatSauve === 'function') majEtatSauve();
@@ -4317,6 +4337,21 @@ $('#bZoomT').onclick = () => {
   if (t > 0) { PPS = Math.max(2, (d.clientWidth - 20) / t); rendreTimeline(); d.scrollLeft = 0; }
 };
 $('#tlDefile').addEventListener('scroll', majVue, {passive: true});
+// Les noms des pistes suivent le defilement vertical des blocs : sans ca, des
+// qu on descendait dans la timeline, V1 n etait plus en face de V1 (David,
+// 07/10). La regle du temps reste collee en haut, son vis-a-vis aussi.
+function calerEntetes() {
+  const e = $('#entetes');
+  if (e) e.style.transform = 'translateY(' + (-$('#tlDefile').scrollTop) + 'px)';
+}
+$('#tlDefile').addEventListener('scroll', calerEntetes, {passive: true});
+// La molette au-dessus des noms fait defiler les pistes (Alt et Ctrl gardent
+// leurs roles : hauteur des pistes, zoom).
+document.querySelector('.tl-entetes').addEventListener('wheel', e => {
+  if (e.ctrlKey || e.altKey) return;
+  e.preventDefault();
+  $('#tlDefile').scrollTop += e.deltaY;
+}, {passive: false});
 $('#tlDefile').addEventListener('wheel', e => {
   // Alt : la hauteur des pistes. Ctrl : le temps. Rien : on defile.
   if (e.altKey) {
