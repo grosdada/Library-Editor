@@ -502,6 +502,11 @@ body.regPop .colReg{border-left:1px dashed var(--trait)}
 .animCles .cle.ici b{color:#1a1917}
 .animCles .cle b:hover{color:var(--rouge)}
 .animVide{font-size:10px;color:var(--sourd);line-height:1.5}
+/* Les images-cles sur le bloc : un losange par cle, a sa couleur. */
+.clip .cles{position:absolute;inset:0;pointer-events:none;z-index:3}
+.clip .cles i{position:absolute;width:9px;height:9px;margin-left:-4.5px;
+ transform:rotate(45deg);border:1px solid #000;box-shadow:0 0 0 1px #fff8,0 0 3px #000;
+ pointer-events:auto;cursor:default}
 .clip .anim{position:absolute;left:3px;top:2px;z-index:3;font-size:9px;
  color:var(--or);text-shadow:0 1px 2px #000;pointer-events:none}
 .reglages .rang{display:flex;gap:6px;align-items:center}
@@ -4077,7 +4082,8 @@ function blocClip(c) {
       (fonduIn(c) * PPS) + 'px"></div>' : '') +
     (fonduOut(c) > 0.02 ? '<div class="fondu d" style="right:0;width:' +
       (fonduOut(c) * PPS) + 'px"></div>' : '') +
-    (aDesAnims(c) ? '<div class="anim" title="animated block">◆</div>' : '') +
+    (aDesAnims(c) ? '<div class="anim" title="animated block">◆</div>' +
+      losangesCles(c) : '') +
     (fxActifs(c).length && !estReglage(c)
       ? '<div class="fxBadge" title="' + fxActifs(c).map(x => FX[x.t].nom).join(' · ') +
         '">✦</div>' : '') +
@@ -6421,6 +6427,49 @@ function basculerCle(c, k, t) {
   else poserCle(c, k, t, valAnim(c, k, t));
 }
 
+// Une couleur par sorte d image-cle (David, 07/10) : sur le bloc, dans la
+// timeline, et sur le compteur ◆ du reglage. Les reglages de cadre ont la
+// leur ; chaque effet a la sienne, pour tous ses reglages.
+const COUL_CLES = {
+  ech: ['#4fa3ff', 'Scale'], dx: ['#57c27a', 'Position'],
+  dy: ['#57c27a', 'Position'], opac: ['#f2efe8', 'Opacity'],
+  gain: ['#e8b93a', 'Volume'],
+  flou: ['#c77dff', 'Blur'], etal: ['#ff7a45', 'Colour'],
+  nb: ['#b9b2a6', 'B&W'], vignette: ['#8c6dff', 'Vignette'],
+  grain: ['#9fd36a', 'Grain'], halation: ['#ff4d6d', 'Halation'],
+  aberration: ['#2ed3d3', 'Chromatic aberration']
+};
+const couleurCle = k => (COUL_CLES[k] || ['#e8b93a', k])[0];
+
+// Toutes les cles d un bloc : {t, coul, nom}, les reglages de cadre puis
+// les effets.
+function clesDuBloc(c) {
+  const out = [];
+  if (c.anim) for (const k in c.anim)
+    (c.anim[k] || []).forEach(p => out.push({t: p.t, coul: couleurCle(k),
+      nom: (COUL_CLES[k] || [0, k])[1]}));
+  (Array.isArray(c.fx) ? c.fx : []).forEach(x => {
+    if (!x || !x.anim) return;
+    for (const k in x.anim)
+      (x.anim[k] || []).forEach(p => out.push({t: p.t, coul: couleurCle(x.t),
+        nom: ((COUL_CLES[x.t] || [0, x.t])[1]) + ' · ' + k}));
+  });
+  return out;
+}
+
+// Les losanges du bloc, a leur place dans le temps. Plusieurs sortes au meme
+// instant : elles s empilent au lieu de se cacher.
+function losangesCles(c) {
+  const l = clesDuBloc(c);
+  if (!l.length) return '';
+  const sortes = [...new Set(l.map(x => x.coul))];
+  const d = dur(c);
+  return '<div class="cles">' + l.filter(x => x.t >= -0.001 && x.t <= d + 0.001)
+    .map(x => '<i style="left:' + (x.t * PPS).toFixed(1) + 'px;bottom:' +
+      (3 + sortes.indexOf(x.coul) * 10) + 'px;background:' + x.coul +
+      '" title="' + x.nom + ' · ' + x.t.toFixed(2) + 's"></i>').join('') + '</div>';
+}
+
 const aDesAnims = c => !!(c.anim && Object.keys(c.anim)
   .some(k => c.anim[k] && c.anim[k].length)) || fxAnime(c);
 
@@ -6595,7 +6644,8 @@ function rendreReglages() {
     return '<div><label>' + etiq + (extra || '') +
       '<button class="fleche ' + (ouvert ? 'on' : '') + '" data-anim="' + k +
       '" title="keyframes">' + (ouvert ? '▾' : '▸') + '</button>' +
-      (n ? '<i class="nbcle">◆' + n + '</i>' : '') + '</label>' +
+      (n ? '<i class="nbcle" style="color:' + couleurCle(k) + '">◆' + n + '</i>' : '') +
+      '</label>' +
       '<div class="rang"><input type="range" id="' + id + '" min="' + A.min +
       '" max="' + A.max + '" step="' + A.pas + '" value="' + v + '"' +
       (ANIMABLES[k] && ANIMABLES[k].pct ? ' data-pct="1"' : '') + '>' +
@@ -8013,7 +8063,8 @@ function rackFx(c, sel) {
       h += '<div><label>' + et +
         '<button class="fleche ' + (ouvert ? 'on' : '') + '" data-fx-anim="' + id +
         '" title="keyframes">' + (ouvert ? '▾' : '▸') + '</button>' +
-        (l.length ? '<i class="nbcle">◆' + l.length + '</i>' : '') + '</label>' +
+        (l.length ? '<i class="nbcle" style="color:' + couleurCle(x.t) + '">◆' +
+          l.length + '</i>' : '') + '</label>' +
         '<div class="rang">' +
         '<input type="range" data-fx-p="' + k + '" data-fx-i="' + i +
         '" data-fx-u="' + u + '" min="' + mn + '" max="' + mx + '" step="' + pas +
