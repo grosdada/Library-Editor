@@ -489,6 +489,33 @@ body.regPop .reglages{position:fixed;z-index:60;left:50%;top:50%;
 /* La case vide, le temps du pop-up : un cadre en pointilles dit d ou il
    vient, et qu il y retournera. */
 body.regPop .colReg{border-left:1px dashed var(--trait)}
+/* L editeur d images-cles (touche E, 1.3.35) : le bloc etale, une ligne par
+   reglage anime, ses cles reliees par un trait, qu on tire. */
+.barreCles{display:flex;gap:6px;margin:6px 0 4px}
+.barreCles button{flex:1;font-size:10px;padding:3px 6px}
+.barreCles button.on{border-color:var(--or);color:var(--or)}
+#edCles{position:fixed;z-index:61;left:50%;top:50%;transform:translate(-50%,-50%);
+ width:min(1100px,92vw);max-height:84vh;overflow:auto;background:#1b1a18f5;
+ border:1px solid var(--trait);border-radius:8px;box-shadow:0 18px 60px #000c;
+ padding:12px 14px 14px;display:none}
+#edCles.on{display:block}
+#edCles .enteteK{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12px}
+#edCles .enteteK b{color:var(--encre)}
+#edCles .enteteK .aide{color:var(--sourd);font-size:10px;flex:1}
+#edCles .regleK{position:relative;height:18px;margin-left:150px;border-bottom:1px solid var(--trait);
+ font:9px/18px ui-monospace,monospace;color:var(--sourd);cursor:pointer}
+#edCles .regleK span{position:absolute;top:0;transform:translateX(-50%)}
+#edCles .ligneK{display:flex;align-items:stretch;border-bottom:1px solid #ffffff10}
+#edCles .ligneK .nomK{flex:0 0 150px;font-size:11px;padding:6px 8px;display:flex;
+ flex-direction:column;justify-content:center;gap:2px}
+#edCles .ligneK .nomK i{font-style:normal;font-size:10px;color:var(--sourd)}
+#edCles svg{flex:1 1 auto;height:92px;display:block;cursor:copy}
+#edCles svg .trait{fill:none;stroke-width:1.3}
+#edCles svg .tenu{fill:none;stroke-width:1;stroke-dasharray:3 3;opacity:.5}
+#edCles svg .cle{stroke:#000;stroke-width:1;cursor:grab}
+#edCles svg .cle.prise{cursor:grabbing;stroke:#fff}
+#edCles svg .teteK{stroke:var(--orange);stroke-width:1.5}
+#edCles .videK{color:var(--sourd);font-size:12px;padding:18px 4px}
 .reglages label{font-size:11px;color:var(--sourd);display:flex;
  align-items:center;gap:6px;margin-bottom:3px}
 /* Images-clés : une flèche par curseur déplie son panneau d animation. */
@@ -6447,6 +6474,9 @@ $('#lanes').addEventListener('contextmenu', e => {
     (estSynth(c) ? ''
      : c.lien ? '<div class="it" data-act="delier">⛓ Unlink audio</div>'
               : '<div class="it" data-act="relier">⛓ Link audio</div>') +
+    '<div class="it" data-act="cles-vues">◆ ' + (CLES_VUES ? 'Hide' : 'Show') +
+      ' keyframes on blocks <span class="pousse" style="color:var(--sourd);font-size:10px">' +
+      'E: edit them</span></div>' +
     '<div class="it" data-act="dupliquer">⧉ Duplicate ' +
       (clipsSel.size > 1 ? 'the ' + clipsSel.size + ' blocks' : 'the block') +
       ' <span class="pousse" style="color:var(--sourd);font-size:10px">Ctrl+D</span>' +
@@ -6581,7 +6611,13 @@ menu.addEventListener('click', async e => {
     clonerBlocs(ch ? ch.value : 1);
     return;
   }
-  if (a === 'dupliquer') dupliquerBlocs();
+  if (a === 'cles-vues') {
+    CLES_VUES = !CLES_VUES;
+    pref.ecrire('clesVues', CLES_VUES ? '1' : '0');
+    rendreLanes();
+    dire(CLES_VUES ? 'keyframes shown on the blocks' : 'keyframes hidden on the blocks');
+  }
+  else if (a === 'dupliquer') dupliquerBlocs();
   else if (a === 'delier') delier();
   else if (a === 'relier') relier();
   else if (a === 'copier') copierBlocs();
@@ -6813,7 +6849,11 @@ function clesDuBloc(c) {
 
 // Les losanges du bloc, a leur place dans le temps. Plusieurs sortes au meme
 // instant : elles s empilent au lieu de se cacher.
+// Les losanges se montrent ou se cachent au clic droit sur un bloc ; le choix
+// vaut pour toute la timeline et reste dans ce navigateur.
+let CLES_VUES = pref.lire('clesVues', '1') !== '0';
 function losangesCles(c) {
+  if (!CLES_VUES) return '';
   const l = clesDuBloc(c);
   if (!l.length) return '';
   const sortes = [...new Set(l.map(x => x.coul))];
@@ -7037,14 +7077,14 @@ function rendreReglages() {
   if (estReglage(c)) {
     // Un calque d effet n a ni cadre ni son : sa transparence dose l effet,
     // et son rack fait tout le reste.
-    h += rangee('opac', 'Amount', 'rOpac') + rackFx(c, sel);
+    h += barreCles() + rangee('opac', 'Amount', 'rOpac') + rackFx(c, sel);
   } else if (estV) {
     const ONG = [['tr', 'Transform'], ['fx', 'Effects'], ['sh', 'Anim']];
     if (!ONG.some(o => o[0] === REG_ONGLET)) REG_ONGLET = 'tr';
     h += '<div class="ongletsReg">' + ONG.map(o =>
       '<button data-onglet="' + o[0] + '" class="' +
       (REG_ONGLET === o[0] ? 'on' : '') + '">' + o[1] + '</button>').join('') +
-      '</div>';
+      '</div>' + barreCles();
     if (REG_ONGLET === 'tr')
       h += rangee('ech', 'Scale', 'rEch') +
            rangee('dx', 'Position X', 'rDx') +
@@ -7057,7 +7097,7 @@ function rendreReglages() {
   } else {
     // Un bloc son n a que deux reglages : des onglets pour si peu seraient
     // un clic de plus pour rien.
-    h += rangeeVolume() + rangeeVitesse();
+    h += barreCles() + rangeeVolume() + rangeeVitesse();
   }
   // Couleur, cadrage, liaison, remise a zero et suppression sont au clic droit
   // sur le bloc : ce sont des actions, pas des reglages qu on ajuste a l oeil.
@@ -7070,6 +7110,14 @@ function rendreReglages() {
     '</div></div>';
   r.innerHTML = h;
   lierRackFx(r, c, sel);
+  const bv = r.querySelector('[data-cles-vues]');
+  if (bv) bv.onclick = () => {
+    CLES_VUES = !CLES_VUES;
+    pref.ecrire('clesVues', CLES_VUES ? '1' : '0');
+    rendreLanes(); rendreReglages();
+  };
+  const be = r.querySelector('[data-ed-ouvre]');
+  if (be) be.onclick = () => (ED_CLES ? fermerEdCles() : ouvrirEdCles());
 
   r.querySelectorAll('[data-onglet]').forEach(b => b.onclick = () => {
     REG_ONGLET = b.dataset.onglet;
@@ -7510,6 +7558,206 @@ function reinitSelection() {
   dire('settings reset on ' + sel.length + ' block(s)');
 }
 
+// La barre du panneau de droite : montrer ou cacher les losanges sur les
+// blocs, et ouvrir l editeur de cles (comme la touche E).
+function barreCles() {
+  return '<div class="barreCles">' +
+    '<button data-cles-vues class="' + (CLES_VUES ? 'on' : '') + '" title="show or hide ' +
+    'the keyframes on the blocks of the timeline">◆ ' + (CLES_VUES ? 'Keys shown' : 'Keys hidden') +
+    '</button><button data-ed-ouvre class="' + (ED_CLES ? 'on' : '') + '" title="edit this ' +
+    'block keyframes — key E">✎ Edit keys <span style="opacity:.6">E</span></button></div>';
+}
+
+// ---- l editeur d images-cles (touche E) --------------------------------------
+// Le bloc selectionne, etale sur toute la largeur : une ligne par reglage
+// anime (cadre et effets), a la couleur de sa sorte, les cles reliees par un
+// trait fin. Tirer une cle : a gauche/droite son instant, en haut/bas sa
+// valeur (Shift : un seul axe). Double-clic sur une cle : la retirer ; dans
+// le vide : en poser une. Clic dans la regle : la tete y va. E ou Echap ferme.
+let ED_CLES = null;
+
+function lignesCles(c) {
+  const out = [];
+  if (c.anim) for (const k in c.anim) {
+    const l = c.anim[k];
+    if (!l || !l.length) continue;
+    const A = amplitude(k, c);
+    out.push({nom: (COUL_CLES[k] || [0, k])[1] + (k === 'dx' ? ' X' : k === 'dy' ? ' Y' : ''),
+      coul: couleurCle(k), liste: l, min: A.min, max: A.max, fmt: v => fmtVal(k, v),
+      vider: () => viderAnim(c, k)});
+  }
+  (Array.isArray(c.fx) ? c.fx : []).forEach(x => {
+    if (!x || !x.anim || !FX[x.t]) return;
+    const regl = x.t === 'flou' ? FX_REGLAGES.flou[x.mode || 'gauss'] : FX_REGLAGES[x.t];
+    for (const k in x.anim) {
+      const l = x.anim[k];
+      if (!l || !l.length) continue;
+      const r = (regl || []).find(q => q[0] === k) || [k, k, 0, 100, 1, ''];
+      out.push({nom: FX[x.t].nom + ' · ' + r[1], coul: couleurCle(x.t), liste: l,
+        min: r[2], max: r[3], fmt: v => fmtFx(v, r[4], r[5]), vider: () => viderCleFx(x, k)});
+    }
+  });
+  return out;
+}
+
+function ouvrirEdCles() {
+  setTimeout(() => { if (typeof rendreReglages === 'function') rendreReglages(); }, 0);
+  const c = CLIPS.find(x => clipsSel.has(x.uid));
+  if (!c) { dire('select a block first'); return; }
+  let el = $('#edCles');
+  if (!el) { el = document.createElement('div'); el.id = 'edCles'; document.body.appendChild(el); }
+  ED_CLES = {uid: c.uid};
+  el.className = 'on';
+  rendreEdCles();
+}
+function fermerEdCles() {
+  ED_CLES = null;
+  setTimeout(() => { if (typeof rendreReglages === 'function') rendreReglages(); }, 0);
+  const el = $('#edCles');
+  if (el) el.className = '';
+}
+
+function rendreEdCles() {
+  const el = $('#edCles');
+  if (!ED_CLES || !el) return;
+  const c = parUid(ED_CLES.uid);
+  if (!c) { fermerEdCles(); return; }
+  const D = Math.max(0.05, dur(c));
+  const f = PAR_ID[c.film];
+  const lignes = lignesCles(c);
+  let h = '<div class="enteteK"><b>' + echapHtml(estSynth(c) ? (c.genre === 'texte' ? 'Text' : 'Layer')
+      : (f ? f.nom : 'block')) + '</b><span style="color:var(--sourd)">' + c.piste + ' · ' +
+    D.toFixed(2) + ' s</span><span class="aide">drag a key: ←→ time, ↑↓ value (Shift: one axis) · ' +
+    'double-click a key: remove · double-click the line: add · click the ruler: move the playhead</span>' +
+    '<button data-ed-ferme title="close (E or Esc)">✕</button></div>';
+  // La regle du bloc : des reperes ronds selon sa duree.
+  const pas = D <= 2 ? 0.25 : D <= 6 ? 0.5 : D <= 15 ? 1 : D <= 40 ? 2 : 5;
+  let r = '';
+  for (let x = 0; x <= D + 1e-6; x += pas)
+    r += '<span style="left:' + (x / D * 100).toFixed(3) + '%">' + x.toFixed(pas < 1 ? 2 : 0) + 's</span>';
+  h += '<div class="regleK" data-ed-regle="1">' + r + '</div>';
+  if (!lignes.length)
+    h += '<div class="videK">No keyframe on this block yet — add some with ◆ in the settings (Tab), ' +
+      'then come back here to move them.</div>';
+  lignes.forEach((L, i) => {
+    h += '<div class="ligneK"><div class="nomK" style="color:' + L.coul + '">' + echapHtml(L.nom) +
+      '<i>' + L.liste.length + ' key' + (L.liste.length > 1 ? 's' : '') + '</i></div>' +
+      '<svg data-ed-ligne="' + i + '" preserveAspectRatio="none"></svg></div>';
+  });
+  el.innerHTML = h;
+  ED_CLES.lignes = lignes;
+  ED_CLES.D = D;
+  dessinerEdCles();
+}
+
+// Le dessin des lignes, en pixels reels (refait a chaque geste).
+function dessinerEdCles() {
+  const el = $('#edCles');
+  if (!ED_CLES || !el || !ED_CLES.lignes) return;
+  const c = parUid(ED_CLES.uid);
+  if (!c) return;
+  const D = ED_CLES.D, H = 92, P = 9;
+  el.querySelectorAll('svg[data-ed-ligne]').forEach(sv => {
+    const L = ED_CLES.lignes[+sv.dataset.edLigne];
+    const W = Math.max(50, sv.clientWidth);
+    sv.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    const X = tt => Math.max(0, Math.min(W, tt / D * W));
+    const Y = v => P + (1 - (v - L.min) / ((L.max - L.min) || 1)) * (H - 2 * P);
+    const l = L.liste;
+    const pts = l.map(q => X(q.t).toFixed(1) + ',' + Y(q.v).toFixed(1)).join(' ');
+    let s = '<line class="teteK" x1="' + X(tLect - c.t0) + '" x2="' + X(tLect - c.t0) +
+      '" y1="0" y2="' + H + '"/>';
+    // Avant la premiere et apres la derniere cle, la valeur est tenue.
+    s += '<line class="tenu" stroke="' + L.coul + '" x1="0" x2="' + X(l[0].t) + '" y1="' +
+      Y(l[0].v) + '" y2="' + Y(l[0].v) + '"/>';
+    s += '<line class="tenu" stroke="' + L.coul + '" x1="' + X(l[l.length - 1].t) + '" x2="' + W +
+      '" y1="' + Y(l[l.length - 1].v) + '" y2="' + Y(l[l.length - 1].v) + '"/>';
+    if (l.length > 1) s += '<polyline class="trait" stroke="' + L.coul + '" points="' + pts + '"/>';
+    l.forEach((q, j) => {
+      const x = X(q.t), y = Y(q.v);
+      s += '<rect class="cle' + (ED_CLES.prise === q ? ' prise' : '') + '" data-j="' + j +
+        '" x="' + (x - 5) + '" y="' + (y - 5) + '" width="10" height="10" fill="' + L.coul +
+        '" transform="rotate(45 ' + x + ' ' + y + ')"><title>' + q.t.toFixed(2) + 's · ' +
+        echapHtml(L.fmt(q.v)) + '</title></rect>';
+    });
+    sv.innerHTML = s;
+  });
+}
+
+function apresEdCles() {
+  modifie = true;
+  rendreLanes(); dessiner(); majValeursAnim();
+}
+
+document.addEventListener('pointerdown', e => {
+  const el = $('#edCles');
+  if (!ED_CLES || !el || !el.contains(e.target)) return;
+  const c = parUid(ED_CLES.uid);
+  if (!c) return;
+  if (e.target.closest('[data-ed-ferme]')) { fermerEdCles(); return; }
+  const regle = e.target.closest('[data-ed-regle]');
+  if (regle) {
+    const r = regle.getBoundingClientRect();
+    allerAuTemps(c.t0 + Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * ED_CLES.D);
+    dessinerEdCles();
+    return;
+  }
+  const cle = e.target.closest('rect.cle');
+  if (!cle) return;
+  const sv = cle.closest('svg');
+  const L = ED_CLES.lignes[+sv.dataset.edLigne];
+  const q = L.liste[+cle.dataset.j];
+  if (!q) return;
+  e.preventDefault();
+  memoriser();
+  ED_CLES.prise = q;
+  const r = sv.getBoundingClientRect();
+  const x0 = e.clientX, y0 = e.clientY, t0 = q.t, v0 = q.v, D = ED_CLES.D;
+  const bouger = ev => {
+    let dx = ev.clientX - x0, dy = ev.clientY - y0;
+    // Shift : un seul axe, le plus franc.
+    if (ev.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
+    let nt = Math.max(0, Math.min(D, t0 + dx / r.width * D));
+    // La tete de lecture aimante a 6 px.
+    const tete = tLect - c.t0;
+    if (Math.abs(nt - tete) * r.width / D < 6) nt = Math.max(0, Math.min(D, tete));
+    q.t = +nt.toFixed(3);
+    q.v = Math.max(L.min, Math.min(L.max, v0 - dy / (r.height - 18) * (L.max - L.min)));
+    L.liste.sort((a, b) => a.t - b.t);
+    dessinerEdCles(); dessiner(); majValeursAnim();
+  };
+  const lacher = () => {
+    window.removeEventListener('pointermove', bouger);
+    window.removeEventListener('pointerup', lacher);
+    ED_CLES.prise = null;
+    rendreEdCles(); apresEdCles();
+  };
+  window.addEventListener('pointermove', bouger);
+  window.addEventListener('pointerup', lacher);
+}, true);
+
+document.addEventListener('dblclick', e => {
+  const el = $('#edCles');
+  if (!ED_CLES || !el || !el.contains(e.target)) return;
+  const sv = e.target.closest('svg[data-ed-ligne]');
+  if (!sv) return;
+  e.preventDefault();
+  const c = parUid(ED_CLES.uid), L = ED_CLES.lignes[+sv.dataset.edLigne];
+  memoriser();
+  const cle = e.target.closest('rect.cle');
+  if (cle) {
+    L.liste.splice(+cle.dataset.j, 1);
+    if (!L.liste.length) L.vider();
+  } else {
+    const r = sv.getBoundingClientRect();
+    const tt = +(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * ED_CLES.D).toFixed(3);
+    L.liste.push({t: tt, v: interpCles(L.liste, tt)});
+    L.liste.sort((a, b) => a.t - b.t);
+  }
+  rendreEdCles(); apresEdCles(); rendreReglages();
+}, true);
+addEventListener('resize', () => dessinerEdCles());
+
 // Le panneau déplié sous un curseur : poser une clé, naviguer, copier, vider.
 function panneauAnim(k, t) {
   const l = cles(t, k) || [];
@@ -7546,6 +7794,8 @@ function panneauAnim(k, t) {
 // redessiner le panneau : on y tire parfois un curseur.
 let REG = null;
 function majValeursAnim() {
+  // La tete de lecture de l editeur de cles suit aussi.
+  if (ED_CLES && typeof dessinerEdCles === 'function') dessinerEdCles();
   if (!REG || !REG.c) return;
   const r = $('#reglages');
   // Le ◆ ne s allume QUE si la tete est sur une cle, et s eteint des qu elle
@@ -9451,6 +9701,7 @@ document.addEventListener('keydown', e => {
   }
   if (ctrl) return;
   if (e.code === 'Space') { e.preventDefault(); enLecture ? pause() : lire(); return; }
+  if (k === 'e') { ED_CLES ? fermerEdCles() : ouvrirEdCles(); return; }
   if (k === 'v') { setOutil('V'); return; }
   if (k === 'c') { setOutil('C'); return; }
   if (k === 'a') { setOutil('A'); return; }
@@ -9475,6 +9726,7 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.key === 'Escape') {
+    if (ED_CLES) { fermerEdCles(); return; }
     fermerMenu(); $('#voile').className = ''; popReglages(false);
     if (reduire()) return;
     selection.clear(); clipsSel.clear(); rendreGrille(); rendreTimeline();
