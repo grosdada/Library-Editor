@@ -353,7 +353,13 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
 .regle .tick{position:absolute;top:0;bottom:0;border-left:1px solid #ffffff14;
  font:9px/21px ui-monospace,monospace;color:var(--sourd);padding-left:3px}
 .hEntete{height:21px;border-bottom:1px solid var(--trait);background:#1c1b19}
-.pEntete{display:flex;align-items:center;gap:4px;padding:0 6px;
+/* La poignee de hauteur, au bas du nom de la piste (comme celles des panneaux). */
+.pPoignee{position:absolute;left:0;right:0;bottom:-3px;height:7px;z-index:4;
+ cursor:row-resize}
+.pPoignee::after{content:"";position:absolute;left:50%;top:2px;width:28px;
+ height:2px;margin-left:-14px;border-radius:2px;background:var(--trait)}
+.pEntete:hover .pPoignee::after,.pPoignee.tire::after{background:var(--pc,var(--or))}
+.pEntete{position:relative;display:flex;align-items:center;gap:4px;padding:0 6px;
  border-bottom:1px solid var(--trait);font:11px/1 ui-monospace,monospace;
  flex-wrap:wrap;align-content:center;row-gap:4px}
 .pEntete b{flex:1 1 auto;font-weight:600;letter-spacing:.05em}
@@ -3673,8 +3679,10 @@ let zoomV = Math.min(ZOOM_V_MAX, Math.max(ZOOM_V_MIN,
 // et la musique se mixe au rendu sans etre liee a un plan.
 const estSon = p => !!p && (p.type === 'a' || p.type === 'm');
 const nomType = t => t === 'v' ? 'video' : t === 'm' ? 'music' : 'audio';
-const hauteurPiste = p => Math.round(
-  (p.type === 'v' ? HV : (p.type === 'm' ? HM : HA)) * zoomV);
+// « hk » : la hauteur propre de la piste, tiree a sa poignee (1.3.31), par-
+// dessus le zoom commun (Alt + molette). Elle voyage avec la sequence.
+const hauteurBase = p => (p.type === 'v' ? HV : (p.type === 'm' ? HM : HA)) * zoomV;
+const hauteurPiste = p => Math.round(hauteurBase(p) * (+p.hk || 1));
 const classePiste = p => p.type === 'v' ? 'va' : (p.type === 'm' ? 'ma' : 'aa');
 
 // Echappement HTML, partage par tout ce qui compose du balisage a la main.
@@ -4052,6 +4060,8 @@ function rendreEntetes() {
       'px;--pc:' + couleurPiste(p) + '" title="' + p.id + (p.id === pisteActive
         ? ' — target track for Add (click to release)'
         : ' — click to make it the target track for Add') + '">' +
+      '<div class="pPoignee" data-hpiste="' + p.id + '" title="drag to make this ' +
+      'track taller or shorter — double-click: back to normal"></div>' +
       '<b>' + p.id + '</b>' +
       (estSon(p) ? '<i class="pVal' + (v === 1 ? ' neutre' : '') +
         '" title="double-click to type the volume">' +
@@ -4852,16 +4862,52 @@ function poserVolPiste(el, val) {
   modifie = true;
   resynchroniser(true);
 }
+// Tirer la poignee : la piste suit en direct (nom et piste ensemble), sans
+// redessiner les blocs a chaque pixel ; tout se redessine au lacher.
+$('#entetes').addEventListener('pointerdown', e => {
+  const g = e.target.closest('[data-hpiste]');
+  if (!g || e.button !== 0) return;
+  e.preventDefault(); e.stopPropagation();
+  const p = piste(g.dataset.hpiste);
+  if (!p) return;
+  memoriser();
+  const y0 = e.clientY, h0 = hauteurPiste(p), base = hauteurBase(p);
+  const en = g.closest('.pEntete');
+  const lane = document.querySelector('#lanes .lane[data-piste="' + p.id + '"]');
+  g.classList.add('tire');
+  const bouger = ev => {
+    const h = Math.max(16, Math.min(420, h0 + ev.clientY - y0));
+    p.hk = +(h / base).toFixed(3);
+    if (en) en.style.height = h + 'px';
+    if (lane) lane.style.height = h + 'px';
+  };
+  const lacher = () => {
+    window.removeEventListener('pointermove', bouger);
+    window.removeEventListener('pointerup', lacher);
+    g.classList.remove('tire');
+    if (Math.abs((+p.hk || 1) - 1) < 0.02) delete p.hk;
+    rendreEntetes(); rendreLanes(); calerEntetes();
+  };
+  window.addEventListener('pointermove', bouger);
+  window.addEventListener('pointerup', lacher);
+}, true);
+
 $('#entetes').addEventListener('input', e => {
   const el = e.target.closest('[data-vol]');
   if (el) poserVolPiste(el, parseFloat(el.value) || 0);
 });
 $('#entetes').addEventListener('dblclick', e => {
+  const g = e.target.closest('[data-hpiste]');
+  if (g) {
+    const p = piste(g.dataset.hpiste);
+    if (p && p.hk) { memoriser(); delete p.hk; rendreEntetes(); rendreLanes(); calerEntetes(); }
+    return;
+  }
   const el = e.target.closest('[data-vol]');
   if (el) poserVolPiste(el, 1);
 });
 $('#entetes').addEventListener('click', e => {
-  if (e.target.closest('[data-vol], .pVal, .saisieVal')) return;
+  if (e.target.closest('[data-vol], .pVal, .saisieVal, [data-hpiste]')) return;
   const m = e.target.closest('[data-mute]'), s = e.target.closest('[data-solo]');
   // Couper ou isoler une piste change le montage. Ces deux boutons ne le
   // disaient pas : l enregistrement automatique et celui du changement de
@@ -7480,6 +7526,36 @@ let REG = null;
 function majValeursAnim() {
   if (!REG || !REG.c) return;
   const r = $('#reglages');
+  // Le ◆ ne s allume QUE si la tete est sur une cle, et s eteint des qu elle
+  // la quitte (David, 07/10) ; la cle sous la tete est surlignee dans la
+  // liste. Sans cette mise a jour, il gardait l etat de l ouverture du panneau.
+  const ici = (t, l) => {
+    const x = tLect - t.t0;
+    return (l || []).findIndex(p => Math.abs(p.t - x) < 0.008);
+  };
+  const dedans = t => tLect >= t.t0 - 0.001 && tLect <= fin(t) + 0.001;
+  r.querySelectorAll('[data-cle]').forEach(b => {
+    const k = b.dataset.cle, t = k === 'gain' ? REG.son[0] : REG.c;
+    if (!t) return;
+    b.classList.toggle('on', ici(t, cles(t, k)) >= 0);
+    b.disabled = !dedans(t);
+  });
+  r.querySelectorAll('[data-aller-cle]').forEach(s => {
+    const [k, j] = s.dataset.allerCle.split(':'), t = k === 'gain' ? REG.son[0] : REG.c;
+    if (t) s.classList.toggle('ici', ici(t, cles(t, k)) === +j);
+  });
+  if (Array.isArray(REG.c.fx)) {
+    r.querySelectorAll('[data-fx-cle]').forEach(b => {
+      const [i, k] = b.dataset.fxCle.split(':'), x = REG.c.fx[+i];
+      if (!x) return;
+      b.classList.toggle('on', ici(REG.c, clesFx(x, k)) >= 0);
+      b.disabled = !dedans(REG.c);
+    });
+    r.querySelectorAll('[data-fx-aller]').forEach(s => {
+      const [i, k, j] = s.dataset.fxAller.split(':'), x = REG.c.fx[+i];
+      if (x) s.classList.toggle('ici', ici(REG.c, clesFx(x, k)) === +j);
+    });
+  }
   // Les reglages d effet animes suivent aussi la tete de lecture.
   if (Array.isArray(REG.c.fx)) r.querySelectorAll('input[type=range][data-fx-p]')
     .forEach(s => {
