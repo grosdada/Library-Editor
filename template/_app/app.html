@@ -6474,6 +6474,9 @@ $('#lanes').addEventListener('contextmenu', e => {
     (estSynth(c) ? ''
      : c.lien ? '<div class="it" data-act="delier">⛓ Unlink audio</div>'
               : '<div class="it" data-act="relier">⛓ Link audio</div>') +
+    (CLIPS.some(x => clipsSel.has(x.uid) && aDesAnims(x))
+      ? '<div class="it" data-act="cles-suppr">✕ Delete all keyframes' +
+        (clipsSel.size > 1 ? ' of the ' + clipsSel.size + ' blocks' : '') + '</div>' : '') +
     '<div class="it" data-act="cles-vues">◆ ' + (CLES_VUES ? 'Hide' : 'Show') +
       ' keyframes on blocks <span class="pousse" style="color:var(--sourd);font-size:10px">' +
       'E: edit them</span></div>' +
@@ -6611,7 +6614,8 @@ menu.addEventListener('click', async e => {
     clonerBlocs(ch ? ch.value : 1);
     return;
   }
-  if (a === 'cles-vues') {
+  if (a === 'cles-suppr') supprimerToutesCles();
+  else if (a === 'cles-vues') {
     CLES_VUES = !CLES_VUES;
     pref.ecrire('clesVues', CLES_VUES ? '1' : '0');
     rendreLanes();
@@ -6963,7 +6967,9 @@ function rendreReglages() {
     '" data-copie-val="' + k + '" title="copy this setting">C</button>' +
     '<button class="cv" data-colle-val="' + k + '"' +
     (PRESSE_PARAM[k] ? '' : ' disabled') +
-    ' title="paste it onto the selection">V</button>';
+    ' title="paste it onto the selection">V</button>' +
+    '<button class="cv" data-reset-val="' + k + '" title="back to the initial value ' +
+    '(its keyframes go too) — Ctrl+Z to undo">↺</button>';
 
   // La secousse : une case, et ses deux curseurs qui n apparaissent qu une
   // fois cochee. Elle ne s anime pas aux images-cles — c est un effet continu,
@@ -7404,6 +7410,21 @@ function rendreReglages() {
     rendreReglages(); rendreLanes(); dessiner(); resynchroniser(true);
     dire(fmtVal(k, p.v) + ' pasted onto ' + n + ' block(s)');
   });
+  // ↺ : la valeur d origine du reglage (100 %, 0, vitesse 1 a l endroit), et
+  // plus de cles — l etat d avant toute retouche (David, 07/10).
+  r.querySelectorAll('[data-reset-val]').forEach(b => b.onclick = () => {
+    const k = b.dataset.resetVal;
+    memoriser();
+    let n = 0;
+    tousDe(k).forEach(x => {
+      if (ANIMABLES[k]) { viderAnim(x, k); x[k] = ANIMABLES[k].defaut; }
+      else if (k === 'vitesse') { x.vitesse = 1; delete x.rev; }
+      n++;
+    });
+    rendreTimeline(); dessiner(); resynchroniser(true);
+    dire((k === 'vitesse' ? 'speed' : (COUL_CLES[k] || [0, k])[1]) + ' back to its initial value on ' +
+         n + ' block' + (n > 1 ? 's' : ''));
+  });
   r.querySelectorAll('[data-copie-anim]').forEach(b => b.onclick = () => {
     const k = b.dataset.copieAnim, t = cibleDe(k), l = cles(t, k);
     if (!l || !l.length) { dire('nothing to copy on this parameter'); return; }
@@ -7556,6 +7577,38 @@ function reinitSelection() {
   son.forEach(x => { x.gain = 1; delete x.anim; });
   rendreTimeline(); rendreReglages(); dessiner(); resynchroniser(true);
   dire('settings reset on ' + sel.length + ' block(s)');
+}
+
+// Retire toutes les images-cles des blocs selectionnes, cadre et effets.
+// Chaque reglage garde la valeur qu il a a la tete de lecture (au debut du
+// bloc si la tete est ailleurs) : l image ne saute pas.
+function supprimerToutesCles() {
+  const l = CLIPS.filter(x => clipsSel.has(x.uid) && aDesAnims(x));
+  if (!l.length) { dire('no keyframe on the selection'); return; }
+  memoriser();
+  let n = 0;
+  l.forEach(c => {
+    const tt = (tLect >= c.t0 && tLect <= fin(c)) ? tLect : c.t0;
+    if (c.anim) {
+      for (const k in c.anim) {
+        n += (c.anim[k] || []).length;
+        if ((c.anim[k] || []).length) c[k] = valAnim(c, k, tt);
+      }
+      delete c.anim;
+    }
+    (Array.isArray(c.fx) ? c.fx : []).forEach(x => {
+      if (!x || !x.anim) return;
+      for (const k in x.anim) {
+        n += (x.anim[k] || []).length;
+        if ((x.anim[k] || []).length) x[k] = valFx(c, x, k, tt);
+      }
+      delete x.anim;
+    });
+  });
+  rendreTimeline(); dessiner(); resynchroniser(true);
+  if (typeof rendreEdCles === 'function') rendreEdCles();
+  dire(n + ' keyframe' + (n > 1 ? 's' : '') + ' deleted on ' + l.length + ' block' +
+       (l.length > 1 ? 's' : '') + ' — Ctrl+Z to undo');
 }
 
 // La barre du panneau de droite : montrer ou cacher les losanges sur les
@@ -8706,7 +8759,9 @@ function rackFx(c, sel) {
         '<input type="range" data-fx-p="' + k + '" data-fx-i="' + i +
         '" data-fx-u="' + u + '" min="' + mn + '" max="' + mx + '" step="' + pas +
         '" value="' + v + '"><span class="val">' + fmtFx(v, pas, u) +
-        '</span></div>' + (ouvert ? panneauFx(c, x, i, k, pas, u) : '') + '</div>';
+        '</span><button class="cv" data-fx-reset="' + id + '" title="back to the ' +
+        'initial value (its keyframes go too)">↺</button></div>' +
+        (ouvert ? panneauFx(c, x, i, k, pas, u) : '') + '</div>';
     });
     h += '</div>';
   });
@@ -8778,12 +8833,12 @@ function lierRackFx(r, c, sel) {
   // ---- les cles des reglages d effet ----
   rack.addEventListener('click', e => {
     const b = e.target.closest('[data-fx-anim],[data-fx-cle],[data-fx-cle-prec],' +
-      '[data-fx-cle-suiv],[data-fx-vide],[data-fx-aller],[data-fx-ote]');
+      '[data-fx-cle-suiv],[data-fx-vide],[data-fx-aller],[data-fx-ote],[data-fx-reset]');
     if (!b || b.disabled) return;
     e.stopPropagation();
     const d = b.dataset;
     const id = d.fxAnim || d.fxCle || d.fxClePrec || d.fxCleSuiv || d.fxVide ||
-               d.fxAller || d.fxOte;
+               d.fxAller || d.fxOte || d.fxReset;
     const [i, k, q] = id.split(':');
     const x = liste()[+i];
     if (!x) return;
@@ -8818,6 +8873,9 @@ function lierRackFx(r, c, sel) {
       viderCleFx(x, k);
     } else if (d.fxOte) {
       l.splice(+q, 1); if (!l.length) viderCleFx(x, k);
+    } else if (d.fxReset) {
+      x[k] = FX[x.t].neuf()[k];
+      viderCleFx(x, k);
     }
     modifie = true;
     rendreReglages(); rendreLanes(); dessiner();
