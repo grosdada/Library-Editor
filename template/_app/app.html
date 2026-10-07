@@ -421,6 +421,10 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
 .clip .poi.g{left:0;cursor:w-resize}
 .clip .poi.d{right:0;cursor:e-resize}
 .clip .poi:hover{background:var(--orange)}
+/* Un bord coupe ou rogne : le rush continue au-dela. Gris bleute, pour ne pas
+   le prendre pour la vraie fin du rush (orange). */
+.clip .poi.coupe{background:linear-gradient(#8fa6c266,#8fa6c222)}
+.clip .poi.coupe:hover{background:#8fa6c2}
 .clip .fondu{position:absolute;top:0;bottom:0;pointer-events:none;
  background:linear-gradient(90deg,#000c,#0000)}
 /* Bande du haut : viser les carres de 9 px demandait trop de precision. Toute
@@ -4094,6 +4098,18 @@ function rendreRegle() {
   $('#regle').innerHTML = h;
 }
 
+// Le bord d un bloc est-il la vraie fin du rush, ou une coupe ? Orange : le
+// fichier commence ou finit la ; gris bleute : il continue au-dela (David,
+// 07/10). A l envers, le bord gauche montre la fin de la source. Calques,
+// textes et images fixes n ont pas de duree propre : toujours de vrais bords.
+function bordCoupe(c, cote) {
+  if (estSynth(c) || estImage(c)) return false;
+  const f = PAR_ID[c.film];
+  if (!f || !f.s) return false;
+  const debut = c.e > 0.04, fin_ = c.o < f.s - 0.04;
+  return (cote === 'g') !== !!c.rev ? debut : fin_;
+}
+
 function blocClip(c) {
   const f = PAR_ID[c.film];
   const p = piste(c.piste);
@@ -4131,7 +4147,8 @@ function blocClip(c) {
       ? '<div class="mqBadge" title="masked">◐</div>' : '') +
     '<div class="bande" data-bande="1" title="drag here: fade in / fade out">' +
     '</div>' +
-    '<div class="poi g" data-poi="g"></div>' +
+    '<div class="poi g' + (bordCoupe(c, 'g') ? ' coupe' : '') + '" data-poi="g"' +
+      (bordCoupe(c, 'g') ? ' title="cut edge — the rush goes on before"' : '') + '></div>' +
     '<div class="att g" data-fade="g" title="fade in" style="left:' +
     (c._fIn * PPS) + 'px"></div>' +
     '<div class="att d" data-fade="d" title="fade out" style="left:' +
@@ -4150,7 +4167,8 @@ function blocClip(c) {
       '<div class="mqb" data-mqb="' + x.toFixed(4) + '" style="left:' +
       ((mqTemps(c, x) - c.t0) * PPS) + 'px" title="block marker ' + tc(mqTemps(c, x)) +
       ' — drag to move, double-click to remove"></div>').join('') +
-    '<div class="poi d" data-poi="d"></div></div>';
+    '<div class="poi d' + (bordCoupe(c, 'd') ? ' coupe' : '') + '" data-poi="d"' +
+      (bordCoupe(c, 'd') ? ' title="cut edge — the rush goes on after"' : '') + '></div></div>';
 }
 
 // Les marqueurs de sequence sont poses dans le contenu de la timeline, comme
