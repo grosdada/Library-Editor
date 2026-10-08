@@ -933,6 +933,8 @@ here and change nothing to the files">My folders</button>
       title="colour layer, placed above the picture at the playhead">▢ Layer</button>
     <button id="bTexte" class="outil calque"
       title="text, placed above the picture at the playhead">T Text</button>
+    <button id="bSousTitres" class="outil calque"
+      title="import subtitles (.srt / .vtt): a file named like a rush in the sequence follows that rush; any other file is placed at the playhead">CC Subs</button>
     <button id="bReglage" class="outil calque"
       title="effect layer: its effects apply to everything below it, for its duration">✦ FX</button>
     <button id="bMasque" class="outil masque"
@@ -4792,6 +4794,99 @@ function boiteTexte(bloc) {
 }
 
 $('#bCalque').onclick = () => boiteCalque();
+
+// ---- sous-titres (.srt / .vtt) --------------------------------------------
+// Chaque sous-titre devient un calque texte, tous sur une piste neuve au-dessus
+// des autres. Un fichier qui porte le nom d un rush du montage (« GR01-02-
+// identite.en.srt » pour le cut « GR01-02-identite ») suit ce rush : ses temps
+// sont lus dans le rush, et chaque bloc qui l utilise recoit la part de
+// sous-titres qu il montre (rognage, vitesse compris). Un fichier sans rush
+// correspondant se pose a la tete de lecture.
+function lireSousTitres(txt) {
+  const out = [];
+  const h = s => {
+    const m = s.trim().match(/^(?:(\d+):)?(\d+):(\d+)[,.](\d+)$/);
+    return m ? (+(m[1] || 0)) * 3600 + (+m[2]) * 60 + (+m[3]) + (+('0.' + m[4])) : NaN;
+  };
+  String(txt).replace(/\r/g, '').split(/\n\s*\n/).forEach(b => {
+    const l = b.split('\n').filter(x => x.trim() !== '');
+    const i = l.findIndex(x => x.includes('-->'));
+    if (i < 0) return;
+    const [a, z] = l[i].split('-->');
+    const t0 = h(a), t1 = h(z.trim().split(/\s+/)[0]);
+    const mots = l.slice(i + 1).join('\n').replace(/<[^>]+>/g, '').trim();
+    if (isFinite(t0) && isFinite(t1) && t1 > t0 && mots) out.push({a: t0, b: t1, txt: mots});
+  });
+  return out;
+}
+const baseST = n => String(n).replace(/\.(srt|vtt)$/i, '').replace(/\.[a-z]{2,3}(-[a-z]{2})?$/i, '')
+  .toLowerCase();
+function rushDeNom(base) {
+  for (const id in PAR_ID) {
+    const f = PAR_ID[id];
+    const rel = String(f.rel || '').split('/').pop().replace(/\.[^.]+$/, '');
+    if (String(f.nom || '').toLowerCase() === base || rel.toLowerCase() === base) return id;
+  }
+  return null;
+}
+async function importerSousTitres(fichiers) {
+  if (!fichiers || !fichiers.length) return;
+  const champs = {genre: 'texte', police: 'sans', teinte: '#ffffff', taille: 5, ombre: true, dy: 72};
+  const poses = [];
+  let suivis = 0, tete = 0;
+  for (const fi of fichiers) {
+    const cues = lireSousTitres(await fi.text());
+    if (!cues.length) { dire('“' + fi.name + '”: no subtitle read', true); continue; }
+    const id = rushDeNom(baseST(fi.name));
+    const blocs = id ? CLIPS.filter(c => c.film === id && !estSynth(c) && !c.rev) : [];
+    if (blocs.length) {
+      suivis++;
+      blocs.forEach(c => cues.forEach(q => {
+        const a = Math.max(q.a, c.e), b = Math.min(q.b, c.o);
+        if (b - a < 0.1) return;
+        poses.push({t0: tlA(c, a), t1: tlA(c, b), txt: q.txt});
+      }));
+    } else {
+      tete++;
+      const t0 = Math.max(0, tLect);
+      cues.forEach(q => poses.push({t0: t0 + q.a, t1: t0 + q.b, txt: q.txt}));
+    }
+  }
+  if (!poses.length) { dire('no subtitle falls inside the sequence', true); return; }
+  memoriser();
+  const pv = PISTES.filter(x => x.type === 'v');
+  const pid = 'V' + ((pv.length ? Math.max(...pv.map(x => numPiste(x.id))) : 0) + 1);
+  PISTES.push({id: pid, type: 'v', mute: false, solo: false});
+  // Deux blocs ne se chevauchent pas sur une piste : le precedent s arrete
+  // ou commence le suivant.
+  poses.sort((x, y) => x.t0 - y.t0);
+  poses.forEach((q, i) => {
+    const n = poses[i + 1];
+    if (n && n.t0 < q.t1) q.t1 = n.t0 - 0.02;
+  });
+  const nouv = [];
+  poses.filter(q => q.t1 - q.t0 >= 0.1).forEach(q => {
+    const d = q.t1 - q.t0;
+    const c = Object.assign({
+      uid: uidSuivant++, piste: pid, film: '', t0: +q.t0.toFixed(3), e: 0, o: +d.toFixed(3),
+      ech: 1, dx: 0, dy: 0, mode: 'contain', gain: 1, opac: 1, vitesse: 1,
+      couleur: 0, fi: 0, fo: 0, lien: null
+    }, champs, {txt: q.txt});
+    CLIPS.push(c);
+    nouv.push(c);
+  });
+  clipsSel = new Set(nouv.map(c => c.uid));
+  rendreTimeline(); resynchroniser(true); dessiner(); rendreReglages();
+  dire(nouv.length + ' subtitle' + (nouv.length > 1 ? 's' : '') + ' placed on ' + pid +
+       (suivis ? ' — ' + suivis + ' file' + (suivis > 1 ? 's' : '') + ' following their rush' : '') +
+       (tete ? ' — ' + tete + ' at the playhead' : '') + ' · all selected: move or restyle them together');
+}
+$('#bSousTitres').onclick = () => {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.srt,.vtt'; inp.multiple = true;
+  inp.onchange = () => importerSousTitres([...inp.files]);
+  inp.click();
+};
 $('#bReglage').onclick = () => {
   poserSynth({genre: 'reglage', fx: []},
              parseFloat(pref.lire('calqueDuree', '4')) || 4);
