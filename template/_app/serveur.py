@@ -99,7 +99,12 @@ PORT = int(REGLAGES.get("port") or 8779)
 # Les donnees d un projet vivent dans <projet>/_projet/ : le dossier est donc
 # autonome et deplacable, y compris d une racine a l autre. PAS_PROJET ne sert
 # plus qu a mettre un dossier de cote sans le sortir de projets/.
-PAS_PROJET = {"contexte"}
+PAS_PROJET = {"contexte", "Subtitles"}
+# Les sous-titres de la bibliotheque (1.3.40) : un dossier « Subtitles » a la
+# racine des projets, avec des .srt / .vtt (sous-dossiers permis). Ce n est
+# pas un projet de rushes : l application le montre a part, en bas.
+DOSSIER_ST = "Subtitles"
+EXT_ST = (".srt", ".vtt")
 DATA = "_projet"
 
 # Anciens emplacements, du temps ou la bibliotheque ne connaissait qu un seul
@@ -473,6 +478,29 @@ def inscrire_projet(nom):
     with io.open(FICHIER_REGLAGES, "w", encoding="utf-8") as fr:
         json.dump(REGLAGES, fr, ensure_ascii=False, indent=1)
     return True
+
+
+def soustitres():
+    """Les .srt / .vtt du dossier Subtitles, en chemins relatifs « / »."""
+    rac = os.path.join(RACINE_PROJETS, DOSSIER_ST)
+    out = []
+    for d, sous, noms in os.walk(rac):
+        sous[:] = sorted(x for x in sous if not x.startswith((".", "_")))
+        for n in sorted(noms, key=lambda x: x.lower()):
+            if n.lower().endswith(EXT_ST) and not n.startswith((".", "_")):
+                out.append(os.path.relpath(os.path.join(d, n), rac).replace(os.sep, "/"))
+    return out
+
+
+def fichier_st(rel):
+    """Le chemin disque d un sous-titre, confine au dossier Subtitles."""
+    rac = os.path.normpath(os.path.join(RACINE_PROJETS, DOSSIER_ST))
+    rel = (rel or "").replace("\\", "/").strip("/")
+    if not rel or not rel.lower().endswith(EXT_ST) or \
+            any(x in ("", ".", "..") or x.startswith((".", "_")) for x in rel.split("/")):
+        return None
+    p = os.path.normpath(os.path.join(rac, rel))
+    return p if p.startswith(rac + os.sep) and os.path.isfile(p) else None
 
 
 def projets_disque():
@@ -3398,6 +3426,16 @@ class Poste(BaseHTTPRequestHandler):
                     return self._json(onde_de(pr, f))
             except Exception as e:
                 return self._erreur(str(e) or "waveform unavailable", 502)
+
+        # --- les sous-titres de la bibliotheque ----------------------------
+        if chemin == "/api/soustitres":
+            return self._json({"fichiers": soustitres()})
+        if chemin == "/api/soustitre":
+            f = fichier_st((req.get("f") or [""])[0])
+            if not f:
+                return self._erreur("unknown subtitle file", 404)
+            with io.open(f, encoding="utf-8-sig", errors="replace") as h:
+                return self._json({"texte": h.read()})
 
         # --- tous les dossiers de la bibliotheque, projets ou non ---------
         if chemin == "/api/dossiers":

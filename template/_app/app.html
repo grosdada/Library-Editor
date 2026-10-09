@@ -139,6 +139,12 @@ body.rangeable.lectureseule .pjt .plus{display:block}
 .pjt.sequences:hover{border-color:var(--or)}
 .pjt.sequences b{color:var(--or)}
 .pjt.sequences i{color:var(--or);opacity:.8}
+.pjt.soustitres{background:#18222b;border-color:#2f5470}
+.pjt.soustitres b,.pjt.soustitres i{color:#8cc8f0}
+.dos.st b{font-weight:400;font-size:11px}
+.dos .stTout{margin-left:auto;font-size:10px;padding:1px 6px;border:1px solid #2f5470;
+ border-radius:4px;background:#18222b;color:#8cc8f0;cursor:pointer}
+.dos .stTout:hover{background:#2f5470;color:#fff}
 .dos.mont.seq{margin-left:12px}
 .dos.mont b{font-weight:400}
 .dos.mont.on{background:var(--or);color:#1a1917}
@@ -1498,6 +1504,36 @@ function rendreDossiers() {
     }
     o += '</optgroup>';
   }
+  // Les sous-titres de la bibliotheque (dossier Subtitles) : tout en bas.
+  // Clic sur un fichier : il entre dans la sequence (et suit son rush s il
+  // en porte le nom) ; « import all » : tout un dossier d un coup.
+  if (SOUSTITRES.length) {
+    const ouv = MONT_OUVERTS.has('*st');
+    h += '<div class="pjt soustitres" data-st-plier="*st" title="subtitle files of this ' +
+      'library — click one to import it into the open sequence">' +
+      '<span class="chev">' + (ouv ? '▼' : '▶') + '</span><b>Subtitles</b><i>' +
+      SOUSTITRES.length + '</i></div>';
+    if (ouv) {
+      const groupes = {};
+      SOUSTITRES.forEach(r => {
+        const i = r.lastIndexOf('/');
+        (groupes[i < 0 ? '' : r.slice(0, i)] = groupes[i < 0 ? '' : r.slice(0, i)] || []).push(r);
+      });
+      Object.keys(groupes).sort((x, y) => (y === '') - (x === '') || x.localeCompare(y))
+        .forEach(g => {
+          const l = groupes[g];
+          const plie = g !== '' && !MONT_OUVERTS.has('*st:' + g);
+          const fichierL = r => '<div class="dos st" data-st-f="' + ech(r) + '" title="' + ech(r) +
+            ' — click: import into the sequence (it follows its rush if one has the same name)">' +
+            '<b>' + ech(r.split('/').pop()) + '</b></div>';
+          if (g === '') { h += l.map(fichierL).join(''); return; }
+          h += '<div class="dos" data-st-plier="*st:' + ech(g) + '"><b>' + (plie ? '▸ ' : '▾ ') +
+            ech(g) + '</b><i>' + l.length + '</i><button class="stTout" data-st-tout="' + ech(g) +
+            '" title="import every file of this folder: each one follows its rush">import all</button></div>';
+          if (!plie) h += l.map(fichierL).join('');
+        });
+    }
+  }
   if (!OUVERTS.length)
     h += '<div style="padding:9px;color:var(--sourd);font-size:12px">' +
       'no project open</div>';
@@ -2617,6 +2653,23 @@ colDos.addEventListener('click', async e => {
   if (pl) { e.stopPropagation(); nouveauDossier(pl.dataset.nouveau); return; }
   const sc = e.target.closest('[data-scanner]');
   if (sc) { e.stopPropagation(); scannerProjet(sc.dataset.scanner); return; }
+  const stTout = e.target.closest('[data-st-tout]');
+  if (stTout) {
+    e.stopPropagation();
+    const g = stTout.dataset.stTout + '/';
+    importerSousTitresBibli(SOUSTITRES.filter(r => r.startsWith(g) && !r.slice(g.length).includes('/')));
+    return;
+  }
+  const stF = e.target.closest('[data-st-f]');
+  if (stF) { importerSousTitresBibli([stF.dataset.stF]); return; }
+  const stP = e.target.closest('[data-st-plier]');
+  if (stP) {
+    const n = stP.dataset.stPlier;
+    MONT_OUVERTS.has(n) ? MONT_OUVERTS.delete(n) : MONT_OUVERTS.add(n);
+    pref.ecrire('montOuverts', [...MONT_OUVERTS].join('\t'));
+    rendreDossiers();
+    return;
+  }
   const mt = e.target.closest('[data-montages]');
   if (mt) {
     const n = mt.dataset.montages;
@@ -4831,7 +4884,7 @@ function rushDeNom(base) {
 }
 async function importerSousTitres(fichiers) {
   if (!fichiers || !fichiers.length) return;
-  const champs = {genre: 'texte', police: 'sans', teinte: '#ffffff', taille: 5, ombre: true, dy: 72};
+  const champs = {genre: 'texte', st: 1, police: 'sans', teinte: '#ffffff', taille: 5, ombre: true, dy: 72};
   const poses = [];
   let suivis = 0, tete = 0;
   for (const fi of fichiers) {
@@ -4881,6 +4934,36 @@ async function importerSousTitres(fichiers) {
        (suivis ? ' — ' + suivis + ' file' + (suivis > 1 ? 's' : '') + ' following their rush' : '') +
        (tete ? ' — ' + tete + ' at the playhead' : '') + ' · all selected: move or restyle them together');
 }
+// Depuis le dossier Subtitles de la bibliotheque (bureau ou en ligne).
+async function importerSousTitresBibli(rels) {
+  if (!rels.length) return;
+  try {
+    const l = await Promise.all(rels.map(async r => {
+      const d = await api('api/soustitre?f=' + encodeURIComponent(r));
+      return {name: r.split('/').pop(), text: async () => d.texte};
+    }));
+    await importerSousTitres(l);
+  } catch (e) {
+    dire('subtitles not read — ' + e.message, true);
+  }
+}
+
+// Un bloc de sous-titre : marque « st » a l import (1.3.40) ; ceux importes
+// par la 1.3.39 se reconnaissent a leur reglage d origine.
+const estST = c => !!c && c.genre === 'texte' &&
+  (c.st || (c.police === 'sans' && c.taille === 5 && c.dy === 72));
+const COUL_ST = ['#ffffff', '#ffe14a', '#ffb347', '#7fe0ff', '#9dff8a', '#ff8fd0', '#c9c9c9', '#000000'];
+function couleurSousTitres(coul, piste) {
+  memoriser();
+  let n = 0;
+  CLIPS.forEach(c => {
+    if (!estST(c)) return;
+    if (piste ? c.piste === piste : clipsSel.has(c.uid)) { c.teinte = coul; n++; }
+  });
+  rendreTimeline(); dessiner();
+  dire(n + ' subtitle' + (n > 1 ? 's' : '') + ' in ' + coul + ' — Ctrl+Z to undo');
+}
+
 $('#bSousTitres').onclick = () => {
   const inp = document.createElement('input');
   inp.type = 'file'; inp.accept = '.srt,.vtt'; inp.multiple = true;
@@ -6629,6 +6712,19 @@ $('#lanes').addEventListener('contextmenu', e => {
          '" style="width:auto;padding:2px 9px;font:10px/1.6 ui-monospace,monospace;' +
          'background:' + ((c.mode || 'contain') === m ? 'var(--orange)' : 'var(--carte)') +
          '">' + (m === 'contain' ? 'Fit' : 'Fill') + '</span>').join('') + '</div>') +
+    (estST(c)
+      ? '<div class="sep"></div><div class="lbl">Subtitle colour · whole track ' + c.piste + '</div>' +
+        '<div class="couls">' + COUL_ST.map(v => '<span data-st-coul="' + v + '" data-st-piste="' +
+          c.piste + '" title="' + v + '" style="background:' + v + ';outline:' +
+          ((c.teinte || '#ffffff').toLowerCase() === v ? '2px solid var(--orange)' : '1px solid #555') +
+          '"></span>').join('') +
+        '<label title="any colour" style="display:inline-flex;align-items:center;margin-left:4px;width:auto;flex:0 0 auto">' +
+        '<input type="color" data-st-autre="' + c.piste + '" value="' + (c.teinte || '#ffffff') +
+        '" style="width:22px!important;min-width:0!important;flex:0 0 22px!important;height:18px;padding:0;border:0;background:none;margin:0"></label></div>' +
+        '<div class="lbl">Subtitle colour · selected only</div><div class="couls">' +
+        COUL_ST.map(v => '<span data-st-coul="' + v + '" data-st-piste="" title="' + v +
+          '" style="background:' + v + ';outline:1px solid #555"></span>').join('') + '</div>'
+      : '') +
     '<div class="sep"></div><div class="lbl">Block colour</div><div class="couls">' +
     COULS.map((v, i) => '<span data-coul="' + i + '" style="background:var(' + v +
       ')"></span>').join('') + '</div>' +
@@ -6673,6 +6769,8 @@ $('#lanes').addEventListener('contextmenu', e => {
 });
 
 menu.addEventListener('click', async e => {
+  const stc = e.target.closest('[data-st-coul]');
+  if (stc) { couleurSousTitres(stc.dataset.stCoul, stc.dataset.stPiste); fermerMenu(); return; }
   const cad = e.target.closest('[data-cadre]');
   if (cad) {
     memoriser();
@@ -8133,6 +8231,10 @@ document.addEventListener('contextmenu', e => {
   menu.style.left = Math.min(e.clientX, innerWidth - rp.width - 8) + 'px';
   menu.style.top = Math.min(e.clientY, innerHeight - rp.height - 8) + 'px';
 }, true);
+menu.addEventListener('change', e => {
+  const x = e.target.closest('[data-st-autre]');
+  if (x) { couleurSousTitres(x.value, x.dataset.stAutre); fermerMenu(); }
+});
 menu.addEventListener('click', e => {
   const b = e.target.closest('[data-ed-act]');
   if (!b || !ED_CLES) return;
@@ -10666,6 +10768,7 @@ function sauverAvantDeFermer() {
 // dans <projet>/_projet/_montages/ et « Ouvrir » le retrouve. La liste des
 // onglets fermes est memorisee d une session a l autre.
 let MONTAGES = [];
+let SOUSTITRES = [];
 const clefMontage = m => m.projet + '|' + m.nom;
 let FERMES = new Set();
 function chargerFermes() {
@@ -10683,6 +10786,7 @@ async function rafraichirProjets() {
     return;
   }
   MONTAGES = await listerMontages();
+  try { SOUSTITRES = (await api('api/soustitres')).fichiers || []; } catch (e) { SOUSTITRES = []; }
   chargerFermes();
   MONT_OUVERTS = new Set((pref.lire('montOuverts', '') || '')
     .split('\t').filter(Boolean));

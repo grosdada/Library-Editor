@@ -718,6 +718,56 @@ if ($route === 'catalogue' && !$poste) {
     repondre($cat);
 }
 
+// ---- GET /api/soustitres, /api/soustitre?f= -------------------------------
+// Les sous-titres de la bibliotheque (1.3.40), dans _data/_subtitles : la
+// liste, puis le texte d un fichier. Derriere le compte, comme le reste.
+function racine_st()
+{
+    return DOSSIER_DATA . '/_subtitles';
+}
+function liste_st($dos, $pre, &$out)
+{
+    $l = @scandir($dos);
+    if ($l === false) {
+        return;
+    }
+    natcasesort($l);
+    foreach ($l as $n) {
+        if ($n === '' || $n[0] === '.' || $n[0] === '_') {
+            continue;
+        }
+        $p = $dos . '/' . $n;
+        if (is_dir($p)) {
+            liste_st($p, $pre . $n . '/', $out);
+        } elseif (preg_match('/\.(srt|vtt)$/i', $n)) {
+            $out[] = $pre . $n;
+        }
+    }
+}
+if ($route === 'soustitres' && !$poste) {
+    $out = array();
+    liste_st(racine_st(), '', $out);
+    repondre(array('fichiers' => array_values($out)));
+}
+if ($route === 'soustitre' && !$poste) {
+    $rel = trim(str_replace(chr(92), '/', isset($_GET['f']) ? $_GET['f'] : ''), '/');
+    $ok = $rel !== '' && preg_match('/\.(srt|vtt)$/i', $rel);
+    foreach (explode('/', $rel) as $x) {
+        if ($x === '' || $x[0] === '.' || $x[0] === '_') {
+            $ok = false;
+        }
+    }
+    $p = racine_st() . '/' . $rel;
+    if (!$ok || !is_file($p)) {
+        erreur('unknown subtitle file', 404);
+    }
+    $t = file_get_contents($p);
+    if (substr($t, 0, 3) === chr(239) . chr(187) . chr(191)) {
+        $t = substr($t, 3);
+    }
+    repondre(array('texte' => $t));
+}
+
 // ---- GET /api/montages -----------------------------------------------------
 if ($route === 'montages' && !$poste) {
     $pr = nom_projet(isset($_GET['projet']) ? $_GET['projet'] : '');

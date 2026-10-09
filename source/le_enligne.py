@@ -292,6 +292,14 @@ def site_films(tache, racine, base, mod, projets, prets):
             for n in sorted(os.listdir(dos)):
                 if n.lower().endswith(exts):
                     entrees.append((os.path.join(dos, n), dest + "/" + n, "site"))
+    # Les sous-titres (1.3.40) : le dossier Subtitles des projets, tel quel.
+    st = os.path.join(getattr(mod, "RACINE_PROJETS", racine), "Subtitles")
+    for d, sous, noms in os.walk(st):
+        sous[:] = [x for x in sous if not x.startswith((".", "_"))]
+        for n in noms:
+            if n.lower().endswith((".srt", ".vtt")) and not n.startswith((".", "_")):
+                rel = os.path.relpath(os.path.join(d, n), st).replace(os.sep, "/")
+                entrees.append((os.path.join(d, n), "_data/_subtitles/" + rel, "site"))
     return entrees
 
 
