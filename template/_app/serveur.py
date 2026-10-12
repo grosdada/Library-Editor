@@ -1151,6 +1151,12 @@ def _placement(entree, sortie, cadrage, duree, pre, alpha=False,
               % (LARGE, HAUT, "increase" if cad.get("mode") == "cover"
                  else "decrease"))
     et.append("scale=trunc(iw*%.5f/2)*2:trunc(ih*%.5f/2)*2" % (k, k))
+    # Retournements (1.3.43) : l image en miroir dans son propre cadre, avant
+    # la pose — comme le moniteur, qui la retourne autour de son centre.
+    if cad.get("fh"):
+        et.append("hflip")
+    if cad.get("fv"):
+        et.append("vflip")
     # « reverse » APRES la mise a l echelle — il empile les images decodees,
     # autant qu elles soient petites — et AVANT setpts, pour que « t »
     # redevienne ensuite le temps du montage.

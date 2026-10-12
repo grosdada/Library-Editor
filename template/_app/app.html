@@ -6711,7 +6711,12 @@ $('#lanes').addEventListener('contextmenu', e => {
        ['contain', 'cover'].map(m => '<span data-cadre="' + m +
          '" style="width:auto;padding:2px 9px;font:10px/1.6 ui-monospace,monospace;' +
          'background:' + ((c.mode || 'contain') === m ? 'var(--orange)' : 'var(--carte)') +
-         '">' + (m === 'contain' ? 'Fit' : 'Fill') + '</span>').join('') + '</div>') +
+         '">' + (m === 'contain' ? 'Fit' : 'Fill') + '</span>').join('') +
+       [['h', '⇋ Flip H', 'fh', 'mirror left / right'], ['v', '⇵ Flip V', 'fv', 'mirror top / bottom']]
+         .map(([k, lib, champ, aide]) => '<span data-flip="' + k + '" title="' + aide +
+           ' (selected blocks)" style="width:auto;padding:2px 9px;font:10px/1.6 ui-monospace,monospace;' +
+           'background:' + (c[champ] ? 'var(--orange)' : 'var(--carte)') + '">' + lib + '</span>').join('') +
+       '</div>') +
     (estST(c)
       ? '<div class="sep"></div><div class="lbl">Subtitle colour · whole track ' + c.piste + '</div>' +
         '<div class="couls">' + COUL_ST.map(v => '<span data-st-coul="' + v + '" data-st-piste="' +
@@ -6769,6 +6774,24 @@ $('#lanes').addEventListener('contextmenu', e => {
 });
 
 menu.addEventListener('click', async e => {
+  // Flip H / Flip V : sur tous les rushes selectionnes, d apres l etat du bloc
+  // clique (tous allumes ou tous eteints, jamais un melange inverse).
+  const fl = e.target.closest('[data-flip]');
+  if (fl) {
+    const champ = fl.dataset.flip === 'h' ? 'fh' : 'fv';
+    const l = CLIPS.filter(x => clipsSel.has(x.uid) && !estSynth(x) &&
+                               piste(x.piste) && piste(x.piste).type === 'v');
+    if (l.length) {
+      memoriser();
+      const allumer = !l.every(x => x[champ]);
+      l.forEach(x => { if (allumer) x[champ] = true; else delete x[champ]; });
+      dessiner(); rendreTimeline(); rendreReglages();
+      dire((champ === 'fh' ? 'Flip horizontal' : 'Flip vertical') + (allumer ? ' on' : ' off') +
+           ' — ' + l.length + ' block' + (l.length > 1 ? 's' : '') + ' · Ctrl+Z to undo');
+    }
+    fermerMenu();
+    return;
+  }
   const stc = e.target.closest('[data-st-coul]');
   if (stc) { couleurSousTitres(stc.dataset.stCoul, stc.dataset.stPiste); fermerMenu(); return; }
   const cad = e.target.closest('[data-cadre]');
@@ -9466,6 +9489,18 @@ function lierRackFx(r, c, sel) {
   };
 }
 
+// Pose l image d un plan a sa place, retournee s il le faut (Flip H / Flip V,
+// 1.3.43) : en miroir autour de son propre centre — exactement hflip / vflip
+// de ffmpeg avant la pose.
+function poserPlan(g, v, c, px, py, w, h) {
+  if (!c.fh && !c.fv) { g.drawImage(v, px, py, w, h); return; }
+  g.save();
+  g.translate(px + w / 2, py + h / 2);
+  g.scale(c.fh ? -1 : 1, c.fv ? -1 : 1);
+  g.drawImage(v, -w / 2, -h / 2, w, h);
+  g.restore();
+}
+
 function dessiner() {
   // Image en cache : on la pose telle quelle, rien d autre a faire.
   const bmp = imageCache(tLect);
@@ -9549,10 +9584,10 @@ function dessiner() {
       g.translate(cw / 2, ch / 2);
       g.rotate(rot * Math.PI / 180);
       g.translate(-cw / 2, -ch / 2);
-      g.drawImage(v, px, py, w, h);
+      poserPlan(g, v, c, px, py, w, h);
       g.restore();
     } else {
-      g.drawImage(v, px, py, w, h);
+      poserPlan(g, v, c, px, py, w, h);
     }
     if (toile) {
       if (fx.length) appliquerFx(toile, fx, cw, ch);
@@ -11118,6 +11153,7 @@ function objetMontage(avecMasques) {
               fondu_entree: +(c._fIn || 0).toFixed(3),
               fondu_sortie: +(c._fOut || 0).toFixed(3),
               cadrage: {mode: c.mode, echelle: c.ech, dx: c.dx, dy: c.dy,
+                        fh: !!c.fh, fv: !!c.fv,
                         shk: !!c.shk,
                         shks: couchesShk(c).map(p => ({
                           f: p.f === undefined ? SHK_F : p.f,
