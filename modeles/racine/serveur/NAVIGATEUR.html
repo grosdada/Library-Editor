@@ -26,7 +26,7 @@ main{flex:1;min-height:0;position:relative}iframe{width:100%;height:100%;border:
 </style>
 </head>
 <body>
-<header><h1>Bibliothèque générale</h1><span>vos collections</span></header>
+<header><h1 id="titre-bibli">Bibliothèque générale</h1><span>vos collections</span></header>
 <nav class="groupes" aria-label="Onglets virtuels"><span class="etiquette">Onglets</span><div id="groupes" class="liste-onglets" role="tablist"></div></nav>
 <nav class="bibliotheques" aria-label="Bibliothèques"><span class="etiquette">Bibliothèques</span><div id="bibliotheques" class="liste-onglets" role="tablist"></div><div class="tools"><button id="actualiser">Actualiser les bibliothèques</button><button id="maj" hidden title="Mettre à jour le programme depuis GitHub">Mise à jour</button><a id="separe" target="_blank" rel="noopener">Ouvrir séparément ↗</a></div></nav>
 <p id="etat" class="etat" role="status" hidden></p>
@@ -128,6 +128,8 @@ async function charger(){
     if(!reponseBanques.ok)throw new Error('Serveur indisponible');
     banques=await reponseBanques.json();
     organisation=reponseOrganisation.ok?await reponseOrganisation.json():{onglets:[],classement:{}};
+    // Le nom de la bibliotheque (« titre » de serveur/_onglets.json).
+    if(organisation.titre){document.getElementById('titre-bibli').textContent=organisation.titre;document.title=organisation.titre+' · Assets IA';}
     const actuelles=valides(),ids=new Set(actuelles.map(b=>b.id));
     for(const [id,element] of elements){
       if(!ids.has(id)){element.bouton.remove();element.cadre.remove();elements.delete(id);}

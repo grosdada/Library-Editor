@@ -136,6 +136,16 @@ def enregistrer_organisation(valeur):
             "onglets": organisation["onglets"],
             "classement": organisation["classement"],
         }
+        # Le titre de la bibliotheque n est pas edite ici : on garde celui du
+        # fichier (sans quoi enregistrer les onglets l effacerait).
+        titre = valeur.get("titre") if isinstance(valeur, dict) else None
+        if not isinstance(titre, str):
+            try:
+                titre = json.loads(FICHIER_ONGLETS.read_text(encoding="utf-8-sig")).get("titre")
+            except (OSError, ValueError, AttributeError):
+                titre = None
+        if isinstance(titre, str) and titre.strip():
+            donnees["titre"] = " ".join(titre.split())[:80]
         temporaire = FICHIER_ONGLETS.with_name("._onglets-" + uuid.uuid4().hex + ".tmp")
         try:
             temporaire.write_text(

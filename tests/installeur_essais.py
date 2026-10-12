@@ -842,6 +842,21 @@ def essais_racine():
     spec = importlib.util.spec_from_file_location("racine_essai", os.path.join(serv, "_serveur.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    o0 = mod.organisation()
+    v("sans titre : champ vide (la page garde Bibliotheque generale)", o0.get("titre") == "", o0.get("titre"))
+    C.ecrire_json(os.path.join(serv, "_onglets.json"), {"version": 1, "onglets": [], "classement": {},
+                                                       "titre": "  Ma   Collection  "})
+    o1 = mod.organisation()
+    v("titre lu et nettoye", o1.get("titre") == "Ma Collection", o1.get("titre"))
+    v("la page affiche le titre", "titre-bibli" in io.open(os.path.join(serv, "NAVIGATEUR.html"),
+                                                          encoding="utf-8").read())
+    spec_p = importlib.util.spec_from_file_location("prep_essai", os.path.join(serv, "preparateur", "_preparateur.py"))
+    prep = importlib.util.module_from_spec(spec_p)
+    spec_p.loader.exec_module(prep)
+    prep.enregistrer_organisation({"version": 1, "onglets": [], "classement": {}})
+    v("enregistrer les onglets garde le titre",
+      C.lire_json(os.path.join(serv, "_onglets.json"), {}).get("titre") == "Ma Collection",
+      C.lire_json(os.path.join(serv, "_onglets.json"), {}))
     vues = mod.actualiser()
     v("4 banques servies, sans erreur", len(vues) == 4
       and all(x.get("url") and not x.get("erreur") for x in vues), vues)

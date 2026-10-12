@@ -1,5 +1,5 @@
 {
- "version": "1.3.41",
+ "version": "1.3.42",
  "date": "2026-10-12",
  "notes": "",
  "genres": {
@@ -121,16 +121,18 @@
    "fichiers": {
     "serveur/_serveur.py": {
      "depot": "modeles/racine/serveur/_serveur.py",
-     "sha256": "88666536f6146252a0c39f2a640a9254e123edc9a566a65ef0d5b9caa9bc4871",
+     "sha256": "d5d4aa81fb3d9693d4b502f692c52c07eb6d3fe53005a58a5271c9d78a94a2e0",
      "historique": [
-      "c3606e708a8f0ee39e7893d6b2d96224054a4d646873d88c197b4e9ff074c74d"
+      "c3606e708a8f0ee39e7893d6b2d96224054a4d646873d88c197b4e9ff074c74d",
+      "88666536f6146252a0c39f2a640a9254e123edc9a566a65ef0d5b9caa9bc4871"
      ]
     },
     "serveur/NAVIGATEUR.html": {
      "depot": "modeles/racine/serveur/NAVIGATEUR.html",
-     "sha256": "9c08f082d90fa2cc05c9cb8e6f43b100334fc12cf118cbc5463126f375f9a7ee",
+     "sha256": "51fa9a87f84325701876717349ca6db9ba0153849dae5ca2d427822316df1c73",
      "historique": [
-      "7b59a5ebe7f1ec585f7a5f702dc47d84558793f4172d73ba44bbedfe90f2be0c"
+      "7b59a5ebe7f1ec585f7a5f702dc47d84558793f4172d73ba44bbedfe90f2be0c",
+      "9c08f082d90fa2cc05c9cb8e6f43b100334fc12cf118cbc5463126f375f9a7ee"
      ]
     },
     "serveur/_maj.py": {
@@ -156,9 +158,10 @@
     },
     "serveur/preparateur/_preparateur.py": {
      "depot": "modeles/racine/serveur/preparateur/_preparateur.py",
-     "sha256": "1beef62b304b0a99f1a5d764857bf52c43e521ad2295d00e099be92b7e6b10f4",
+     "sha256": "52c7acc49415faaaca60a43933847df30f76194f4fc232088ec60589fdf6541a",
      "historique": [
-      "338c87618902dfac178b9b371f773f5b395a11bc7330ea6b76f571705f000102"
+      "338c87618902dfac178b9b371f773f5b395a11bc7330ea6b76f571705f000102",
+      "1beef62b304b0a99f1a5d764857bf52c43e521ad2295d00e099be92b7e6b10f4"
      ]
     },
     "serveur/preparateur/PREPARER.html": {
@@ -299,12 +302,5 @@
     }
    }
   }
- },
- "commit": "ad8f4ed47f68bc6361e31952f3a0bb067a97c1fb",
- "installeur": {
-  "version": "1.3.41",
-  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.3.41/Library-Editor-1.3.41.zip",
-  "octets": 38479400,
-  "sha256": "ad96cee1075a75203008961178f0abd14c00cbc680b3f0785d19a321aebeecb0"
  }
 }

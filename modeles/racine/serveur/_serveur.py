@@ -77,7 +77,10 @@ def organisation():
         for bibliotheque, identifiant in brut_classement.items():
             if isinstance(bibliotheque, str) and identifiant in ids:
                 classement[bibliotheque] = identifiant
-    return {"version": 1, "onglets": onglets, "classement": classement}
+    # Le nom de la bibliotheque, montre en tete de page (1.3.42) ; sans lui,
+    # « Bibliotheque generale ».
+    titre = " ".join(str(valeur.get("titre") or "").split())[:80]
+    return {"version": 1, "titre": titre, "onglets": onglets, "classement": classement}
 
 
 def candidats():
