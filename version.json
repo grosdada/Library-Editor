@@ -299,5 +299,12 @@
     }
    }
   }
+ },
+ "commit": "ad8f4ed47f68bc6361e31952f3a0bb067a97c1fb",
+ "installeur": {
+  "version": "1.3.41",
+  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.3.41/Library-Editor-1.3.41.zip",
+  "octets": 38479400,
+  "sha256": "ad96cee1075a75203008961178f0abd14c00cbc680b3f0785d19a321aebeecb0"
  }
 }
