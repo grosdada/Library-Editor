@@ -452,7 +452,8 @@ def route_post(chemin, d):
         racine = inspecter(d.get("chemin", ""))["chemin"]
         RACINES_VUES.add(os.path.normcase(racine))
         if d.get("genre") == "images":
-            return lancer_tache("analyse", "Analyse des images", I.analyser, racine)
+            return lancer_tache("analyse", "Analyse des images", I.analyser, racine,
+                                bool(d.get("forcer_banques")))
         return lancer_tache("analyse", "Analyse des films", F.analyser, racine)
     if chemin == "/api/images/verifier":
         racine = os.path.abspath(d.get("chemin", ""))

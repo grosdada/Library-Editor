@@ -882,6 +882,86 @@ def essais_racine():
     return R
 
 
+def essais_garde_fou():
+    """Un dossier de petits dossiers plats = des ASSETS, pas des banques : il
+    devient UNE banque (un asset par dossier). Et si la bibliotheque a onglets
+    echoue a la fin, les banques creees pendant la tentative sont retirees."""
+    print("\n=== GARDE-FOU : un dossier = un asset ===")
+    A = os.path.join(TRAVAIL, "Assets essai")
+    for i in range(12):
+        nom = "%03d-asset" % (i + 1)
+        image_essai(os.path.join(A, nom, nom + "-base.jpg"), "0x2244%02x" % (20 + i * 5))
+        image_essai(os.path.join(A, nom, nom + "_sheets.jpg"), "0x44%02x22" % (20 + i * 5))
+    a = I.analyser(tache(), A)
+    v("12 petits dossiers plats : conseil banque (pas onglets)", a["conseil"] == "banque", a["conseil"])
+    v("assets probables signales, 12 plats", a.get("assets_probables") is True
+      and a["nature"]["plats"] == 12 and a["nature"]["riches"] == 0, a.get("nature"))
+    v("mode propose : un asset par dossier, suffixe devine",
+      a["banque"]["proposition"]["mode"] == "dossier"
+      and a["banque"]["proposition"]["vignette"] in ("-base", "_sheets", "-base.jpg"),
+      a["banque"]["proposition"])
+    v("aucune ligne par sous-dossier", a["lignes"] == [], a["lignes"][:2])
+    af = I.analyser(tache(), A, forcer_banques=True)
+    v("forcer_banques : l ancien comportement, une ligne par sous-dossier",
+      af["conseil"] == "racine" and len(af["lignes"]) == 12, (af["conseil"], len(af["lignes"])))
+    lignes = [{"nom": l["nom"], "coche": True, "mode": "image", "vignette": ""} for l in af["lignes"]]
+    try:
+        I.installer_racine(tache(), A, {"lignes": lignes, "moteur": False, "raccourci": False})
+        v("installer_racine refuse des assets", False, "aucune erreur")
+    except ValueError as e:
+        v("installer_racine refuse des assets, message clair",
+          "ressemblent à des assets" in str(e) and "Rien n'a été créé" in str(e), str(e)[:200])
+    v("rien d ecrit par le refus", not any(os.path.isdir(os.path.join(A, d, "serveur"))
+                                            for d in os.listdir(A)) and not os.path.exists(os.path.join(A, "serveur")))
+    r = I.installer(tache(), A, {"mode": "dossier", "vignette": "-base", "moteur": False, "raccourci": False})
+    v("une seule banque, 12 fiches", r["fiches"] == 12 and r["mode"] == "dossier", (r["fiches"], r["mode"]))
+    v("un seul serveur, a la racine", os.path.isdir(os.path.join(A, "serveur"))
+      and not any(os.path.isdir(os.path.join(A, d, "serveur")) for d in os.listdir(A) if d != "serveur"))
+
+    print("\n=== GARDE-FOU : de vraies banques restent des banques ===")
+    B = os.path.join(TRAVAIL, "Vraies banques")
+    for nom in ("Cast", "Decors", "Props"):
+        for j in range(20):
+            image_essai(os.path.join(B, nom, "img-%02d.jpg" % j), "0x3366%02x" % (10 + j * 3))
+    ab = I.analyser(tache(), B)
+    v("3 banques de 20 images : conseil racine", ab["conseil"] == "racine"
+      and not ab.get("assets_probables"), (ab["conseil"], ab.get("nature")))
+
+    print("\n=== RETOUR EN ARRIERE : echec de l accueil a onglets ===")
+    C2 = os.path.join(TRAVAIL, "Retour essai")
+    for nom in ("un", "deux"):
+        for j in range(20):
+            image_essai(os.path.join(C2, nom, "img-%02d.jpg" % j), "0x7733%02x" % (10 + j * 3))
+    ac = I.analyser(tache(), C2)
+    lignes = [{"nom": l["nom"], "coche": True, "mode": "image", "vignette": ""} for l in ac["lignes"]]
+    vrai_rename = os.rename
+
+    def rename_refuse(src, dst, *a, **k):
+        # simule le WinError 5 de la mise en place de serveur\ a la racine
+        if os.path.basename(src).startswith(".preparation-") and os.path.basename(dst) == "serveur"                 and os.path.normcase(os.path.dirname(dst)) == os.path.normcase(C2):
+            raise PermissionError(5, "Access is denied", src)
+        return vrai_rename(src, dst, *a, **k)
+    os.rename = rename_refuse
+    try:
+        try:
+            I.installer_racine(tache(), C2, {"lignes": lignes, "moteur": False, "raccourci": False})
+            v("l echec est signale", False, "aucune erreur")
+        except ValueError as e:
+            msg = str(e)
+            v("echec signale, avec le retrait des banques", "Mise en place impossible" in msg
+              and "2 banque(s)" in msg and "retirées" in msg, msg[:250])
+    finally:
+        os.rename = vrai_rename
+    v("aucun serveur n est reste (banques ni racine)",
+      not os.path.exists(os.path.join(C2, "serveur"))
+      and not any(os.path.isdir(os.path.join(C2, d, "serveur")) for d in os.listdir(C2)),
+      os.listdir(C2))
+    v("images intactes apres l echec", len(os.listdir(os.path.join(C2, "un"))) == 20)
+    r2 = I.installer_racine(tache(), C2, {"lignes": lignes, "moteur": False, "raccourci": False})
+    v("on peut recommencer : 2 banques et l accueil", len(r2["banques"]) == 2
+      and os.path.isdir(os.path.join(C2, "serveur")), r2["banques"])
+
+
 # ---------------------------------------------------------------------------
 #  Mise en ligne
 # ---------------------------------------------------------------------------
@@ -951,6 +1031,7 @@ if __name__ == "__main__":
     essais_films(film)
     essais_images(banque, vrac)
     essais_racine()
+    essais_garde_fou()
     essais_enligne(film, banque)
     print("\n%d reussites, %d echec(s)" % (ok, ko))
     sys.exit(1 if ko else 0)

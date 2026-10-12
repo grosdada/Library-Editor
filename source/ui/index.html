@@ -551,7 +551,7 @@ function vueAnalyse() {
     etapes(ETAPES_N, 2) + boiteDossier(info, `<span class="badge accent">${films ? "films" : "images"}</span>`) +
     `<div id="a-suivi"></div><div id="a-resultat"></div>`;
   essayer(async () => {
-    await api("/api/analyser", {chemin: info.chemin, genre: S.n.genre});
+    await api("/api/analyser", {chemin: info.chemin, genre: S.n.genre, forcer_banques: !!S.n.forcer});
     suivre($("#a-suivi"), t => {
       if (t.etat !== "fini") {
         $("#a-resultat").innerHTML = encart("erreur", `<p>${esc(t.erreur || "Analyse interrompue.")}</p><div class="actions"><button class="btn" id="a-refaire">Recommencer</button></div>`);
@@ -747,7 +747,11 @@ function afficherAnalyseBanque() {
     $("#a-refaire").onclick = () => vueAnalyse(); $("#a-retour").onclick = () => vueNouvelle();
     return;
   }
-  zone.innerHTML = encart("info", "<p><b>Les images sont en vrac dans ce dossier</b> (aucun sous-dossier n'en contient) : il devient lui-même une banque, sans onglets.</p>") + `
+  const nat = (S.n.analyse && S.n.analyse.assets_probables) ? S.n.analyse.nature : null;
+  zone.innerHTML = (nat
+    ? encart("ok", `<p><b>Chaque sous-dossier est un asset.</b> Ce dossier contient ${nb(nat.plats)} petits dossiers de quelques images (par exemple <code>${esc((nat.exemples || []).slice(0, 2).join("</code>, <code>"))}</code>) : un asset n'est pas une banque. Le dossier devient <b>une seule banque</b>, en mode « un asset par dossier ».</p>
+        <p class="petit" style="margin:6px 0 0">Ce ne sont pas des assets mais de vraies banques ? <button class="btn discret" id="a-forcer">Traiter chaque sous-dossier comme une banque</button></p>`)
+    : encart("info", "<p><b>Les images sont en vrac dans ce dossier</b> (aucun sous-dossier n'en contient) : il devient lui-même une banque, sans onglets.</p>")) + `
     <div class="chiffres">
       <div class="chiffre"><b>${nb(a.images)}</b><span>images</span></div>
       <div class="chiffre"><b>${nb(a.dossiers)}</b><span>dossier${a.dossiers > 1 ? "s" : ""} d'images</span></div>
@@ -778,6 +782,7 @@ function afficherAnalyseBanque() {
     <div id="i-verif"></div>
     <div class="actions"><button class="btn discret" id="a-retour">${ico("retour")} Retour</button><span class="ressort"></span><button class="btn principal" id="a-suite" disabled>Continuer ${ico("fleche")}</button></div>`;
   $("#a-retour").onclick = () => vueGenre();
+  if ($("#a-forcer")) $("#a-forcer").onclick = () => { S.n.forcer = true; S.n.mode = null; S.n.vignette = undefined; vueAnalyse(); };
   $$(".choix[data-mode]", zone).forEach(b => b.onclick = () => {
     S.n.mode = b.dataset.mode;
     $$(".choix[data-mode]", zone).forEach(x => x.setAttribute("aria-pressed", x === b));
@@ -900,7 +905,7 @@ async function installer() {
       disposition: S.n.neuve ? "neuve" : "existante",
       projets: Object.entries(S.n.coches || {}).filter(([, v]) => v).map(([k]) => k), premier_projet: S.n.premier || "Rushes"};
   } else if (S.n.racine) {
-    reglages = {racine: true, moteur: $("#r-moteur").checked, raccourci: $("#r-raccourci").checked,
+    reglages = {racine: true, forcer_banques: !!S.n.forcer, moteur: $("#r-moteur").checked, raccourci: $("#r-raccourci").checked,
       lignes: Object.entries(S.n.rangs).map(([nom, r]) => ({nom, coche: r.coche, mode: r.mode, vignette: r.vignette}))};
   } else {
     reglages = {mode: S.n.mode, vignette: S.n.vignette, moteur: $("#r-moteur").checked, raccourci: $("#r-raccourci").checked};

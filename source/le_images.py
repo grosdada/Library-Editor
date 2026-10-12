@@ -91,11 +91,56 @@ def classer_suffixes(par_dossier):
 TECHNIQUES = {"serveur", "node_modules", "__pycache__", "$recycle.bin",
               "system volume information"}
 
+# Un asset, c est un PETIT dossier plat : quelques images (la planche, sa
+# vignette, une variante…), aucun sous-dossier. Une banque, c est un dossier qui
+# en contient des dizaines, ou qui contient d autres dossiers. Quand presque
+# tous les sous-dossiers d un dossier sont de petits dossiers plats, ce sont
+# des ASSETS : le dossier est UNE banque, il n a pas a devenir une banque par
+# sous-dossier (12/10/2026 : 648 « banques » d une planche chacune).
+FICHE_MAX_IMAGES = 12
+FICHES_MIN = 10
 
-def analyser(tache, racine):
+
+def nature_sous_dossiers(racine, noms):
+    """Que sont ces sous-dossiers : des assets (petits dossiers plats) ou des
+    banques ? Rapide : un seul listing par sous-dossier, aucune image ouverte."""
+    ix = charger_indexeur()
+    plats, riches, exemples = 0, 0, []
+    for n in noms:
+        p = os.path.join(racine, n)
+        if C.est_banque(p):
+            riches += 1
+            continue
+        try:
+            entrees = list(os.scandir(p))
+        except OSError:
+            continue
+        images = sum(1 for e in entrees if e.is_file()
+                     and os.path.splitext(e.name)[1].lower() in ix.EXTENSIONS)
+        sous = sum(1 for e in entrees if e.is_dir()
+                   and not e.name.startswith((".", "_"))
+                   and e.name.lower() not in TECHNIQUES)
+        if not images and not sous:
+            continue                                  # vide : ne compte pas
+        if images and not sous and images <= FICHE_MAX_IMAGES:
+            plats += 1
+            if len(exemples) < 4:
+                exemples.append(n)
+        else:
+            riches += 1
+    return {"plats": plats, "riches": riches, "exemples": exemples,
+            "assets_probables": plats >= FICHES_MIN and plats >= 4 * riches}
+
+
+def analyser(tache, racine, forcer_banques=False):
     """La racine a onglets : chaque sous-dossier est une banque possible,
     avec son suffixe de vignette devine. Les lignes arrivent au fil de
-    l eau (un disque reseau est lent)."""
+    l eau (un disque reseau est lent).
+
+    Garde-fou : si presque tous les sous-dossiers sont de petits dossiers
+    plats (des assets), le dossier est UNE banque (un asset par dossier), jamais
+    une bibliotheque a onglets. `forcer_banques` : l utilisateur dit que ce sont
+    bien des banques."""
     racine = os.path.abspath(racine)
     det = C.detecter(racine)
     if det and det["genre"] == "films":
@@ -122,6 +167,21 @@ def analyser(tache, racine):
                 "lignes": [], "existante": det, "ancienne_banque": ancienne,
                 "a_la_racine": a_la_racine}
     tache.resultat_partiel = resultat
+    tache.etape_suivante("Que contiennent les sous-dossiers ?")
+    nature = nature_sous_dossiers(racine, noms)
+    resultat["nature"] = nature
+    resultat["assets_probables"] = bool(nature["assets_probables"] and not forcer_banques)
+    if resultat["assets_probables"]:
+        # Chaque sous-dossier est un asset : ce dossier est UNE banque en mode
+        # « un asset par dossier ». Aucune ligne par sous-dossier.
+        banque = analyser_dossier(racine)
+        if banque["proposition"]["mode"] != "dossier":
+            banque["proposition"] = dict(banque["proposition"], mode="dossier")
+        resultat["racine_possible"] = False
+        resultat["conseil"] = "banque"
+        resultat["banque"] = banque
+        tache.terminer_etapes()
+        return resultat
     tache.etape_suivante("Analyse de %d dossier(s)" % len(noms), len(noms))
     for i, n in enumerate(noms):
         tache.verifier()
@@ -452,6 +512,32 @@ def reporter_marques(ancien, racine, tache=None):
     return total
 
 
+def retirer_banques_fraiches(tache, faits, debut):
+    """Retire le serveur\\ des banques que CETTE installation vient de creer (ni
+    plus tot, ni ailleurs) : meme signature qu a la creation (genre « banque »,
+    ecrit apres `debut`), marques vides. Rien d autre n est touche."""
+    n = 0
+    for f in faits:
+        serv = os.path.join(f["racine"] if f.get("racine") else "", "serveur")
+        v = C.lire_json(os.path.join(serv, "_version.json"), {}) or {}
+        marques = C.lire_json(os.path.join(serv, "_marques.json"), {}) or {}
+        try:
+            recent = os.path.getmtime(os.path.join(serv, "_version.json")) >= debut - 1
+        except OSError:
+            recent = False
+        if not (v.get("genre") == "banque" and recent and not marques):
+            tache.ligne("« %s » : serveur laissé en place (non reconnu comme créé ici)"
+                        % os.path.basename(os.path.dirname(serv)), "alerte")
+            continue
+        try:
+            shutil.rmtree(serv)
+            n += 1
+        except OSError as e:
+            tache.ligne("« %s » : serveur non retiré (%s)" % (os.path.basename(os.path.dirname(serv)), e),
+                        "alerte")
+    return n
+
+
 def installer_racine(tache, racine, r):
     """Le dossier choisi devient une bibliotheque generale a onglets, et
     chaque sous-dossier coche une banque. Les images ne sont ni deplacees ni
@@ -471,6 +557,17 @@ def installer_racine(tache, racine, r):
                          "fichier ne sera remplacé. Utilisez « Mettre à jour », ou "
                          "« Préparer une bibliothèque » pour ajouter une banque.")
     a_convertir = bool(det and det["genre"] == "images")
+    if not r.get("forcer_banques"):
+        # Garde-fou : des petits dossiers plats sont des ASSETS, pas des banques.
+        coches = [l.get("nom") for l in (r.get("lignes") or []) if l.get("coche") and l.get("nom")]
+        nat = nature_sous_dossiers(racine, [n for n in coches if os.path.basename(n) == n
+                                            and os.path.isdir(os.path.join(racine, n))])
+        if nat["assets_probables"]:
+            raise ValueError(
+                "Ces %d sous-dossiers ressemblent à des assets (chacun contient quelques "
+                "images, sans sous-dossier : %s…). Un asset n'est pas une banque : installez "
+                "ce dossier comme UNE banque en mode « un asset par dossier » plutôt qu'en "
+                "bibliothèque à onglets. Rien n'a été créé." % (nat["plats"], ", ".join(nat["exemples"])))
     choisies = []
     for l in (r.get("lignes") or []):
         nom = l.get("nom")
@@ -557,6 +654,15 @@ def installer_racine(tache, racine, r):
                 os.rename(mis_de_cote, serveur)      # remis exactement comme avant
             raise ValueError("Mise en place impossible (%s). Rien n'a changé." % e)
         tache.ligne("serveur\\ : accueil à onglets et préparateur en place", "ok")
+    except Exception as e:
+        if isinstance(e, C.Annulation):
+            raise
+        # L accueil n a pas pu etre pose : les banques creees PENDANT cette
+        # tentative sont retirees, pour que « rien n a change » soit vrai (le
+        # 12/10/2026 un echec ici laissait 648 serveur\\ derriere lui).
+        retirees = retirer_banques_fraiches(tache, faits, debut=t0)
+        raise ValueError("%s%s" % (e, (" %d banque(s) créée(s) pendant cette tentative ont été retirées : "
+                                       "aucun serveur n'est resté." % retirees) if retirees else ""))
     finally:
         if os.path.isdir(provisoire):
             shutil.rmtree(provisoire, ignore_errors=True)
