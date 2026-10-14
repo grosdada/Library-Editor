@@ -70,7 +70,8 @@ def chemin_asset(relatif, dossier=False):
     if dossier:
         if not chemin.is_dir():
             raise ValueError("Dossier introuvable.")
-    elif not chemin.is_file() or chemin.suffix.lower() not in INDEXEUR.EXTENSIONS:
+    elif not chemin.is_file() or chemin.suffix.lower() not in (
+            INDEXEUR.EXTENSIONS | getattr(INDEXEUR, "MODELES_3D", set())):
         raise ValueError("Image introuvable.")
     return chemin
 

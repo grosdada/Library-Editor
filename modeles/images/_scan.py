@@ -8,6 +8,8 @@ from pathlib import Path
 import time
 
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".avif"}
+# Modeles 3D d un asset (1.3.44) : listes a part (« modeles »), jamais des vues.
+MODELES_3D = {".glb", ".gltf", ".fbx", ".obj", ".usdz"}
 EXCLUS = {"serveur", ".git", ".codex", "__pycache__", "node_modules", "$recycle.bin", "system volume information"}
 TYPE = "bibliotheque-configurable-v1"
 
@@ -193,6 +195,15 @@ def analyser_dossiers(root, config, sortie=None, forcer=False):
                   "vues": [{"nom": p.stem, "fichier": p.relative_to(root).as_posix()} for p in images],
                   "fichiers": [p.relative_to(root).as_posix() for p in images],
                   "date": int(max(st.st_mtime for st in stats.values()))}
+        # Les modeles 3D du dossier de l asset (pastille « 3D », lien, import).
+        try:
+            modeles = sorted(p.relative_to(root).as_posix() for p in dossier.iterdir()
+                             if p.is_file() and p.suffix.lower() in MODELES_3D
+                             and not p.name.startswith("."))
+        except OSError:
+            modeles = []
+        if modeles:
+            entree["modeles"] = modeles
         if sortie is not None:
             try:
                 actualiser_images(entree, root, sortie, forcer, stats, cache)

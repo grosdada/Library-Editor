@@ -1,6 +1,6 @@
 {
- "version": "1.3.43",
- "date": "2026-10-12",
+ "version": "1.3.44",
+ "date": "2026-10-14",
  "notes": "",
  "genres": {
   "films": {
@@ -186,26 +186,29 @@
     },
     "serveur/preparateur/modeles/_serveur.py": {
      "depot": "modeles/images/_serveur.py",
-     "sha256": "6ae5bef2a6d50c769183821c8182267d327151c18ba2098221a9ab2eee6114bf",
+     "sha256": "31f74d3baff3ff1825c8aed12f1ed0bc32ee438c9c41c32b4eb74f5ec95c27c6",
      "historique": [
       "90a892cdb6e599ef260d3ee2fcce3d9bd399d972c4e4fa9be9c79ff2e00c3280",
-      "2095772de574a3ad0e66124ca27620351c779a09ef5be900bf69efdf898b6577"
+      "2095772de574a3ad0e66124ca27620351c779a09ef5be900bf69efdf898b6577",
+      "6ae5bef2a6d50c769183821c8182267d327151c18ba2098221a9ab2eee6114bf"
      ]
     },
     "serveur/preparateur/modeles/_scan.py": {
      "depot": "modeles/images/_scan.py",
-     "sha256": "d3fc57531149cf8f272d262c998794ad785eeb63a8f30bc2d3f05f4b709ec2f3",
+     "sha256": "1e894635b6998f336c454dfd7389d7dbd6ec5bc14efd73a225bc718b7fe5d7d9",
      "historique": [
       "aa363d7cbcf4901cb3976509408067eb01e9434fcdc1c4a3b88b4d87827a6e7e",
       "33c7b03bafdff1f40111d3ae401d1fdecdee93c62522370c22da564387619744",
-      "e3998832e87e274d57105728f9d50e5003df9392ca2f78abf5cd1eba91741893"
+      "e3998832e87e274d57105728f9d50e5003df9392ca2f78abf5cd1eba91741893",
+      "d3fc57531149cf8f272d262c998794ad785eeb63a8f30bc2d3f05f4b709ec2f3"
      ]
     },
     "serveur/preparateur/modeles/NAVIGATEUR.html": {
      "depot": "modeles/images/NAVIGATEUR.html",
-     "sha256": "90d898b6ce53623a15ef96f66992f5e56f9e43f53848fa030cb8a0cdd7fcb04a",
+     "sha256": "56499e6fb91c6ac5ff456345fd0542f29090c8026a8526399dcbb7ea9a789d5d",
      "historique": [
-      "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945"
+      "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945",
+      "90d898b6ce53623a15ef96f66992f5e56f9e43f53848fa030cb8a0cdd7fcb04a"
      ]
     },
     "serveur/preparateur/modeles/biblio.bat": {
@@ -248,26 +251,29 @@
    "fichiers": {
     "serveur/_serveur.py": {
      "depot": "modeles/images/_serveur.py",
-     "sha256": "6ae5bef2a6d50c769183821c8182267d327151c18ba2098221a9ab2eee6114bf",
+     "sha256": "31f74d3baff3ff1825c8aed12f1ed0bc32ee438c9c41c32b4eb74f5ec95c27c6",
      "historique": [
       "90a892cdb6e599ef260d3ee2fcce3d9bd399d972c4e4fa9be9c79ff2e00c3280",
-      "2095772de574a3ad0e66124ca27620351c779a09ef5be900bf69efdf898b6577"
+      "2095772de574a3ad0e66124ca27620351c779a09ef5be900bf69efdf898b6577",
+      "6ae5bef2a6d50c769183821c8182267d327151c18ba2098221a9ab2eee6114bf"
      ]
     },
     "serveur/_scan.py": {
      "depot": "modeles/images/_scan.py",
-     "sha256": "d3fc57531149cf8f272d262c998794ad785eeb63a8f30bc2d3f05f4b709ec2f3",
+     "sha256": "1e894635b6998f336c454dfd7389d7dbd6ec5bc14efd73a225bc718b7fe5d7d9",
      "historique": [
       "aa363d7cbcf4901cb3976509408067eb01e9434fcdc1c4a3b88b4d87827a6e7e",
       "33c7b03bafdff1f40111d3ae401d1fdecdee93c62522370c22da564387619744",
-      "e3998832e87e274d57105728f9d50e5003df9392ca2f78abf5cd1eba91741893"
+      "e3998832e87e274d57105728f9d50e5003df9392ca2f78abf5cd1eba91741893",
+      "d3fc57531149cf8f272d262c998794ad785eeb63a8f30bc2d3f05f4b709ec2f3"
      ]
     },
     "serveur/NAVIGATEUR.html": {
      "depot": "modeles/images/NAVIGATEUR.html",
-     "sha256": "90d898b6ce53623a15ef96f66992f5e56f9e43f53848fa030cb8a0cdd7fcb04a",
+     "sha256": "56499e6fb91c6ac5ff456345fd0542f29090c8026a8526399dcbb7ea9a789d5d",
      "historique": [
-      "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945"
+      "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945",
+      "90d898b6ce53623a15ef96f66992f5e56f9e43f53848fa030cb8a0cdd7fcb04a"
      ]
     },
     "serveur/_maj.py": {
@@ -304,12 +310,5 @@
     }
    }
   }
- },
- "commit": "c7fbf96b7b803674d7dd3c391e0c61de2c2ef246",
- "installeur": {
-  "version": "1.3.43",
-  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.3.43/Library-Editor-1.3.43.zip",
-  "octets": 38497216,
-  "sha256": "ff33d8d0b30cfcd4be2db670feb3d69ab95a6b7e2732b8238d883ab1d2959cee"
  }
 }

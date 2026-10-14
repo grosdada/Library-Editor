@@ -907,6 +907,10 @@ def essais_garde_fou():
         nom = "%03d-asset" % (i + 1)
         image_essai(os.path.join(A, nom, nom + "-base.jpg"), "0x2244%02x" % (20 + i * 5))
         image_essai(os.path.join(A, nom, nom + "_sheets.jpg"), "0x44%02x22" % (20 + i * 5))
+    # un modele 3D dans deux assets (1.3.44) : liste « modeles », jamais une vue
+    for nom in ("001-asset", "002-asset"):
+        with open(os.path.join(A, nom, nom + "-3D.glb"), "wb") as f:
+            f.write(b"glTF" + bytes(16))
     a = I.analyser(tache(), A)
     v("12 petits dossiers plats : conseil banque (pas onglets)", a["conseil"] == "banque", a["conseil"])
     v("assets probables signales, 12 plats", a.get("assets_probables") is True
@@ -930,6 +934,12 @@ def essais_garde_fou():
                                             for d in os.listdir(A)) and not os.path.exists(os.path.join(A, "serveur")))
     r = I.installer(tache(), A, {"mode": "dossier", "vignette": "-base", "moteur": False, "raccourci": False})
     v("une seule banque, 12 fiches", r["fiches"] == 12 and r["mode"] == "dossier", (r["fiches"], r["mode"]))
+    dA = C.lire_json(os.path.join(A, "serveur", "_donnees.json"), {})
+    m3 = {x["nom"]: x.get("modeles") for x in dA.get("items", [])}
+    v("modeles 3D indexes (2 assets), pas comptes comme vues",
+      m3.get("001-asset") == ["001-asset/001-asset-3D.glb"] and m3.get("002-asset") == ["002-asset/002-asset-3D.glb"]
+      and m3.get("003-asset") is None
+      and all(not f.endswith(".glb") for x in dA["items"] for f in x["fichiers"]), m3)
     v("un seul serveur, a la racine", os.path.isdir(os.path.join(A, "serveur"))
       and not any(os.path.isdir(os.path.join(A, d, "serveur")) for d in os.listdir(A) if d != "serveur"))
 
