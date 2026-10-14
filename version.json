@@ -1,5 +1,5 @@
 {
- "version": "1.3.44",
+ "version": "1.3.45",
  "date": "2026-10-14",
  "notes": "",
  "genres": {
@@ -205,10 +205,11 @@
     },
     "serveur/preparateur/modeles/NAVIGATEUR.html": {
      "depot": "modeles/images/NAVIGATEUR.html",
-     "sha256": "56499e6fb91c6ac5ff456345fd0542f29090c8026a8526399dcbb7ea9a789d5d",
+     "sha256": "b739cf6b5a88b2ac7b0781f5f715de0c19e5d9eb9e00051ddc8752c6f3500255",
      "historique": [
       "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945",
-      "90d898b6ce53623a15ef96f66992f5e56f9e43f53848fa030cb8a0cdd7fcb04a"
+      "90d898b6ce53623a15ef96f66992f5e56f9e43f53848fa030cb8a0cdd7fcb04a",
+      "56499e6fb91c6ac5ff456345fd0542f29090c8026a8526399dcbb7ea9a789d5d"
      ]
     },
     "serveur/preparateur/modeles/biblio.bat": {
@@ -270,10 +271,11 @@
     },
     "serveur/NAVIGATEUR.html": {
      "depot": "modeles/images/NAVIGATEUR.html",
-     "sha256": "56499e6fb91c6ac5ff456345fd0542f29090c8026a8526399dcbb7ea9a789d5d",
+     "sha256": "b739cf6b5a88b2ac7b0781f5f715de0c19e5d9eb9e00051ddc8752c6f3500255",
      "historique": [
       "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945",
-      "90d898b6ce53623a15ef96f66992f5e56f9e43f53848fa030cb8a0cdd7fcb04a"
+      "90d898b6ce53623a15ef96f66992f5e56f9e43f53848fa030cb8a0cdd7fcb04a",
+      "56499e6fb91c6ac5ff456345fd0542f29090c8026a8526399dcbb7ea9a789d5d"
      ]
     },
     "serveur/_maj.py": {
@@ -310,12 +312,5 @@
     }
    }
   }
- },
- "commit": "236980a2276ff097b163ac4f3d7f439a710ad678",
- "installeur": {
-  "version": "1.3.44",
-  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.3.44/Library-Editor-1.3.44.zip",
-  "octets": 38515680,
-  "sha256": "248f239903fa882bc7598e8231d17705a2c6de590c3dd827ed663fb8eba3cac5"
  }
 }
