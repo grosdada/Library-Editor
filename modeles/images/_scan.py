@@ -195,11 +195,21 @@ def analyser_dossiers(root, config, sortie=None, forcer=False):
                   "vues": [{"nom": p.stem, "fichier": p.relative_to(root).as_posix()} for p in images],
                   "fichiers": [p.relative_to(root).as_posix() for p in images],
                   "date": int(max(st.st_mtime for st in stats.values()))}
-        # Les modeles 3D du dossier de l asset (pastille « 3D », lien, import).
+        # Les modeles 3D du dossier de l asset (pastille « 3D », lecteur, lien, import), et ceux de
+        # ses sous-dossiers SANS image (ex. « Hi-Rez-3D ») : un sous-dossier avec images est un
+        # autre asset, ses modeles sont les siens.
         try:
             modeles = sorted(p.relative_to(root).as_posix() for p in dossier.iterdir()
                              if p.is_file() and p.suffix.lower() in MODELES_3D
                              and not p.name.startswith("."))
+            for sd in sorted(dossier.iterdir()):
+                if not sd.is_dir() or sd.name.startswith((".", "_")):
+                    continue
+                contenu = [p for p in sd.iterdir() if p.is_file() and not p.name.startswith(".")]
+                if any(p.suffix.lower() in EXTENSIONS for p in contenu):
+                    continue
+                modeles += sorted(p.relative_to(root).as_posix() for p in contenu
+                                  if p.suffix.lower() in MODELES_3D)
         except OSError:
             modeles = []
         if modeles:

@@ -31,15 +31,171 @@ dialog{padding:0;background:var(--carte);color:var(--encre);border:1px solid var
 dialog::backdrop{background:rgba(0,0,0,.86)}.vue{background:#0d0f11;text-align:center}#grande{max-width:100%;width:100%;height:66vh;object-fit:contain;display:block;margin:0 auto}
 .corps{padding:14px 18px}.corps h2{margin:0 0 3px;font-size:16px}.marques-detail{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 12px;padding:9px 10px;background:#181b1e;border:1px solid var(--trait);border-radius:5px}.detail-favori[aria-pressed=true]{color:#ffc83d;border-color:#ffc83d}.detail-couleurs{display:flex;gap:7px;align-items:center}.detail-couleurs .pastille-choix[aria-pressed=true]{border-color:var(--encre);box-shadow:0 0 0 2px var(--carte),0 0 0 3px var(--encre)}.detail-couleurs .aucune{background:var(--carte);border-style:dashed;color:var(--sourd)}.onglets{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;align-items:center}.onglets button{font-size:12px;overflow-wrap:anywhere;max-width:100%}
 .onglets button[aria-pressed=true]{background:var(--orange);border-color:var(--orange);color:white}.act{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}.act a{color:var(--encre)}
+#vue3d{height:66vh}#vue3d[hidden]{display:none}.onglets button.v3d{border-color:#e8a33d;color:#e8a33d}.onglets button.v3d[aria-pressed=true]{background:#e8a33d;border-color:#e8a33d;color:#1b1406}
 .lig{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--trait);font-size:12px}.lig i{color:var(--sourd);font-style:normal;min-width:70px}.lig code{word-break:break-all}
 #selbar{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:60;background:var(--carte);border:1px solid var(--sourd);border-radius:9px;box-shadow:0 10px 34px #000c;padding:10px 14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap;max-width:96vw}
 #selN{font-size:12px;color:var(--sourd);white-space:nowrap}[hidden]{display:none!important}
-@media(max-width:600px){#grille{grid-template-columns:repeat(2,minmax(0,1fr));padding:12px 10px 100px;gap:10px}header{padding:12px 10px}#q{min-width:0;width:100%}.barre{gap:8px}#selbar{width:96vw}.onglets{gap:5px}#grande{height:55vh}}
+@media(max-width:600px){#grille{grid-template-columns:repeat(2,minmax(0,1fr));padding:12px 10px 100px;gap:10px}header{padding:12px 10px}#q{min-width:0;width:100%}.barre{gap:8px}#selbar{width:96vw}.onglets{gap:5px}#grande,#vue3d{height:55vh}}
 </style></head><body>
 <header><h1 id="titre">Bibliothèque</h1><div class="barre"><input id="q" placeholder="chercher un nom, un numéro…" aria-label="Rechercher un nom"><input type="checkbox" id="favoris" hidden><button id="bFavoris" aria-pressed="false">★ favoris</button><div class="sep"></div><select id="couleur" hidden><option value="">Toutes les pastilles</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select><div id="filtres-couleurs" role="group" aria-label="Filtrer par couleur"><button type="button" class="filtre-couleur couleur-1" data-filtre="1" aria-label="Filtrer : Rouge" title="Rouge" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-2" data-filtre="2" aria-label="Filtrer : Jaune" title="Jaune" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-3" data-filtre="3" aria-label="Filtrer : Vert" title="Vert" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-4" data-filtre="4" aria-label="Filtrer : Bleu" title="Bleu" aria-pressed="false"></button><button type="button" class="filtre-couleur couleur-5" data-filtre="5" aria-label="Filtrer : Violet" title="Violet" aria-pressed="false"></button><button type="button" class="filtre-3d" id="filtre3d" aria-pressed="false" title="Seulement les assets qui ont un modèle 3D" aria-label="Filtrer : avec modèle 3D">3D</button></div><button id="tout">tout</button><div class="sep"></div><button id="scan">Mettre à jour</button><button id="maj" hidden title="Mettre à jour le programme depuis GitHub">Programme</button><span id="compte"></span></div><div class="sous-barre"><select id="dossier" aria-label="Filtrer par dossier"><option value="">Tous les dossiers</option></select><select id="tri" aria-label="Trier"><option value="nom">Par nom</option><option value="date">Plus récents</option></select><button id="selection">Sélectionner les résultats</button></div></header>
 <p id="message" role="status" hidden></p><main id="grille"></main><div id="menu" role="group" aria-label="Choisir une pastille" hidden></div>
-<dialog id="detail"><div class="vue"><img id="grande" alt=""></div><div class="corps"><h2 id="nom-detail"></h2><div class="marques-detail"><button type="button" id="detail-favori" class="detail-favori" aria-pressed="false">☆ Favori</button><div class="detail-couleurs" role="group" aria-label="Pastille de couleur"><button type="button" class="pastille-choix aucune" data-detail-couleur="0" aria-label="Aucune couleur" title="Aucune">×</button><button type="button" class="pastille-choix couleur-1" data-detail-couleur="1" aria-label="Rouge" title="Rouge"></button><button type="button" class="pastille-choix couleur-2" data-detail-couleur="2" aria-label="Jaune" title="Jaune"></button><button type="button" class="pastille-choix couleur-3" data-detail-couleur="3" aria-label="Vert" title="Vert"></button><button type="button" class="pastille-choix couleur-4" data-detail-couleur="4" aria-label="Bleu" title="Bleu"></button><button type="button" class="pastille-choix couleur-5" data-detail-couleur="5" aria-label="Violet" title="Violet"></button></div></div><div id="vues" class="onglets"></div><div class="lig"><i>Dossier</i><code id="detail-dossier"></code></div><div class="act"><button id="precedent" aria-label="Asset précédent">‹ Précédent</button><button id="suivant" aria-label="Asset suivant">Suivant ›</button><button id="ouvrir">Ouvrir le dossier</button><a id="original" target="_blank" rel="noopener">Image originale</a><span id="modeles3d"></span><button id="fermer">Fermer</button></div></div></dialog>
+<dialog id="detail"><div class="vue"><img id="grande" alt=""><div id="vue3d" hidden></div></div><div class="corps"><h2 id="nom-detail"></h2><div class="marques-detail"><button type="button" id="detail-favori" class="detail-favori" aria-pressed="false">☆ Favori</button><div class="detail-couleurs" role="group" aria-label="Pastille de couleur"><button type="button" class="pastille-choix aucune" data-detail-couleur="0" aria-label="Aucune couleur" title="Aucune">×</button><button type="button" class="pastille-choix couleur-1" data-detail-couleur="1" aria-label="Rouge" title="Rouge"></button><button type="button" class="pastille-choix couleur-2" data-detail-couleur="2" aria-label="Jaune" title="Jaune"></button><button type="button" class="pastille-choix couleur-3" data-detail-couleur="3" aria-label="Vert" title="Vert"></button><button type="button" class="pastille-choix couleur-4" data-detail-couleur="4" aria-label="Bleu" title="Bleu"></button><button type="button" class="pastille-choix couleur-5" data-detail-couleur="5" aria-label="Violet" title="Violet"></button></div></div><div id="vues" class="onglets"></div><div class="lig"><i>Dossier</i><code id="detail-dossier"></code></div><div class="act"><button id="precedent" aria-label="Asset précédent">‹ Précédent</button><button id="suivant" aria-label="Asset suivant">Suivant ›</button><button id="ouvrir">Ouvrir le dossier</button><a id="original" target="_blank" rel="noopener">Image originale</a><span id="modeles3d"></span><button id="fermer">Fermer</button></div></div></dialog>
 <div id="selbar" hidden><span id="selN"></span><div class="sep"></div><button class="pastille-choix couleur-0" data-selection-couleur="0" aria-label="Appliquer : Aucune" title="Aucune">×</button><button class="pastille-choix couleur-1" data-selection-couleur="1" aria-label="Appliquer : Rouge" title="Rouge"></button><button class="pastille-choix couleur-2" data-selection-couleur="2" aria-label="Appliquer : Jaune" title="Jaune"></button><button class="pastille-choix couleur-3" data-selection-couleur="3" aria-label="Appliquer : Vert" title="Vert"></button><button class="pastille-choix couleur-4" data-selection-couleur="4" aria-label="Appliquer : Bleu" title="Bleu"></button><button class="pastille-choix couleur-5" data-selection-couleur="5" aria-label="Appliquer : Violet" title="Violet"></button><div class="sep"></div><button id="zip">Télécharger le ZIP</button><button id="vider">Tout désélectionner</button></div><iframe name="telechargement" title="Téléchargement du ZIP" hidden></iframe>
+<script>
+/* lecteur3d:debut — petit lecteur three.js des modeles .glb / .gltf (16/10/2026).
+   three.js est charge a la demande depuis jsDelivr, version figee : rien n est telecharge tant
+   qu on n ouvre pas un modele. Sans Internet, le lecteur le dit ; le lien de telechargement reste.
+   Lecteur3D.ouvrir(boite, url) -> {fermer()}. Glisser : tourner, molette : zoom, clic droit :
+   deplacer, double-clic : recadrer. Le modele tourne seul jusqu au premier geste. */
+(function () {
+  if (window.Lecteur3D) return;
+  var B = 'https://cdn.jsdelivr.net/npm/three@0.160.0';
+  var mods = null;
+  function charger() {
+    if (!mods) mods = Promise.all([
+      import(B + '/+esm'),
+      import(B + '/examples/jsm/loaders/GLTFLoader.js/+esm'),
+      import(B + '/examples/jsm/controls/OrbitControls.js/+esm'),
+      import(B + '/examples/jsm/loaders/DRACOLoader.js/+esm'),
+      import(B + '/examples/jsm/libs/meshopt_decoder.module.js/+esm'),
+      import(B + '/examples/jsm/environments/RoomEnvironment.js/+esm')
+    ]).catch(function (e) { mods = null; throw e; });
+    return mods;
+  }
+  function est3D(n) { return /\.(glb|gltf)$/i.test(String(n || '').split('?')[0]); }
+  function nomDe(n) { return String(n || '').split('?')[0].split('/').pop(); }
+
+  function ouvrir(boite, url) {
+    var fini = false, ren = null, ro = null, raf = 0, ctl = null, scene = null, mixer = null, cadre = null;
+    boite.replaceChildren();
+    boite.classList.add('l3d');
+    var msg = document.createElement('div');
+    msg.className = 'l3d-msg';
+    msg.textContent = 'Chargement du lecteur 3D…';
+    var aide = document.createElement('div');
+    aide.className = 'l3d-aide';
+    aide.textContent = 'glisser : tourner · molette : zoom · clic droit : déplacer · double-clic : recadrer';
+    boite.append(msg);
+    charger().then(function (m) {
+      if (fini) return;
+      var T = m[0], GLTFLoader = m[1].GLTFLoader, OrbitControls = m[2].OrbitControls,
+          DRACOLoader = m[3].DRACOLoader, MeshoptDecoder = m[4].MeshoptDecoder,
+          RoomEnvironment = m[5].RoomEnvironment;
+      var L = function () { return Math.max(50, boite.clientWidth); };
+      var H = function () { return Math.max(50, boite.clientHeight); };
+      ren = new T.WebGLRenderer({antialias: true});
+      ren.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+      ren.setSize(L(), H());
+      ren.outputColorSpace = T.SRGBColorSpace;
+      ren.toneMapping = T.ACESFilmicToneMapping;
+      ren.setClearColor(0x1a1c20);
+      boite.prepend(ren.domElement);
+      ren.toneMappingExposure = 1.15;
+      scene = new T.Scene();
+      var pm = new T.PMREMGenerator(ren);
+      scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+      pm.dispose();
+      // Une lumiere principale, de trois quarts avant : l environnement seul laissait les
+      // modeles ternes a cote de leur image.
+      var cle = new T.DirectionalLight(0xffffff, 1.6);
+      cle.position.set(1, 1.6, 1.4);
+      scene.add(cle, new T.HemisphereLight(0xffffff, 0x30343c, 0.6));
+      var cam = new T.PerspectiveCamera(40, L() / H(), 0.01, 1000);
+      ctl = new OrbitControls(cam, ren.domElement);
+      ctl.enableDamping = true;
+      ctl.autoRotate = true;
+      ctl.autoRotateSpeed = 1.2;
+      ren.domElement.addEventListener('pointerdown', function () { ctl.autoRotate = false; });
+      ren.domElement.addEventListener('dblclick', function () { if (cadre) cadre(); });
+      var draco = new DRACOLoader();
+      draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+      var gl = new GLTFLoader();
+      gl.setDRACOLoader(draco);
+      gl.setMeshoptDecoder(MeshoptDecoder);
+      msg.textContent = 'Chargement du modèle…';
+      gl.load(url, function (g) {
+        if (fini) return;
+        var o = g.scene;
+        scene.add(o);
+        var bb = new T.Box3().setFromObject(o);
+        var c = bb.getCenter(new T.Vector3()), s = bb.getSize(new T.Vector3());
+        o.position.sub(c);
+        var r = Math.max(s.x, s.y, s.z) || 1;
+        cadre = function () {
+          var d = r / (2 * Math.tan(cam.fov * Math.PI / 360)) * 1.4;
+          cam.position.set(d * 0.55, d * 0.3, d);
+          cam.near = r / 200; cam.far = r * 200;
+          cam.updateProjectionMatrix();
+          ctl.target.set(0, 0, 0);
+          ctl.update();
+        };
+        cadre();
+        if (g.animations && g.animations.length) {
+          mixer = new T.AnimationMixer(o);
+          g.animations.forEach(function (a) { mixer.clipAction(a).play(); });
+        }
+        msg.remove();
+        boite.append(aide);
+      }, function (ev) {
+        if (ev && ev.total) msg.textContent = 'Chargement du modèle… ' + Math.round(ev.loaded / ev.total * 100) + ' %';
+      }, function (err) {
+        if (!fini) msg.textContent = 'Modèle illisible — ' + ((err && err.message) || err);
+      });
+      ro = new ResizeObserver(function () {
+        ren.setSize(L(), H());
+        cam.aspect = L() / H();
+        cam.updateProjectionMatrix();
+      });
+      ro.observe(boite);
+      var horloge = new T.Clock();
+      var tour = function () {
+        if (fini) return;
+        raf = requestAnimationFrame(tour);
+        var dt = horloge.getDelta();
+        if (mixer) mixer.update(dt);
+        ctl.update();
+        ren.render(scene, cam);
+      };
+      tour();
+    }).catch(function (e) {
+      if (!fini) msg.textContent = 'Lecteur 3D indisponible (il faut une connexion Internet) — ' + ((e && e.message) || e);
+    });
+    return {
+      fermer: function () {
+        if (fini) return;
+        fini = true;
+        cancelAnimationFrame(raf);
+        if (ro) ro.disconnect();
+        if (scene) scene.traverse(function (o) {
+          if (o.geometry) o.geometry.dispose();
+          var ms = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+          ms.forEach(function (x) {
+            for (var k in x) if (x[k] && x[k].isTexture) x[k].dispose();
+            x.dispose();
+          });
+        });
+        if (scene && scene.environment) scene.environment.dispose();
+        if (ctl) ctl.dispose();
+        if (ren) { ren.dispose(); if (ren.forceContextLoss) ren.forceContextLoss(); }
+        boite.replaceChildren();
+        boite.classList.remove('l3d');
+      }
+    };
+  }
+
+  var st = document.createElement('style');
+  st.textContent =
+    '.l3d{position:relative;overflow:hidden;background:#1a1c20}' +
+    '.l3d canvas{display:block;width:100%!important;height:100%!important;touch-action:none;cursor:grab}' +
+    '.l3d canvas:active{cursor:grabbing}' +
+    '.l3d-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;' +
+    'color:#c9ccd4;font:13px/1.4 system-ui,sans-serif;padding:20px;text-align:center}' +
+    '.l3d-aide{position:absolute;left:10px;bottom:8px;color:#8d919c;font:11px system-ui,sans-serif;pointer-events:none}';
+  document.head.appendChild(st);
+  window.Lecteur3D = {ouvrir: ouvrir, est3D: est3D, nomDe: nomDe};
+})();
+/* lecteur3d:fin */
+</script>
 <script>
 const $=id=>document.getElementById(id),choix=new Set();let items=[],marques={},visibles=[],courant=null,fichierCourant=null;
 const couleurs=['Aucune','Rouge','Jaune','Vert','Bleu','Violet'];
@@ -95,17 +251,23 @@ function menuPastille(item,ancre){
 document.addEventListener('click',e=>{if(!$('menu').contains(e.target))$('menu').hidden=true;});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('menu').hidden=true;});
 
+// Le lecteur 3D (1.3.48) : un onglet au nom de chaque .glb / .gltf, a cote des vues ; on bascule
+// de l image au modele et retour. Il est ferme (memoire GPU rendue) des qu on quitte le modele.
+let lecteur3d=null;
+function fermer3d(){if(lecteur3d){lecteur3d.fermer();lecteur3d=null;}$('vue3d').hidden=true;$('grande').hidden=false;}
+function voir3d(m,item,b){fermer3d();$('grande').hidden=true;$('vue3d').hidden=false;lecteur3d=window.Lecteur3D?window.Lecteur3D.ouvrir($('vue3d'),url(m,item)):null;for(const enfant of $('vues').children)enfant.setAttribute('aria-pressed',String(enfant===b));}
 function detail(item,fichier=null){fichier=fichier||item.vignette;
  courant=item;$('detail-dossier').textContent=item.dossier;$('nom-detail').textContent=item.nom;$('vues').replaceChildren();actualiserMarquesDetail();
  const vues=item.vues.length?item.vues:[{nom:'Vignette',fichier:item.vignette}];
- function vue(v,b){fichierCourant=v.fichier;$('grande').src=url(v.fichier,item);$('grande').alt=item.nom+' — '+v.nom;$('original').href=url(v.fichier,item);for(const enfant of $('vues').children)enfant.setAttribute('aria-pressed',String(enfant===b));}
+ function vue(v,b){fermer3d();fichierCourant=v.fichier;$('grande').src=url(v.fichier,item);$('grande').alt=item.nom+' — '+v.nom;$('original').href=url(v.fichier,item);for(const enfant of $('vues').children)enfant.setAttribute('aria-pressed',String(enfant===b));}
  vues.forEach((v,i)=>{const b=document.createElement('button');b.textContent=v.nom;b.onclick=()=>vue(v,b);$('vues').append(b);if(v.fichier===fichier||(!i&&!vues.some(x=>x.fichier===fichier)))vue(v,b);});
+ (item.modeles||[]).filter(m=>window.Lecteur3D&&window.Lecteur3D.est3D(m)).forEach(m=>{const b=document.createElement('button');b.className='v3d';b.textContent='◆ '+m.split('/').pop();b.title='Voir ce modèle en 3D';b.onclick=()=>voir3d(m,item,b);$('vues').append(b);});
  // Les modeles 3D de l asset : un lien de telechargement par fichier.
- $('modeles3d').replaceChildren(...(item.modeles||[]).map(m=>{const a=document.createElement('a');a.href=url(m,item);a.download=m.split('/').pop();a.textContent='Modèle 3D · '+m.split('/').pop();a.style.marginLeft='12px';return a;}));
+ $('modeles3d').replaceChildren(...(item.modeles||[]).map(m=>{const a=document.createElement('a');a.href=url(m,item);a.download=m.split('/').pop();a.textContent='Modèle 3D · '+m.split('/').pop();a.title='Télécharger';a.style.marginLeft='12px';return a;}));
  if(!$('detail').open)$('detail').showModal();
 }
 function voisin(delta){const i=visibles.findIndex(x=>x.id===courant?.id);if(visibles.length)detail(visibles[(i+delta+visibles.length)%visibles.length]);}
-$('precedent').onclick=()=>voisin(-1);$('suivant').onclick=()=>voisin(1);$('fermer').onclick=()=>$('detail').close();
+$('precedent').onclick=()=>voisin(-1);$('suivant').onclick=()=>voisin(1);$('fermer').onclick=()=>$('detail').close();$('detail').addEventListener('close',fermer3d);
 $('detail-favori').onclick=()=>courant&&marquer(courant,{fav:!marques[courant.id]?.fav});
 for(const bouton of document.querySelectorAll('[data-detail-couleur]'))bouton.onclick=()=>courant&&marquer(courant,{coul:Number(bouton.dataset.detailCouleur)});
 $('detail').addEventListener('keydown',e=>{if(e.key==='ArrowLeft')voisin(-1);if(e.key==='ArrowRight')voisin(1);});
