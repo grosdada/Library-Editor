@@ -8,6 +8,7 @@
  --rouge:#a8302f;
  --c0:#4a4843;--c1:#a8302f;--c2:#c98a2b;--c3:#6a9b4a;--c4:#4a7fa8;--c5:#7a5a9b;
  --wMoni:430px;--wRegl:236px;--hFooter:270px;--wDeck:250px;--wAside:196px;
+ --wSource:380px;
  --vign:206px}
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -177,6 +178,39 @@ body.rangeable:not(.rangement) #bSource .piste i{left:11px;background:#fff}
  grid-template-columns:repeat(auto-fill,var(--vign));gap:9px;
  align-content:start;align-items:start;justify-content:start}
 body.edit #grille{flex:0 0 var(--wDeck);border-right:1px solid var(--trait)}
+/* La fenetre source (1.3.47) : en mode Sequence seulement, a gauche du
+   moniteur du montage, quand on l a ouverte. */
+#fenSource,.rz[data-rz=source]{display:none}
+body.edit.srcOuvert #fenSource{display:flex}
+body.edit.srcOuvert .rz[data-rz=source]{display:block}
+#fenSource{flex:0 0 var(--wSource);min-width:0;flex-direction:column;gap:5px;
+ padding:5px 4px 5px 10px}
+#fenSource .srcTete{display:flex;align-items:center;gap:7px;font-size:12px;min-height:24px}
+#fenSource .srcTete b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fenSource .srcTete .etq{color:var(--or);font-size:10px;letter-spacing:.12em;
+ text-transform:uppercase;white-space:nowrap}
+#fenSource .srcTete .sp{flex:1 1 auto}
+#fenSource .srcTete button{padding:1px 8px;line-height:18px}
+#srcCadre{flex:1 1 auto;min-height:60px;background:#000;border-radius:4px;display:flex;
+ align-items:center;justify-content:center;overflow:hidden;position:relative;cursor:grab}
+#srcCadre video,#srcCadre img{max-width:100%;max-height:100%;width:100%;height:100%;
+ object-fit:contain;display:block}
+#srcCadre .vide{color:var(--sourd);font-size:12px;padding:12px;text-align:center}
+#srcCadre .note{position:absolute;font-size:44px;color:var(--sourd);pointer-events:none}
+#srcCadre.depot{outline:2px dashed var(--orange);outline-offset:-3px}
+#srcBarre{position:relative;height:26px;background:var(--carte);border:1px solid var(--trait);
+ border-radius:4px;cursor:pointer;touch-action:none}
+#srcBarre.sans{display:none}
+#srcZone{position:absolute;top:0;bottom:0;background:#d9532b55;border-left:2px solid var(--orange);
+ border-right:2px solid var(--orange);pointer-events:none}
+#srcBarre .poi{position:absolute;top:-3px;bottom:-3px;width:12px;margin-left:-6px;cursor:ew-resize;z-index:2}
+#srcBarre .poi::after{content:"";position:absolute;top:0;bottom:0;width:6px;
+ border:3px solid var(--or);background:transparent}
+#srcBarre .poi[data-srcpoi=e]::after{left:6px;border-right:0}
+#srcBarre .poi[data-srcpoi=o]::after{right:6px;border-left:0}
+#srcBarre .lect{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:#fff;
+ pointer-events:none;z-index:1}
+#fenSource .transport .tc{margin-left:4px}
 /* Surtout PAS overflow:hidden ici : un element de grille dont le debordement
    est masque voit sa contribution de hauteur s effondrer, la ligne se calcule
    a quelques pixels et les cartes se chevauchent en bandes ecrasees.
@@ -901,6 +935,26 @@ here and change nothing to the files">My folders</button>
   <div class="rz vert" data-rz="aside"></div>
   <section id="grille"></section>
   <div class="rz vert" data-rz="moni"></div>
+  <div id="fenSource">
+    <div class="srcTete"><span class="etq" id="srcEtq">Source</span>
+      <b id="srcNom"></b><span class="sp"></span>
+      <button id="srcX" title="close the source window">✕</button></div>
+    <div id="srcCadre" draggable="true"
+      title="drag this picture onto the timeline to insert the rush between its in and out points"><div
+      class="vide">Double-click a rush (or a block) to load it here — or drop a rush from the strip.</div></div>
+    <div id="srcBarre"><div id="srcZone"></div><div class="lect" id="srcLect"></div>
+      <div class="poi" data-srcpoi="e" title="in point — drag to adjust"></div>
+      <div class="poi" data-srcpoi="o" title="out point — drag to adjust"></div></div>
+    <div class="transport">
+      <button id="srcPlay" class="tr" title="play the range (Space with the mouse over this window)">▶</button>
+      <button id="srcIn" class="tr" title="in point here (I with the mouse over this window)">[</button>
+      <button id="srcOut" class="tr" title="out point here (O with the mouse over this window)">]</button>
+      <span class="tc" id="srcTc"></span>
+      <button id="srcAjout" class="tr pousse"
+        title="insert this range at the playhead">Add</button>
+    </div>
+  </div>
+  <div class="rz vert" data-rz="source"></div>
   <div class="moniteur" id="moniteur">
     <div class="cadreMoni"><canvas id="moni" width="1280" height="720"></canvas>
       <svg id="mqCalque" xmlns="http://www.w3.org/2000/svg"></svg></div>
@@ -1311,7 +1365,8 @@ const RZ = {
   aside: {v: '--wAside', min: 120, max: 520, sens: 1},
   moni: {v: '--wMoni', min: 200, max: 900, sens: -1},
   regl: {v: '--wRegl', min: 150, max: 620, sens: -1},
-  footer: {v: '--hFooter', min: 150, max: 900, sens: -1}
+  footer: {v: '--hFooter', min: 150, max: 900, sens: -1},
+  source: {v: '--wSource', min: 160, max: 1100, sens: 1}
 };
 $$('.rz').forEach(el => {
   el.addEventListener('pointerdown', e => {
@@ -1628,7 +1683,9 @@ function rendreGrille() {
   const n = selection.size;
   $('#selInfo').textContent = n
     ? n + (n > 1 ? ' clips selected' : ' clip selected') : 'no clip';
-  $('#bAjouter').disabled = !n;
+  // La fenetre source chargee d un rush de la bande suffit a « Add ».
+  $('#bAjouter').disabled = !n &&
+    !(typeof sourcePourAjout === 'function' && sourcePourAjout());
 }
 
 function rendre() { rendreDossiers(); rendreGrille(); }
@@ -1757,6 +1814,12 @@ grille.addEventListener('dblclick', e => {
   // preventDefault coupe le plein ecran natif que Chrome declenche sur un
   // double-clic dans une video a controles.
   e.preventDefault(); e.stopPropagation();
+  // En Sequence, le double-clic charge le rush dans la fenetre source (et
+  // l ouvre) au lieu du pop-up (David, 15/10).
+  if (document.body.classList.contains('edit')) {
+    ouvrirSource({film: c.dataset.id});
+    return;
+  }
   agrandir(c.dataset.id);
 });
 
@@ -1922,7 +1985,7 @@ grille.addEventListener('contextmenu', e => {
     '</div><div class="it" data-carte-act="usages">' +
     '⌕ Used in which sequences…</div>' +
     (REVELER_OK
-      ? '<div class="it" data-carte-act="disque">⊞ Show in computer</div>'
+      ? '<div class="it" data-carte-act="disque">⊞ Reveal file on disk</div>'
       : '') +
     '<div class="sep"></div><div class="lbl">Colour filter</div>' +
     chipsCats('data-carte-coul', catDe(f.coul) ? +f.coul : 0);
@@ -3723,6 +3786,8 @@ function mode(m) {
   $('#mRush').classList.toggle('on', m !== 'edit');
   $('#mEdit').classList.toggle('on', m === 'edit');
   pref.ecrire('mode', m);
+  // La fenetre source n existe qu en Sequence : on la fait taire en partant.
+  if (m !== 'edit' && typeof pauseSource === 'function') pauseSource();
   appliquerProfil();
   rendreTimeline();
   // Le moniteur n a pas la meme regle de taille des deux cotes : on le recale
@@ -5285,6 +5350,11 @@ function ajouterAuMontage(ids, pisteId, t0) {
 // un depot a la souris, puis avance la tete a la fin de ce qui vient d etre
 // pose : deux « Add » de suite mettent les plans bout a bout.
 $('#bAjouter').onclick = () => {
+  // Fenetre source ouverte sur un rush de la bande : « Add » pose ce rush
+  // entre ses points d entree et de sortie.
+  if (typeof sourcePourAjout === 'function' && sourcePourAjout()) {
+    ajouterSourceTete(); return;
+  }
   const avant = new Set(CLIPS.map(c => c.uid));
   const n = ajouterAuMontage([...selection], null, tLect);
   if (!n) return;
@@ -5316,8 +5386,12 @@ $('#lanes').addEventListener('drop', e => {
   e.preventDefault();
   let d;
   try { d = JSON.parse(e.dataTransfer.getData('text/plain')); } catch (err) { return; }
-  if (d.type !== 'films') return;
   const r = $('#tlContenu').getBoundingClientRect();
+  if (d.type === 'source') {
+    ajouterSource(l.dataset.piste, Math.max(0, (e.clientX - r.left) / PPS));
+    return;
+  }
+  if (d.type !== 'films') return;
   ajouterAuMontage(d.ids, l.dataset.piste, Math.max(0, (e.clientX - r.left) / PPS));
 });
 
@@ -6759,7 +6833,7 @@ $('#lanes').addEventListener('contextmenu', e => {
      : '<div class="it" data-act="usages">⌕ Used in which sequences…</div>' +
        '<div class="it" data-act="voirProjet">⌖ Show in project</div>' +
        (REVELER_OK
-         ? '<div class="it" data-act="voirDisque">⊞ Show in computer</div>'
+         ? '<div class="it" data-act="voirDisque">⊞ Reveal file on disk</div>'
          : '')) +
     (estSynth(c) ? ''
      : '<div class="sep"></div><div class="lbl">Framing</div>' +
@@ -9680,12 +9754,44 @@ $('#lanes').addEventListener('dblclick', e => {
   const el = e.target.closest('.clip');
   if (!el) return;
   const c = parUid(+el.dataset.uid);
-  if (!c || !estSynth(c)) return;
+  if (!c) return;
   e.preventDefault();
-  clipsSel = new Set([c.uid]);
-  rendreLanes(); rendreReglages();
-  modifierSynth();
+  blocDoubleClic(c);
 });
+// Le double-clic d un bloc. Le navigateur ne l emet presque jamais : chaque
+// appui sur un bloc redessine les pistes, et le second clic tombe sur un
+// element qui n existe plus. Il est donc reconnu des le second appui (voir
+// plus bas, en phase de capture) ; l evenement natif ne sert que s il arrive.
+function blocDoubleClic(c) {
+  if (performance.now() - (blocDoubleClic.t || 0) < 700) return;
+  blocDoubleClic.t = performance.now();
+  clipsSel = new Set(estSynth(c) ? [c.uid] : groupeLie(c).map(x => x.uid));
+  rendreLanes(); rendreReglages();
+  if (estSynth(c)) { modifierSynth(); return; }
+  // Un bloc de rush : il s ouvre dans la fenetre source, a la duree du bloc,
+  // avec ses poignees d entree et de sortie. Depuis Rushes, on passe en
+  // Sequence pour la montrer (David, 15/10).
+  if (!document.body.classList.contains('edit')) mode('edit');
+  ouvrirSource({uid: c.uid});
+}
+const APPUI_BLOC = {uid: 0, t: 0, x: 0, y: 0};
+$('#lanes').addEventListener('pointerdown', e => {
+  if (e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (outil !== 'V') return;
+  const el = e.target.closest('.clip');
+  if (!el || e.target.closest('[data-poi], [data-fade], .mqb')) {
+    APPUI_BLOC.uid = 0; return;
+  }
+  const uid = +el.dataset.uid, now = performance.now();
+  const double = APPUI_BLOC.uid === uid && now - APPUI_BLOC.t < 450 &&
+    Math.abs(e.clientX - APPUI_BLOC.x) < 6 && Math.abs(e.clientY - APPUI_BLOC.y) < 6;
+  Object.assign(APPUI_BLOC, {uid: double ? 0 : uid, t: now, x: e.clientX, y: e.clientY});
+  if (!double) return;
+  const c = parUid(uid);
+  if (!c) return;
+  e.preventDefault(); e.stopPropagation();
+  blocDoubleClic(c);
+}, true);
 
 function dessinerSynth(c, cw, ch, g) {
   g = g || ctx;
@@ -11617,7 +11723,7 @@ async function suivreRendu() {
     pref.ecrire('moni', '');
     pref.ecrire('dispo', 'moni2');
   }
-  ['aside', 'moni', 'regl', 'footer'].forEach(k => {
+  ['aside', 'moni', 'regl', 'footer', 'source'].forEach(k => {
     const v = pref.lire(k, null);
     if (v) RACINE_CSS.setProperty(RZ[k].v, v);
   });
@@ -11802,5 +11908,401 @@ async function suivreRendu() {
   });
   requestAnimationFrame(boucle);
 })();
+</script>
+<script>
+// ===========================================================================
+//  Fenêtre source (1.3.47)
+// ===========================================================================
+// En Sequence, une deuxieme fenetre a gauche du moniteur du montage (David,
+// 15/10). Double-clic sur un bloc : son rush s y ouvre a la duree du bloc et
+// les poignees reglent son entree et sa sortie — le bloc reste en place (son
+// debut ne bouge pas, les blocs suivants non plus), seule sa duree change.
+// Double-clic sur un rush de la bande, ou depot : il s y charge en entier ;
+// on pose l entree et la sortie, puis on glisse l image sur la timeline, ou
+// « Add » le pose a la tete de lecture.
+const SRC = {ouvert: false, film: null, uid: null, e: 0, o: 0, v0: 0, v1: 1,
+             tire: null, survol: false, lecture: false, cle: ''};
+// Les reperes d un rush de la bande, retenus le temps de la visite : on
+// revient a un rush, on retrouve son entree et sa sortie.
+const SRC_MARQUES = new Map();
+const SRC_MIN = 0.08;
+const SRC_VIDE = '<div class="vide">Double-click a rush (or a block) to load it ' +
+  'here — or drop a rush from the strip.</div>';
+const srcVid = () => $('#srcCadre video');
+const enSequence = () => document.body.classList.contains('edit');
+
+function srcDuree() {
+  const f = PAR_ID[SRC.film];
+  return (f && f.s) || SRC.o || 1;
+}
+function srcEstImage() { const f = PAR_ID[SRC.film]; return !!(f && f.image); }
+const srcBloc = () => SRC.uid ? parUid(SRC.uid) : null;
+
+// La barre montre le rush entier pour un rush de la bande, et le bloc avec une
+// marge de chaque cote pour un bloc : on regle au plus fin sans viser dans dix
+// minutes de rush. Tirer une poignee au-dela de la barre continue d allonger.
+function srcCadrerVue() {
+  const s = srcDuree();
+  if (SRC.uid) {
+    const pad = Math.max(1.5, (SRC.o - SRC.e) * 0.5);
+    SRC.v0 = Math.max(0, SRC.e - pad);
+    SRC.v1 = Math.min(s, SRC.o + pad);
+  } else { SRC.v0 = 0; SRC.v1 = s; }
+  if (SRC.v1 - SRC.v0 < 0.1) SRC.v1 = SRC.v0 + 0.1;
+  SRC.cle = '';
+}
+const srcPc = t => (t - SRC.v0) / (SRC.v1 - SRC.v0) * 100;
+// L entree et la sortie tombent sur une image, jamais entre deux.
+const srcCale = t => { const ips = PROJET.fps || 24; return Math.round(t * ips) / ips; };
+
+function srcMajBarre() {
+  const v = srcVid();
+  const ct = v ? v.currentTime : SRC.e;
+  const cle = [SRC.film, SRC.e, SRC.o, SRC.v0, SRC.v1, ct.toFixed(3)].join('|');
+  if (cle === SRC.cle) return;
+  SRC.cle = cle;
+  $('#srcBarre').classList.toggle('sans', !SRC.film || srcEstImage());
+  const z = $('#srcZone');
+  z.style.left = srcPc(SRC.e) + '%';
+  z.style.width = Math.max(0, srcPc(SRC.o) - srcPc(SRC.e)) + '%';
+  $('#srcBarre [data-srcpoi=e]').style.left = srcPc(SRC.e) + '%';
+  $('#srcBarre [data-srcpoi=o]').style.left = srcPc(SRC.o) + '%';
+  $('#srcLect').style.left = Math.max(0, Math.min(100, srcPc(ct))) + '%';
+  $('#srcTc').textContent = !SRC.film ? '' : srcEstImage() ? 'still image'
+    : tc(ct) + '  ·  in ' + tc(SRC.e) + '  out ' + tc(SRC.o) + '  ·  ' +
+      (SRC.o - SRC.e).toFixed(2) + 's';
+}
+
+function srcMajTete() {
+  const f = PAR_ID[SRC.film], c = srcBloc();
+  $('#srcEtq').textContent = c ? 'Block · ' + c.piste : 'Source';
+  $('#srcNom').textContent = f ? f.nom : '';
+  $('#srcNom').title = f ? f.nom : '';
+  $('#srcAjout').style.display = f && !c ? '' : 'none';
+  const sans = !f || !!f.image;
+  ['#srcPlay', '#srcIn', '#srcOut'].forEach(s => { $(s).disabled = sans; });
+  $('#bAjouter').disabled = !selection.size && !sourcePourAjout();
+}
+
+function srcLiberer() {
+  const v = srcVid();
+  if (v) { v.pause(); v.removeAttribute('src'); v.load(); }
+  SRC.lecture = false;
+  $('#srcPlay').textContent = '▶';
+}
+
+// q : {uid} pour un bloc de la timeline, {film} pour un rush de la bande.
+function ouvrirSource(q) {
+  q = q || {};
+  let film = q.film, uid = null, e = 0, o = 0;
+  if (q.uid) {
+    const c = parUid(q.uid);
+    if (!c || estSynth(c)) return;
+    film = c.film; uid = c.uid; e = c.e; o = c.o;
+  }
+  const f = PAR_ID[film];
+  if (!f) return;
+  if (f.absent) { dire('this rush is missing from the disk', true); return; }
+  if (!uid) {
+    const m = SRC_MARQUES.get(film);
+    e = m ? m.e : 0;
+    o = m ? m.o : (f.s || 1);
+  }
+  const meme = SRC.film === film && (srcVid() || f.image);
+  if (!meme) srcLiberer(); else pauseSource();
+  Object.assign(SRC, {ouvert: true, film: film, uid: uid, e: e, o: o});
+  document.body.classList.add('srcOuvert');
+  const cadre = $('#srcCadre');
+  if (!meme) {
+    cadre.innerHTML = '';
+    if (f.image) {
+      const im = document.createElement('img');
+      im.draggable = false; im.alt = ''; im.src = urlMedia(f);
+      cadre.appendChild(im);
+    } else {
+      if (f.son_seul) {
+        const n = document.createElement('span');
+        n.className = 'note'; n.textContent = '♪';
+        cadre.appendChild(n);
+      }
+      const v = document.createElement('video');
+      v.playsInline = true; v.preload = 'auto';
+      if (!f.son_seul) v.poster = urlPoster(f);
+      v.src = urlMedia(f);
+      reglerApercu(v);
+      v.addEventListener('loadedmetadata', () => {
+        v.currentTime = SRC.e; srcMajBarre();
+      }, {once: true});
+      // La sortie au bout du rush : « ended » arrive avant que la boucle
+      // l ait vue.
+      v.addEventListener('ended', () => {
+        if (!SRC.lecture) return;
+        v.currentTime = SRC.e; v.play().catch(() => {});
+      });
+      v.addEventListener('seeked', srcMajBarre);
+      cadre.appendChild(v);
+    }
+  } else if (srcVid()) srcVid().currentTime = e;
+  srcCadrerVue(); srcMajTete(); srcMajBarre();
+  if (typeof dimensionnerMoniteur === 'function') { dimensionnerMoniteur(); dessiner(); }
+  srcBoucle();
+}
+
+function fermerSource() {
+  srcLiberer();
+  Object.assign(SRC, {ouvert: false, film: null, uid: null, tire: null, cle: ''});
+  document.body.classList.remove('srcOuvert');
+  $('#srcCadre').innerHTML = SRC_VIDE;
+  srcMajTete(); srcMajBarre();
+  if (typeof dimensionnerMoniteur === 'function') { dimensionnerMoniteur(); dessiner(); }
+}
+
+function pauseSource() {
+  const v = srcVid();
+  if (v && !v.paused) v.pause();
+  SRC.lecture = false;
+  $('#srcPlay').textContent = '▶';
+}
+// La lecture tourne en boucle entre l entree et la sortie. Un seul lecteur a
+// la fois : le montage s arrete quand la source part, et inversement.
+function lireSource() {
+  const v = srcVid();
+  if (!v || !SRC.film) return;
+  if (enLecture) pause();
+  if (v.currentTime < SRC.e - 0.01 ||
+      v.currentTime >= SRC.o - 1.5 / (PROJET.fps || 24)) v.currentTime = SRC.e;
+  // Un refus du navigateur (lecture sans geste) remet le bouton au repos.
+  v.play().catch(() => { if (v.paused) pauseSource(); });
+  SRC.lecture = true;
+  $('#srcPlay').textContent = '❚❚';
+  srcBoucle();
+}
+
+let srcRaf = 0;
+function srcBoucle() {
+  if (srcRaf) return;
+  const pas = () => {
+    srcRaf = 0;
+    if (!SRC.ouvert) return;
+    const v = srcVid();
+    if (SRC.lecture && enLecture) pauseSource();
+    if (v && SRC.lecture && !v.paused && v.currentTime >= SRC.o) v.currentTime = SRC.e;
+    // Le bloc a pu changer ailleurs : rognage sur la timeline, annulation,
+    // suppression. La fenetre suit ; un bloc disparu y reste comme rush.
+    if (SRC.uid && !SRC.tire) {
+      const c = parUid(SRC.uid);
+      if (!c) { SRC.uid = null; srcCadrerVue(); srcMajTete(); }
+      else if (c.e !== SRC.e || c.o !== SRC.o) {
+        SRC.e = c.e; SRC.o = c.o; srcCadrerVue();
+      }
+    }
+    srcMajBarre();
+    if (SRC.lecture || SRC.uid) srcRaf = requestAnimationFrame(pas);
+  };
+  srcRaf = requestAnimationFrame(pas);
+}
+
+// Le bloc et son partenaire lie (le son de la meme prise) bougent ensemble,
+// du meme ecart — un son decale garde son decalage. Le debut des blocs ne
+// bouge pas.
+function srcGroupe(c) {
+  return groupeLie(c).filter(x => x.film === c.film && !estSynth(x))
+    .map(x => ({c: x, e: x.e, o: x.o}));
+}
+function srcAppliquerBloc(dep, dE, dO) {
+  dep.forEach(s => {
+    const f = PAR_ID[s.c.film], max = (f && f.s) || s.o;
+    let ne = Math.max(0, s.e + dE), no = Math.min(max, s.o + dO);
+    if (no - ne < SRC_MIN) { if (dE) ne = no - SRC_MIN; else no = ne + SRC_MIN; }
+    s.c.e = ne; s.c.o = no;
+    const el = elClip(s.c.uid);
+    if (el) el.style.width = (dur(s.c) * PPS) + 'px';
+  });
+}
+function srcFiniBloc() {
+  rendreTimeline(); resynchroniser(true); dessiner();
+}
+
+$('#srcBarre').addEventListener('pointerdown', e => {
+  if (!SRC.film || srcEstImage() || e.button === 2) return;
+  e.preventDefault();
+  const r = $('#srcBarre').getBoundingClientRect();
+  const tA = x => SRC.v0 + (x - r.left) / r.width * (SRC.v1 - SRC.v0);
+  const v = srcVid();
+  const poi = e.target.closest('[data-srcpoi]');
+  pauseSource();
+  if (!poi) {
+    // Ailleurs sur la barre : on se promene dans le rush.
+    const aller = ev => {
+      if (v) v.currentTime = Math.max(SRC.v0, Math.min(SRC.v1, tA(ev.clientX)));
+      srcMajBarre();
+    };
+    aller(e);
+    const fin1 = () => {
+      removeEventListener('pointermove', aller);
+      removeEventListener('pointerup', fin1);
+    };
+    addEventListener('pointermove', aller);
+    addEventListener('pointerup', fin1);
+    return;
+  }
+  const cote = poi.dataset.srcpoi;
+  const c = srcBloc();
+  const dep = c ? srcGroupe(c) : [];
+  const e0 = SRC.e, o0 = SRC.o, s = srcDuree();
+  const dec = tA(e.clientX) - (cote === 'e' ? SRC.e : SRC.o);
+  let bouge = false;
+  SRC.tire = cote;
+  const bouger = ev => {
+    const t = srcCale(tA(ev.clientX) - dec);
+    if (!bouge) { bouge = true; if (c) memoriser(); }
+    if (cote === 'e') SRC.e = Math.max(0, Math.min(t, SRC.o - SRC_MIN));
+    else SRC.o = Math.min(s, Math.max(t, SRC.e + SRC_MIN));
+    if (v) v.currentTime = cote === 'e' ? SRC.e : Math.max(SRC.e, SRC.o - 1 / (PROJET.fps || 24));
+    if (c) srcAppliquerBloc(dep, SRC.e - e0, SRC.o - o0);
+    srcMajBarre();
+  };
+  const lacher = () => {
+    removeEventListener('pointermove', bouger);
+    removeEventListener('pointerup', lacher);
+    SRC.tire = null;
+    if (!bouge) return;
+    if (c) {
+      srcFiniBloc();
+      dire('block ' + (cote === 'e' ? 'in' : 'out') + ' ' + tc(cote === 'e' ? SRC.e : SRC.o) +
+           ' — ' + (SRC.o - SRC.e).toFixed(2) + 's');
+    } else SRC_MARQUES.set(SRC.film, {e: SRC.e, o: SRC.o});
+    srcCadrerVue(); srcMajBarre(); srcBoucle();
+  };
+  addEventListener('pointermove', bouger);
+  addEventListener('pointerup', lacher);
+});
+
+// [ et ] (ou I et O, souris sur la fenetre) : l entree ou la sortie a
+// l image affichee.
+function srcPoser(cote) {
+  const v = srcVid();
+  if (!v || !SRC.film || srcEstImage()) return;
+  const t = srcCale(v.currentTime), c = srcBloc();
+  const e0 = SRC.e, o0 = SRC.o;
+  if (cote === 'e') SRC.e = Math.max(0, Math.min(t, SRC.o - SRC_MIN));
+  else SRC.o = Math.min(srcDuree(), Math.max(t, SRC.e + SRC_MIN));
+  if (SRC.e === e0 && SRC.o === o0) return;
+  if (c) {
+    memoriser();
+    srcAppliquerBloc(srcGroupe(c).map(s => ({c: s.c, e: s.e, o: s.o})), SRC.e - e0, SRC.o - o0);
+    srcFiniBloc();
+  } else SRC_MARQUES.set(SRC.film, {e: SRC.e, o: SRC.o});
+  dire((cote === 'e' ? 'in ' : 'out ') + tc(t));
+  srcCadrerVue(); srcMajBarre();
+}
+
+$('#srcPlay').onclick = () => { SRC.lecture ? pauseSource() : lireSource(); };
+$('#srcIn').onclick = () => srcPoser('e');
+$('#srcOut').onclick = () => srcPoser('o');
+$('#srcX').onclick = () => fermerSource();
+$('#srcAjout').onclick = () => ajouterSourceTete();
+// Un clic sur l image : lecture / pause.
+$('#srcCadre').addEventListener('click', () => {
+  if (!SRC.film || srcEstImage()) return;
+  SRC.lecture ? pauseSource() : lireSource();
+});
+
+// L image se glisse sur la timeline : le rush y est pose entre ses reperes.
+$('#srcCadre').addEventListener('dragstart', e => {
+  if (!SRC.film) { e.preventDefault(); return; }
+  pauseSource();
+  e.dataTransfer.setData('text/plain', JSON.stringify({type: 'source'}));
+  e.dataTransfer.effectAllowed = 'copy';
+});
+// Et un rush de la bande se depose dans la fenetre.
+const fenSrc = $('#fenSource');
+fenSrc.addEventListener('dragover', e => {
+  e.preventDefault();
+  $('#srcCadre').classList.add('depot');
+});
+fenSrc.addEventListener('dragleave', e => {
+  if (!fenSrc.contains(e.relatedTarget)) $('#srcCadre').classList.remove('depot');
+});
+fenSrc.addEventListener('drop', e => {
+  e.preventDefault();
+  $('#srcCadre').classList.remove('depot');
+  let d;
+  try { d = JSON.parse(e.dataTransfer.getData('text/plain')); } catch (err) { return; }
+  if (d && d.type === 'films' && d.ids && d.ids.length) ouvrirSource({film: d.ids[0]});
+});
+
+// Pose le rush de la source : sur la piste visee et a l instant donne (un
+// depot), sinon a la tete de lecture sur la piste active (« Add »).
+function ajouterSource(pisteId, t0) {
+  const f = PAR_ID[SRC.film];
+  if (!f) return [];
+  const avant = new Set(CLIPS.map(c => c.uid));
+  const n = ajouterAuMontage([SRC.film], pisteId, t0);
+  if (!n) return [];
+  const neufs = CLIPS.filter(c => !avant.has(c.uid));
+  if (!f.image) neufs.forEach(c => { c.e = SRC.e; c.o = SRC.o; });
+  rendreTimeline(); resynchroniser(true);
+  dire(f.nom + (f.image ? '' : ' — ' + (SRC.o - SRC.e).toFixed(2) + 's') + ' added');
+  return neufs;
+}
+function ajouterSourceTete() {
+  const neufs = ajouterSource(null, tLect);
+  if (!neufs.length) return;
+  tLect = Math.max(...neufs.map(fin));
+  majTete();
+  const d = $('#tlDefile'), x = tLect * PPS;
+  if (x > d.scrollLeft + d.clientWidth - 30) d.scrollLeft = Math.max(0, x - d.clientWidth / 2);
+  resynchroniser(true);
+}
+// « Add » du bandeau prend la source quand elle montre un rush de la bande et
+// que la selection ne designe pas d autres rushes.
+function sourcePourAjout() {
+  if (!SRC.ouvert || !SRC.film || SRC.uid || !enSequence()) return false;
+  return selection.size === 0 || (selection.size === 1 && selection.has(SRC.film));
+}
+
+// Souris sur la fenetre : Espace, I, O et les fleches pilotent la source et
+// non le montage.
+fenSrc.addEventListener('pointerenter', () => { SRC.survol = true; });
+fenSrc.addEventListener('pointerleave', () => { SRC.survol = false; });
+document.addEventListener('keydown', e => {
+  if (!SRC.survol || !SRC.ouvert || !SRC.film || !enSequence()) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || saisieActive(e.target)) return;
+  const vl = $('#voile');
+  if (vl && vl.className === 'on') return;
+  const k = e.key.toLowerCase();
+  const stop = () => { e.preventDefault(); e.stopPropagation(); };
+  if (e.code === 'Space') { stop(); SRC.lecture ? pauseSource() : lireSource(); return; }
+  if (srcEstImage()) return;
+  if (k === 'i' || k === 'o') { stop(); srcPoser(k === 'i' ? 'e' : 'o'); return; }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    stop(); pauseSource();
+    const v = srcVid();
+    if (!v) return;
+    const pas = (e.shiftKey ? 10 : 1) / (PROJET.fps || 24);
+    v.currentTime = Math.max(0, Math.min(srcDuree(),
+      v.currentTime + (e.key === 'ArrowLeft' ? -pas : pas)));
+    srcMajBarre();
+  }
+}, true);
+
+// Clic droit dans la fenetre : les memes entrees qu au clic droit d un rush.
+fenSrc.addEventListener('contextmenu', e => {
+  const f = PAR_ID[SRC.film];
+  if (!f) return;
+  e.preventDefault();
+  const m = $('#menu');
+  m.innerHTML = '<div class="lbl">' + echapHtml((f.nom || '').slice(0, 28)) + '</div>' +
+    '<div class="it" data-carte-act="usages">⌕ Used in which sequences…</div>' +
+    (REVELER_OK ? '<div class="it" data-carte-act="disque">⊞ Reveal file on disk</div>' : '');
+  m.dataset.carteCibles = SRC.film;
+  m.dataset.carteId = SRC.film;
+  m.className = 'on';
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.min(e.clientX, innerWidth - r.width - 8) + 'px';
+  m.style.top = Math.min(e.clientY, innerHeight - r.height - 8) + 'px';
+});
+srcMajTete();
 </script>
 </body></html>
