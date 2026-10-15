@@ -1,5 +1,5 @@
 {
- "version": "1.3.48",
+ "version": "1.3.49",
  "date": "2026-10-15",
  "notes": "",
  "genres": {
@@ -197,23 +197,25 @@
     },
     "serveur/preparateur/modeles/_scan.py": {
      "depot": "modeles/images/_scan.py",
-     "sha256": "5c498c35cbc45f513a0c78652688af1eac8b2b1d9cbf0b91844161ab53656f85",
+     "sha256": "6d844bfb2de75ee659f3d90a8eca66722a46a4c8e9657065421e5e78cd99688c",
      "historique": [
       "aa363d7cbcf4901cb3976509408067eb01e9434fcdc1c4a3b88b4d87827a6e7e",
       "33c7b03bafdff1f40111d3ae401d1fdecdee93c62522370c22da564387619744",
       "e3998832e87e274d57105728f9d50e5003df9392ca2f78abf5cd1eba91741893",
       "d3fc57531149cf8f272d262c998794ad785eeb63a8f30bc2d3f05f4b709ec2f3",
-      "1e894635b6998f336c454dfd7389d7dbd6ec5bc14efd73a225bc718b7fe5d7d9"
+      "1e894635b6998f336c454dfd7389d7dbd6ec5bc14efd73a225bc718b7fe5d7d9",
+      "5c498c35cbc45f513a0c78652688af1eac8b2b1d9cbf0b91844161ab53656f85"
      ]
     },
     "serveur/preparateur/modeles/NAVIGATEUR.html": {
      "depot": "modeles/images/NAVIGATEUR.html",
-     "sha256": "8460afadf450067d4fe61ce02e03e85295d46d9f7c3d1a1c23daf96797d6171a",
+     "sha256": "773bb26bf70293fdbbdfcdb75f86e7bfe9735710fad038b786440d88631c61c4",
      "historique": [
       "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945",
       "90d898b6ce53623a15ef96f66992f5e56f9e43f53848fa030cb8a0cdd7fcb04a",
       "56499e6fb91c6ac5ff456345fd0542f29090c8026a8526399dcbb7ea9a789d5d",
-      "b739cf6b5a88b2ac7b0781f5f715de0c19e5d9eb9e00051ddc8752c6f3500255"
+      "b739cf6b5a88b2ac7b0781f5f715de0c19e5d9eb9e00051ddc8752c6f3500255",
+      "8460afadf450067d4fe61ce02e03e85295d46d9f7c3d1a1c23daf96797d6171a"
      ]
     },
     "serveur/preparateur/modeles/biblio.bat": {
@@ -265,23 +267,25 @@
     },
     "serveur/_scan.py": {
      "depot": "modeles/images/_scan.py",
-     "sha256": "5c498c35cbc45f513a0c78652688af1eac8b2b1d9cbf0b91844161ab53656f85",
+     "sha256": "6d844bfb2de75ee659f3d90a8eca66722a46a4c8e9657065421e5e78cd99688c",
      "historique": [
       "aa363d7cbcf4901cb3976509408067eb01e9434fcdc1c4a3b88b4d87827a6e7e",
       "33c7b03bafdff1f40111d3ae401d1fdecdee93c62522370c22da564387619744",
       "e3998832e87e274d57105728f9d50e5003df9392ca2f78abf5cd1eba91741893",
       "d3fc57531149cf8f272d262c998794ad785eeb63a8f30bc2d3f05f4b709ec2f3",
-      "1e894635b6998f336c454dfd7389d7dbd6ec5bc14efd73a225bc718b7fe5d7d9"
+      "1e894635b6998f336c454dfd7389d7dbd6ec5bc14efd73a225bc718b7fe5d7d9",
+      "5c498c35cbc45f513a0c78652688af1eac8b2b1d9cbf0b91844161ab53656f85"
      ]
     },
     "serveur/NAVIGATEUR.html": {
      "depot": "modeles/images/NAVIGATEUR.html",
-     "sha256": "8460afadf450067d4fe61ce02e03e85295d46d9f7c3d1a1c23daf96797d6171a",
+     "sha256": "773bb26bf70293fdbbdfcdb75f86e7bfe9735710fad038b786440d88631c61c4",
      "historique": [
       "aa790c980344945498158dec3725262066191b265d9831626c79c9911aa49945",
       "90d898b6ce53623a15ef96f66992f5e56f9e43f53848fa030cb8a0cdd7fcb04a",
       "56499e6fb91c6ac5ff456345fd0542f29090c8026a8526399dcbb7ea9a789d5d",
-      "b739cf6b5a88b2ac7b0781f5f715de0c19e5d9eb9e00051ddc8752c6f3500255"
+      "b739cf6b5a88b2ac7b0781f5f715de0c19e5d9eb9e00051ddc8752c6f3500255",
+      "8460afadf450067d4fe61ce02e03e85295d46d9f7c3d1a1c23daf96797d6171a"
      ]
     },
     "serveur/_maj.py": {
@@ -319,11 +323,11 @@
    }
   }
  },
- "commit": "9943e904976c8d2d5076fb17d52fc9835b1b4bbc",
+ "commit": "3f0b91217e6d44a72be4d6fbc47426a0d13cc999",
  "installeur": {
-  "version": "1.3.48",
-  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.3.48/Library-Editor-1.3.48.zip",
-  "octets": 38524716,
-  "sha256": "56f72932a4e248a3b744b4aa1ee595000b86996de484e86f20d9a6c7cf3920d7"
+  "version": "1.3.49",
+  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.3.49/Library-Editor-1.3.49.zip",
+  "octets": 38524146,
+  "sha256": "001b565258962732ebbda49026a8d49e42d610f153baa6ca315f2ffa5570042b"
  }
 }
