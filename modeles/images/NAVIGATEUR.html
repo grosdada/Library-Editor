@@ -117,7 +117,13 @@ dialog::backdrop{background:rgba(0,0,0,.86)}.vue{background:#0d0f11;text-align:c
         if (fini) return;
         var o = g.scene;
         scene.add(o);
-        var bb = new T.Box3().setFromObject(o);
+        // Un modele squelette (« rigged ») : sa boite ne vaut qu une fois les os places, sinon
+        // le cadrage tombe en gros plan. On place les os, puis on recalcule chaque boite.
+        o.updateMatrixWorld(true);
+        o.traverse(function (n) {
+          if (n.isSkinnedMesh) { n.skeleton.update(); n.computeBoundingBox(); n.computeBoundingSphere(); }
+        });
+        var bb = new T.Box3().setFromObject(o, true);
         var c = bb.getCenter(new T.Vector3()), s = bb.getSize(new T.Vector3());
         o.position.sub(c);
         var r = Math.max(s.x, s.y, s.z) || 1;

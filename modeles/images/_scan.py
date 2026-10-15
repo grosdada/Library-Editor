@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import time
 
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".avif"}
@@ -12,6 +13,27 @@ EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff",
 MODELES_3D = {".glb", ".gltf", ".fbx", ".obj", ".usdz"}
 EXCLUS = {"serveur", ".git", ".codex", "__pycache__", "node_modules", "$recycle.bin", "system volume information"}
 TYPE = "bibliotheque-configurable-v1"
+
+
+def cle_naturelle(valeur):
+    """Tri humain : 2-inside-ship vient avant 10-inside-ship (repris de la bibliotheque
+    Ergomonochron, 1.3.49)."""
+    texte = valeur.as_posix() if hasattr(valeur, "as_posix") else str(valeur)
+    morceaux = []
+    for bout in re.split(r"(\d+)", texte.casefold()):
+        if bout == "":
+            continue
+        if bout.isdigit():
+            morceaux.append((0, int(bout), ""))
+        else:
+            morceaux.append((1, 0, bout))
+    return morceaux
+
+
+def dossier_exclu(nom):
+    # « …-tripo » : les rendus de travail de Tripo (decoupes de planche), jamais un asset.
+    n = nom.casefold()
+    return n in EXCLUS or n.endswith("-tripo")
 
 
 def configuration(valeur):
@@ -70,7 +92,7 @@ def parcourir(root):
                         continue
                     try:
                         if entree.is_dir(follow_symlinks=False):
-                            if nom.casefold() not in EXCLUS:
+                            if not dossier_exclu(nom):
                                 dossiers_.append(Path(entree.path))
                         elif entree.is_file(follow_symlinks=False):
                             if os.path.splitext(nom)[1].lower() in EXTENSIONS:
@@ -173,7 +195,7 @@ def analyser_dossiers(root, config, sortie=None, forcer=False):
     items, absentes, multiples = [], [], []
     nombre_vignettes = 0
     suffixe = config["vignette"]
-    for dossier, trouvees in sorted(par_dossier.items()):
+    for dossier, trouvees in sorted(par_dossier.items(), key=lambda kv: cle_naturelle(kv[0])):
         images = [p for p, _ in trouvees]
         stats = {p.relative_to(root).as_posix(): st for p, st in trouvees}
         relatif = dossier.relative_to(root).as_posix()
@@ -304,7 +326,7 @@ def analyser(root, config, sortie=None, forcer=False):
                 origine["fichiers"][i].remove(chemin)
 
     items, sans_vignette, manquantes, ambiguites = [], [], [], []
-    for cle, groupe in sorted(groupes.items()):
+    for cle, groupe in sorted(groupes.items(), key=lambda kv: cle_naturelle(kv[0])):
         liste = groupe["fichiers"]
         if not any(liste):
             continue
