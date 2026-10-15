@@ -472,6 +472,8 @@ body.outilA .clip .poi,body.outilA .clip .att{display:none}
 .clip .mqb::after{content:"";position:absolute;left:0;bottom:0;width:7px;height:7px;
  background:#3fb6c8;border-radius:1px}
 .clip .mqb:hover::after{box-shadow:0 0 7px #3fb6c8}
+#guideAimant{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:#4fd1ff;
+ box-shadow:0 0 7px #4fd1ff;z-index:7;pointer-events:none;display:none}
 .tete{position:absolute;top:0;bottom:0;width:1px;background:var(--orange);
  z-index:5;pointer-events:none}
 .tete::before{content:"";position:absolute;top:0;left:-5px;border:5px solid transparent;
@@ -964,7 +966,7 @@ here and change nothing to the files">My folders</button>
         <div class="tl-contenu" id="tlContenu">
           <div class="regle" id="regle"></div>
           <div id="lanes"></div>
-          <div class="tete" id="tete" style="left:0"></div>
+          <div class="tete" id="tete" style="left:0"></div><div id="guideAimant"></div>
         </div>
       </div>
     </div>
@@ -4570,7 +4572,7 @@ $('#minimap').addEventListener('pointerdown', e => {
     const r = mm.getBoundingClientRect();
     const frac = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
     let t = frac * etendue();
-    if (ev.shiftKey) t = accrocher(t, pointsTete(), 6 * (etendue() * PPS / r.width));
+    if (ev.shiftKey) t = accrocher(t, pointsTete(), 10 * (etendue() * PPS / r.width));
     allerAuTemps(t);
   };
   aller(e);
@@ -5323,14 +5325,50 @@ $('#lanes').addEventListener('drop', e => {
 //  Aimant, déplacement, rognage, coupe
 // ===========================================================================
 // Le collage ne s active que Maj enfoncee : sans Maj le placement est libre.
+// Seuil de 22 px (11 avant, 15/10 : « marche une fois sur deux ») : assez
+// large pour attraper un bord sans viser au pixel pres.
+const AIMANT_PX = 22;
 function accrocher(t, cibles, seuilPx) {
-  const seuil = (seuilPx || 11) / PPS;
+  const seuil = (seuilPx || AIMANT_PX) / PPS;
   let best = t, d = seuil;
-  for (const x of cibles) if (Math.abs(x - t) < d) { d = Math.abs(x - t); best = x; }
+  for (const x of cibles) if (Math.abs(x - t) <= d) { d = Math.abs(x - t); best = x; }
   return Math.max(0, best);
+}
+// Le repere bleu : la ou l aimant vient de coller (cache des qu on relache).
+function guideAimant(x) {
+  const g = $('#guideAimant');
+  if (!g) return;
+  if (x === null || x === undefined) { g.style.display = 'none'; return; }
+  g.style.left = (x * PPS) + 'px';
+  g.style.display = 'block';
+}
+addEventListener('pointerup', () => guideAimant(null), true);
+// Le groupe deplace colle par N IMPORTE LEQUEL de ses bords — le debut ou la
+// fin de chaque bloc tire — au plus pres : avant, seul le debut du premier
+// bloc collait, et un bloc pousse par sa fin contre son voisin ne collait pas.
+function aimanterGroupe(dep, d, ignorer, actif) {
+  if (!actif) { guideAimant(null); return d; }
+  const cibles = ciblesAimant(ignorer);
+  const seuil = AIMANT_PX / PPS;
+  let best = null;
+  for (const s of dep) {
+    const debut = s.t0 + d, bout = debut + dur(s.c);
+    for (const bord of [debut, bout]) for (const x of cibles) {
+      const e = x - bord;
+      if (Math.abs(e) <= seuil && (!best || Math.abs(e) < Math.abs(best.e))) best = {e: e, x: x};
+    }
+  }
+  guideAimant(best ? best.x : null);
+  return best ? d + best.e : d;
 }
 function aimanter(t, ignorer, actif) {
   if (!actif) return Math.max(0, t);
+  const r = accrocher(t, ciblesAimant(ignorer));
+  guideAimant(Math.abs(r - t) > 1e-9 || ciblesAimant(ignorer).includes(r) ? r : null);
+  return r;
+}
+// Ce sur quoi un bloc, un marqueur ou un masque se colle (Maj).
+function ciblesAimant(ignorer) {
   const cibles = [0, tLect];
   if (tIn !== null) cibles.push(tIn);
   if (tOut !== null) cibles.push(tOut);
@@ -5342,7 +5380,7 @@ function aimanter(t, ignorer, actif) {
     cibles.push(c.t0); cibles.push(fin(c));
     mqBloc(c).forEach(x => { if (mqVisible(c, x)) cibles.push(mqTemps(c, x)); });
   });
-  return accrocher(t, cibles);
+  return cibles;
 }
 
 $('#lanes').addEventListener('pointerdown', e => {
@@ -5482,6 +5520,7 @@ $('#lanes').addEventListener('pointerdown', e => {
   }
 
   const poi = modeA ? null : e.target.closest('[data-poi]');
+  const ajoutMaj = !modeA && e.shiftKey && !e.altKey && !clipsSel.has(c.uid);
   if (!modeA) {
     if (e.altKey) {
       // Alt+clic : ce bloc seul, sans son partenaire lie — l image sans son
@@ -5509,7 +5548,16 @@ $('#lanes').addEventListener('pointerdown', e => {
       // « d » est en secondes de source (donc mis a l echelle par la
       // vitesse), « dTl » en secondes de timeline. Un rush se rogne dans sa
       // source ; un calque n en a pas, il s etire librement.
-      const dTl = (ev.clientX - x0) / PPS;
+      let dTl = (ev.clientX - x0) / PPS;
+      // Maj : le bord tire colle aux bords des autres blocs, a la tete, aux
+      // reperes I/O et aux marqueurs (15/10).
+      if (ev.shiftKey) {
+        const s0 = dep.find(s => s.c === c) || dep[0];
+        const bord0 = cote === 'g' ? s0.t0 : s0.t0 + (s0.o - s0.e) / vAbs(c);
+        const vise = bord0 + dTl;
+        const colle = accrocher(vise, ciblesAimant(new Set(grp.map(x => x.uid))));
+        if (colle !== vise) { dTl += colle - vise; guideAimant(colle); } else guideAimant(null);
+      } else guideAimant(null);
       const d = dTl * vAbs(c);
       dep.forEach(s => {
         const vit = vAbs(s.c);
@@ -5571,14 +5619,22 @@ $('#lanes').addEventListener('pointerdown', e => {
     return;
   }
 
-  const grp = CLIPS.filter(x => clipsSel.has(x.uid));
-  const dep = grp.map(x => ({c: x, t0: x.t0}));
-  const ignorer = new Set(grp.map(x => x.uid));
+  let grp = CLIPS.filter(x => clipsSel.has(x.uid));
+  let dep = grp.map(x => ({c: x, t0: x.t0}));
+  let ignorer = new Set(grp.map(x => x.uid));
   let bougé = false, laneCible = null;
   const bouger = ev => {
     if (!bougé && Math.abs(ev.clientX - x0) < 3 && Math.abs(ev.clientY - y0) < 3) return;
     if (!bougé) {
       memoriser(); bougé = true;
+      if (ajoutMaj) {
+        // Maj tenue pour l aimant, pas pour agrandir la selection.
+        clipsSel = new Set(groupeLie(c).map(x => x.uid));
+        grp = CLIPS.filter(x => clipsSel.has(x.uid));
+        dep = grp.map(x => ({c: x, t0: x.t0}));
+        ignorer = new Set(grp.map(x => x.uid));
+        rendreLanes(); rendreReglages();
+      }
       // Les blocs tires deviennent transparents au pointeur : ils ne
       // doivent intercepter ni le survol ni le relachement pendant qu on
       // les traine.
@@ -5586,7 +5642,7 @@ $('#lanes').addEventListener('pointerdown', e => {
         if (el2) el2.style.pointerEvents = 'none'; });
     }
     let d = (ev.clientX - x0) / PPS;
-    d = aimanter(dep[0].t0 + d, ignorer, ev.shiftKey) - dep[0].t0;
+    d = aimanterGroupe(dep, d, ignorer, ev.shiftKey);
     dep.forEach(s => {
       s.c.t0 = Math.max(0, s.t0 + d);
       const el2 = elClip(s.c.uid);
