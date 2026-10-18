@@ -4269,6 +4269,81 @@ function bordCoupe(c, cote) {
   return (cote === 'g') !== !!c.rev ? debut : fin_;
 }
 
+// L image d un bloc : celle du MILIEU du bloc, pas la vignette du rush (David,
+// 18/10) — apres une coupe, chaque morceau montre sa propre image. Elle est
+// tiree du media par la page (une video cachee, une image a la fois), gardee
+// en memoire par rush et par instant ; la vignette du rush sert en attendant,
+// et pour toujours si l image ne peut pas etre lue (media d une autre origine).
+const VIGN_MILIEU = new Map();          // « film@t » -> data: URL | 'attente' | 'echec'
+const VIGN_FILE = [];
+let vignTourne = false;
+function cleMilieu(c) {
+  const f = PAR_ID[c.film];
+  if (!f || f.image || f.son_seul || f.absent || estSynth(c)) return null;
+  const s = estGel(c) ? c.gel : srcA(c, c.t0 + dur(c) / 2);
+  const t = Math.max(0, Math.min(Math.max(0, (f.s || 0) - 0.05), s));
+  return c.film + '@' + t.toFixed(2);
+}
+function imageBloc(c) {
+  const k = cleMilieu(c);
+  if (!k) return posterDe(c.film);
+  const v = VIGN_MILIEU.get(k);
+  if (v && v !== 'attente' && v !== 'echec') return v;
+  if (!v) {
+    if (VIGN_MILIEU.size > 3000) VIGN_MILIEU.clear();
+    VIGN_MILIEU.set(k, 'attente'); VIGN_FILE.push(k); pomperVign();
+  }
+  return posterDe(c.film);
+}
+function attendreEvt(el, nom, ms) {
+  return new Promise((ok, ko) => {
+    const fin = () => { clearTimeout(h); el.removeEventListener(nom, bon); el.removeEventListener('error', mal); };
+    const bon = () => { fin(); ok(); };
+    const mal = () => { fin(); ko(new Error('media')); };
+    const h = setTimeout(() => { fin(); ko(new Error('delai')); }, ms || 8000);
+    el.addEventListener(nom, bon); el.addEventListener('error', mal);
+  });
+}
+async function pomperVign() {
+  if (vignTourne) return;
+  vignTourne = true;
+  const v = document.createElement('video');
+  v.muted = true; v.preload = 'auto'; v.playsInline = true;
+  const cv = document.createElement('canvas');
+  try {
+    while (VIGN_FILE.length) {
+      const k = VIGN_FILE.shift();
+      const i = k.lastIndexOf('@'), f = PAR_ID[k.slice(0, i)];
+      let t = +k.slice(i + 1);
+      try {
+        if (!f) throw new Error('rush');
+        const u = urlMedia(f);
+        if (v.dataset.u !== u) {
+          v.dataset.u = u; v.src = u;
+          await attendreEvt(v, 'loadeddata');
+        }
+        if (isFinite(v.duration)) t = Math.min(t, Math.max(0, v.duration - 0.05));
+        v.currentTime = t;
+        await attendreEvt(v, 'seeked');
+        const h = 80, w = Math.max(1, Math.round(h * (v.videoWidth || 16) / (v.videoHeight || 9)));
+        cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(v, 0, 0, w, h);
+        const url = cv.toDataURL('image/jpeg', 0.72);
+        VIGN_MILIEU.set(k, url);
+        $$('#lanes .clip[data-vmil="' + k + '"] .vign').forEach(el => {
+          el.style.backgroundImage = 'url(' + url + ')';
+        });
+      } catch (err) {
+        VIGN_MILIEU.set(k, 'echec');
+        if (err && err.message !== 'delai') v.dataset.u = '';
+      }
+    }
+  } finally {
+    v.removeAttribute('src'); v.load();
+    vignTourne = false;
+  }
+}
+
 function blocClip(c) {
   const f = PAR_ID[c.film];
   const p = piste(c.piste);
@@ -4278,7 +4353,8 @@ function blocClip(c) {
     ? ' ' + (c.rev ? '◀' : '') + '×' +
       vAbs(c).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') : '';
   return '<div class="clip ' + (clipsSel.has(c.uid) ? 'sel' : '') +
-    '" data-uid="' + c.uid + '" style="left:' + (c.t0 * PPS) + 'px;width:' +
+    '" data-uid="' + c.uid + '"' + (aud || estSynth(c) ? '' : ' data-vmil="' +
+    (cleMilieu(c) || '') + '"') + ' style="left:' + (c.t0 * PPS) + 'px;width:' +
     (dur(c) * PPS) + 'px;border-color:' + coul + '">' +
     (aud ? ''
          : estSynth(c)
@@ -4289,7 +4365,7 @@ function blocClip(c) {
                 : 'repeating-linear-gradient(135deg,#2f2d29 0 6px,#26241f 6px 12px)') +
              '"></div>'
            : '<div class="vign" style="background-image:url(' +
-             posterDe(c.film) + ')"></div>') +
+             imageBloc(c) + ')"></div>') +
     '<div class="teinte" style="background:' + coul + '"></div>' +
     (aud && p.onde && !estSynth(c)
       ? '<canvas class="onde" data-onde="' + c.uid + '"></canvas>' : '') +
