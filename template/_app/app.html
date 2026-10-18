@@ -855,10 +855,12 @@ body.lectureseule .ecritRushes { display: none !important; }
 #vueBar button { flex: 1; font-size: 11px; padding: 4px 0; }
 #vueBar button.on { background: var(--orange); color: #fff; }
 #qui { font-size: 11px; color: var(--sourd); padding: 6px 8px 0;
-       display: none; align-items: center; gap: 6px; }
+       display: none; align-items: center; gap: 6px; flex-wrap: wrap; }
 body.enligne #qui { display: flex; }
 #qui b { color: var(--or); }
-#qui button { font-size: 10px; padding: 2px 6px; margin-left: auto; }
+#qui button { font-size: 10px; padding: 2px 6px; }
+#qui span { flex: 1 1 100%; }
+#qui #bComptesHaut { border-color: var(--or); color: var(--or); }
 /* La porte : tant qu on n est pas entre, il n y a rien d autre a faire. */
 #porte { position: fixed; inset: 0; background: #0b0b0dF2; z-index: 9000;
          display: none; align-items: center; justify-content: center; }
@@ -2503,7 +2505,11 @@ function majQui() {
   if (!q || !MOI.identifiant) return;
   q.innerHTML = '<span>signed in as <b>' + MOI.identifiant + '</b>' +
     (MOI.admin ? ' · admin' : '') + '</span>' +
+    // Les comptes juste sous le nom : en bas de la colonne, le bouton finissait
+    // sous une longue liste de dossiers, hors de vue (David, 18/10).
+    (MOI.admin ? '<button id="bComptesHaut">⚙ Accounts…</button>' : '') +
     '<button id="bSortir">Sign out</button>';
+  if (MOI.admin) $('#bComptesHaut').onclick = boiteComptes;
   $('#bSortir').onclick = async () => {
     try { await api('api/sortir', {}); } catch (err) {}
     location.reload();
