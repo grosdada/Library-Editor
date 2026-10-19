@@ -53,6 +53,8 @@ body.edit #selDossier{display:inline-block}
 body.edit .rushOnly{display:none}
 #tailleVign{min-width:74px;width:74px}
 #selEpisode{max-width:240px;border-color:var(--or)}
+#selRatio{width:auto;padding:4px 6px}
+#selRatio.actif{border-color:var(--orange);color:var(--orange)}
 /* Les couleurs de rangement : une pastille et son nom. Un clic filtre, un
    double-clic ou un clic droit l edite. */
 #cats{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
@@ -896,6 +898,15 @@ body.enligne #qui { display: flex; }
   <input id="q" placeholder="search…">
   <button id="bFav" title="favourites only">★</button>
   <div id="cats"></div>
+  <select id="selRatio" title="filter by picture ratio">
+    <option value="">all ratios</option>
+    <option value="16:9">16:9</option>
+    <option value="9:16">9:16</option>
+    <option value="4:3">4:3</option>
+    <option value="3:4">3:4</option>
+    <option value="1:1">1:1</option>
+    <option value="autre">other</option>
+  </select>
   <input type="range" id="tailleVign" min="64" max="300" step="2" value="206"
     title="thumbnail size">
   <span class="pousse"></span>
@@ -1451,6 +1462,17 @@ const CAT_TEINTES = ['#3f9a94', '#c2577f', '#8f8a3a', '#d06a3a', '#5a67b8',
 const CAT_MAX = 40;
 let CATS = {suivant: 6, liste: CAT_DEPART.map(c => Object.assign({}, c))};
 let FILTRE_CAT = 0;
+// Filtre par proportion de l image (David, 20/10) : 16:9, 9:16, 4:3, 3:4, 1:1,
+// et « other » pour le reste. 5 % de tolerance : 864x480 (1,80) est un 16:9,
+// 1098x840 (1,31) un 4:3. Un son seul n a pas d image : il sort du filtre.
+const RATIOS = {'16:9': 16 / 9, '9:16': 9 / 16, '4:3': 4 / 3, '3:4': 3 / 4, '1:1': 1};
+let FILTRE_RATIO = '';
+function ratioDe(f) {
+  if (!f || !f.w || !f.h) return '';
+  const r = f.w / f.h;
+  for (const k in RATIOS) if (Math.abs(r / RATIOS[k] - 1) <= 0.05) return k;
+  return 'autre';
+}
 const catDe = id => CATS.liste.find(c => c.id === +id) || null;
 const couleurCat = id => { const c = id ? catDe(id) : null; return c ? c.coul : ''; };
 
@@ -1459,6 +1481,7 @@ function correspond(f) {
       dossierActif !== f.pj && dossierActif !== clefDossier(f)) return false;
   if (favSeul && !f.fav) return false;
   if (FILTRE_CAT && +f.coul !== FILTRE_CAT) return false;
+  if (FILTRE_RATIO && ratioDe(f) !== FILTRE_RATIO) return false;
   if (q && !f.nom.toLowerCase().includes(q)) return false;
   return true;
 }
@@ -2290,6 +2313,7 @@ async function montrerDansLeProjet(id, pj) {
     if (q) { q = ''; $('#q').value = ''; }
     if (favSeul) { favSeul = false; $('#bFav').classList.remove('on'); }
     if (FILTRE_CAT) { FILTRE_CAT = 0; rendreCats(); }
+    if (FILTRE_RATIO) { FILTRE_RATIO = ''; majRatio(); }
     dossierActif = clefDossier(f);
     appliquerProfil();
     rendreDossiers();
@@ -3506,6 +3530,20 @@ $('#porteOk').onclick = async () => {
   }
 };
 $('#q').oninput = e => { q = e.target.value.toLowerCase().trim(); rendreGrille(); };
+function majRatio() {
+  const s = $('#selRatio');
+  s.value = FILTRE_RATIO;
+  s.classList.toggle('actif', !!FILTRE_RATIO);
+}
+$('#selRatio').onchange = e => {
+  FILTRE_RATIO = e.target.value;
+  majRatio();
+  pref.ecrire('ratio', FILTRE_RATIO);
+  rendreGrille();
+};
+FILTRE_RATIO = RATIOS[pref.lire('ratio', '')] || pref.lire('ratio', '') === 'autre'
+  ? pref.lire('ratio', '') : '';
+majRatio();
 $('#bFav').onclick = () => {
   favSeul = !favSeul; $('#bFav').classList.toggle('on', favSeul); rendreGrille();
 };
