@@ -5373,6 +5373,35 @@ function annulerMontage() {
 // ===========================================================================
 function finDe(p) { return clipsDe(p).reduce((m, c) => Math.max(m, fin(c)), 0); }
 
+// Defilement automatique pendant qu on tire un bloc ou l un de ses bords
+// (David, 19/10) : pres du bord de la timeline, ou au-dela, elle defile, plus
+// vite a mesure qu on s en approche, et le geste continue comme si la souris
+// avancait. A droite, la fin de la timeline recule devant le bloc.
+function defilerPendant(rejouer) {
+  const def = $('#tlDefile'), cont = $('#tlContenu');
+  const sl0 = def.scrollLeft;
+  let ev = null, raf = 0, fini = false;
+  const pas = () => {
+    raf = 0;
+    if (fini || !ev) return;
+    const r = def.getBoundingClientRect(), Z = 56, MAX = 28;
+    let v = 0;
+    if (ev.clientX < r.left + Z) v = -Math.min(1, (r.left + Z - ev.clientX) / Z) * MAX;
+    else if (ev.clientX > r.right - Z) v = Math.min(1, (ev.clientX - (r.right - Z)) / Z) * MAX;
+    if (v > 0 && def.scrollLeft + def.clientWidth >= cont.scrollWidth - 2)
+      cont.style.width = (cont.offsetWidth + Math.ceil(v)) + 'px';
+    const avant = def.scrollLeft;
+    if (v) def.scrollLeft = Math.max(0, avant + v);
+    if (def.scrollLeft !== avant) rejouer(ev);
+    if (v && !raf) raf = requestAnimationFrame(pas);
+  };
+  return {
+    decalage: () => def.scrollLeft - sl0,
+    suivre: e => { ev = e; if (!raf && !fini) raf = requestAnimationFrame(pas); },
+    arreter: () => { fini = true; cancelAnimationFrame(raf); }
+  };
+}
+
 function nouveauClip(film, pisteId, t0) {
   const f = PAR_ID[film];
   return {uid: uidSuivant++, piste: pisteId, film: film, t0: t0, e: 0,
@@ -5699,12 +5728,14 @@ $('#lanes').addEventListener('pointerdown', e => {
     const grp = groupeLie(c);
     const dep = grp.map(x => ({c: x, t0: x.t0, e: x.e, o: x.o}));
     let bougé = false;
+    const auto = defilerPendant(ev => bouger(ev));
     const bouger = ev => {
       if (!bougé) { memoriser(); bougé = true; }
+      auto.suivre(ev);
       // « d » est en secondes de source (donc mis a l echelle par la
       // vitesse), « dTl » en secondes de timeline. Un rush se rogne dans sa
       // source ; un calque n en a pas, il s etire librement.
-      let dTl = (ev.clientX - x0) / PPS;
+      let dTl = (ev.clientX - x0 + auto.decalage()) / PPS;
       // Maj : le bord tire colle aux bords des autres blocs, a la tete, aux
       // reperes I/O et aux marqueurs (15/10).
       if (ev.shiftKey) {
@@ -5766,6 +5797,7 @@ $('#lanes').addEventListener('pointerdown', e => {
       });
     };
     const lacher = () => {
+      auto.arreter();
       window.removeEventListener('pointermove', bouger);
       window.removeEventListener('pointerup', lacher);
       if (bougé) { rendreTimeline(); resynchroniser(true); }
@@ -5779,8 +5811,10 @@ $('#lanes').addEventListener('pointerdown', e => {
   let dep = grp.map(x => ({c: x, t0: x.t0}));
   let ignorer = new Set(grp.map(x => x.uid));
   let bougé = false, laneCible = null;
+  const auto = defilerPendant(ev => bouger(ev));
   const bouger = ev => {
     if (!bougé && Math.abs(ev.clientX - x0) < 3 && Math.abs(ev.clientY - y0) < 3) return;
+    auto.suivre(ev);
     if (!bougé) {
       memoriser(); bougé = true;
       if (ajoutMaj) {
@@ -5797,7 +5831,7 @@ $('#lanes').addEventListener('pointerdown', e => {
       grp.forEach(x => { const el2 = elClip(x.uid);
         if (el2) el2.style.pointerEvents = 'none'; });
     }
-    let d = (ev.clientX - x0) / PPS;
+    let d = (ev.clientX - x0 + auto.decalage()) / PPS;
     d = aimanterGroupe(dep, d, ignorer, ev.shiftKey);
     dep.forEach(s => {
       s.c.t0 = Math.max(0, s.t0 + d);
@@ -5837,6 +5871,7 @@ $('#lanes').addEventListener('pointerdown', e => {
       x.classList.toggle('ejectable', vises.has(+x.dataset.uid)));
   };
   const lacher = ev => {
+    auto.arreter();
     window.removeEventListener('pointermove', bouger);
     window.removeEventListener('pointerup', lacher);
     $$('.lane').forEach(x => x.classList.remove('cible'));
