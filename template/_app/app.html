@@ -10824,6 +10824,7 @@ function appliquerSpecs() {
   majTete();
 }
 
+let FORMATS_BIB = [];
 const TAILLES = [
   ['1920 × 1080  ·  HD 16:9', 1920, 1080],
   ['1280 × 720  ·  HD 16:9', 1280, 720],
@@ -10898,10 +10899,19 @@ function boiteProjet(neuf) {
         '</option>').join('')
         : '<option value="">no project open</option>') + '</select></div>' +
     '<div><label style="font-size:11px;color:var(--sourd)">Format</label><br>' +
-    '<select id="pTaille" style="width:100%">' +
-      TAILLES.map(t => '<option value="' + t[1] + 'x' + t[2] + '"' +
-        (PROJET.w === t[1] && PROJET.h === t[2] ? ' selected' : '') + '>' + t[0] +
-        '</option>').join('') +
+    '<select id="pTaille" style="width:100%">' + (() => {
+      const opt = t => '<option value="' + t[1] + 'x' + t[2] + '"' +
+        (PROJET.w === t[1] && PROJET.h === t[2] ? ' selected' : '') + '>' +
+        echapHtml(t[0]) + '</option>';
+      // Les formats de la bibliotheque d abord ; une taille deja presente en
+      // tete n est pas repetee dessous (sinon deux options « selected »).
+      if (!FORMATS_BIB.length) return TAILLES.map(opt).join('');
+      const vus = new Set(FORMATS_BIB.map(t => t[1] + 'x' + t[2]));
+      return '<optgroup label="This library">' + FORMATS_BIB.map(opt).join('') +
+        '</optgroup><optgroup label="Other sizes">' +
+        TAILLES.filter(t => !vus.has(t[1] + 'x' + t[2])).map(opt).join('') +
+        '</optgroup>';
+    })() +
       '<option value="libre">custom size…</option></select></div>' +
     '<div id="pLibre" style="display:none;gap:8px">' +
     '<input id="pW" type="number" min="64" max="7680" step="2" value="' + PROJET.w +
@@ -11902,6 +11912,11 @@ async function suivreRendu() {
     document.body.classList.toggle('lectureseule', LECTURE_SEULE);
     // Le format de la bibliotheque, pour une timeline encore vide. Une
     // sequence rouverte ensuite impose le sien.
+    // Les formats que cette bibliotheque propose (ses rushes en ont
+    // plusieurs) : en tete de la boite de sequence (1.3.53).
+    FORMATS_BIB = (Array.isArray(l.formats) ? l.formats : [])
+      .filter(x => Array.isArray(x) && +x[0] > 0 && +x[1] > 0)
+      .map(x => [String(x[2] || (x[0] + ' × ' + x[1])), +x[0], +x[1]]);
     if (Array.isArray(l.format) && l.format.length === 2) {
       PROJET.w = +l.format[0] || PROJET.w;
       PROJET.h = +l.format[1] || PROJET.h;
@@ -11993,7 +12008,14 @@ async function suivreRendu() {
       for (const p of OUVERTS) await chargerRangement(p.nom);
       // On travaille toujours dans « My folders » : la source ne se consulte
       // qu un moment, par le bouton du titre, et l on y revient a l ouverture.
-      if (RANGEABLE) {
+      // Sauf tant que rien n est range : « My folders » serait vide et tout
+      // tomberait dans « not filed » — on ouvre alors sur les vrais dossiers
+      // (Montage-Mode, 19/10).
+      const dejaRange = OUVERTS.some(p => {
+        const r = rangementDe(p.nom);
+        return (r.dossiers || []).length || Object.keys(r.ou || {}).length;
+      });
+      if (RANGEABLE && dejaRange) {
         VUE = 'rangement';
         majBoutonSource();
         document.body.classList.toggle('rangement', VUE === 'rangement');

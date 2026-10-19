@@ -276,7 +276,10 @@ def site_films(tache, racine, base, mod, projets, prets):
     if not publies:
         raise RuntimeError("Aucun projet n'a de proxy : rien à mettre en ligne.")
     pj = os.path.join(genere, "_data", "projets.json")
+    regl = getattr(mod, "REGLAGES", None) or {}
     C.ecrire_json(pj, {"projets": publies, "biblis": [p for p in publies if p in biblis],
+                       "format": regl.get("format") or None,
+                       "formats": regl.get("formats") or None,
                        "publie": time.strftime("%Y-%m-%d %H:%M")})
     entrees.append((pj, "_data/projets.json", "site"))
     app = os.path.join(racine, "_app")

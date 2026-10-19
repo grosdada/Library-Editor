@@ -3525,7 +3525,10 @@ class Poste(BaseHTTPRequestHandler):
                                # (/api/ajouter_rushes), sans rescanner.
                                "ajout": True,
                                "version": version_installee(),
-                               "format": REGLAGES.get("format") or None})
+                               "format": REGLAGES.get("format") or None,
+                               # Les formats que la bibliotheque propose en tete
+                               # de la boite de sequence : [[l, h, nom], ...].
+                               "formats": REGLAGES.get("formats") or None})
 
         # --- catalogue d un projet ----------------------------------------
         if chemin in ("/api/catalogue", "/api/scan"):
