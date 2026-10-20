@@ -1,5 +1,5 @@
 {
- "version": "1.3.55",
+ "version": "1.3.56",
  "date": "2026-10-20",
  "notes": "",
  "genres": {
@@ -32,7 +32,7 @@
     },
     "_app/app.html": {
      "depot": "template/_app/app.html",
-     "sha256": "561abfb2d7c8e64d2549c848331b774da227535a0ec9a1776b45cb0bd1ff3204",
+     "sha256": "72d38a475511d10f0065883e44710cc7d9d91ef8d36e1ad67ceea7fc969afd65",
      "historique": [
       "bcaee501fc23d322034fee64afde7dff827884ddb7139dd4c370ed07d4fc2410",
       "5fdf04c279c4c900a3a202b2b3c5310bee53684a032f7c965e8f466684eae5d9",
@@ -93,7 +93,8 @@
       "3cff5d891ff3996655995d1ecebf505ad9c01617beceb768ea297b2d0cc31965",
       "1ce27a7271e77e4c9dfc074e6becd1aedcd258fa195b8f6b7a49dcae639d65b4",
       "06291b9cce2a09d1474e86a4b3af6eecfe2e1474cf84e4cf1801828bafee25d1",
-      "eaf5a8010f4a64bb874c4635c4c72fed87bcb47990f52a72d9d2d6592754b991"
+      "eaf5a8010f4a64bb874c4635c4c72fed87bcb47990f52a72d9d2d6592754b991",
+      "561abfb2d7c8e64d2549c848331b774da227535a0ec9a1776b45cb0bd1ff3204"
      ]
     },
     "_app/_maj.py": {
@@ -331,11 +332,11 @@
    }
   }
  },
- "commit": "85d5e3da3867140a4968c6375e0f2d9e2031c506",
+ "commit": "48c241421b12aadf5fb0b1eca6d543de1952e811",
  "installeur": {
-  "version": "1.3.55",
-  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.3.55/Library-Editor-1.3.55.zip",
-  "octets": 38549254,
-  "sha256": "8576e2bec7e29b65022b9590e60a7dcbc9ba41780548f225a7358e17b9cc13b8"
+  "version": "1.3.56",
+  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.3.56/Library-Editor-1.3.56.zip",
+  "octets": 38548992,
+  "sha256": "8c59e3932a289655cec1faa2f0740b6de9e5a9dc8366d2ab6c8562954523277a"
  }
 }
