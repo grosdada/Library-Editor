@@ -3498,6 +3498,7 @@ class Poste(BaseHTTPRequestHandler):
                                "captures": captures[0] if captures else "",
                                "api": API, "ffmpeg": bool(FFMPEG),
                                "titre": TITRE, "rangement": True,
+                               "entete": REGLAGES.get("entete") or "",
                                "lecture_seule": LECTURE_SEULE,
                                # sait retirer les fiches manquantes
                                # (/api/purger) : sans ce champ, l application
@@ -3886,6 +3887,25 @@ class Poste(BaseHTTPRequestHandler):
             fabriquer_posters(CAPTURES, budget=10, bavard=False)
             return self._json({"ok": True, "projet": CAPTURES, "film": fiche,
                                "films": lire_catalogue(CAPTURES).get("films", [])})
+
+        if chemin == "/api/entete":
+            # Le grand titre de la bibliotheque, dans bibliotheque.json.
+            e = re.sub(r"[\r\n\t]+", " ", str(d.get("entete") or "")).strip()[:80]
+            try:
+                if os.path.isfile(FICHIER_REGLAGES) and not os.path.exists(
+                        FICHIER_REGLAGES + ".avant-entete"):
+                    shutil.copy2(FICHIER_REGLAGES, FICHIER_REGLAGES + ".avant-entete")
+            except OSError:
+                pass
+            if e:
+                REGLAGES["entete"] = e
+            else:
+                REGLAGES.pop("entete", None)
+            tmp = FICHIER_REGLAGES + ".tmp"
+            with io.open(tmp, "w", encoding="utf-8") as fr:
+                json.dump(REGLAGES, fr, ensure_ascii=False, indent=1)
+            os.replace(tmp, FICHIER_REGLAGES)
+            return self._json({"ok": True, "entete": e})
 
         if chemin == "/api/presets":
             g = d.get("genre") or "secousse"

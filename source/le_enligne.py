@@ -280,6 +280,7 @@ def site_films(tache, racine, base, mod, projets, prets):
     C.ecrire_json(pj, {"projets": publies, "biblis": [p for p in publies if p in biblis],
                        "format": regl.get("format") or None,
                        "formats": regl.get("formats") or None,
+                       "entete": regl.get("entete") or None,
                        "publie": time.strftime("%Y-%m-%d %H:%M")})
     entrees.append((pj, "_data/projets.json", "site"))
     app = os.path.join(racine, "_app")

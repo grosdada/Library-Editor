@@ -1093,6 +1093,8 @@ let MOI = {identifiant: '', admin: false, comptes: -1};
 // d une bibliotheque qui l annonce. Un serveur plus ancien ne dit rien, et
 // tout reste comme avant.
 let RANGEABLE = false, LECTURE_SEULE = false, TITRE = '';
+// Le grand titre choisi au double-clic (1.3.55). Vide : la liste des projets.
+let ENTETE = '';
 // Le serveur sait retirer les fiches manquantes (champ « purge » annonce par
 // /api/projets). Absent — vieux serveur, version en ligne — : pas de bouton.
 let PURGE = false;
@@ -1639,8 +1641,9 @@ function majEntete() {
   if (document.title !== voulu) document.title = voulu;
   // Les captures ne sont pas un projet qu on a ouvert : pas dans le titre.
   const nomsTitre = OUVERTS.filter(p => !estCaptures(p.nom)).map(p => p.nom);
-  $('#titre').textContent = nomsTitre.length
-    ? nomsTitre.join(' + ') : 'no project open';
+  if (!$('#titre').querySelector('input'))
+    $('#titre').textContent = ENTETE || (nomsTitre.length
+      ? nomsTitre.join(' + ') : 'no project open');
   $('#entete').textContent = OUVERTS.length
     ? (vivants.length + ' clips · ' + DOSSIERS.length + ' folders · ' +
        (duree / 60).toFixed(0) + ' min · ' + (poids / 1024).toFixed(1) + ' Go')
@@ -3544,6 +3547,50 @@ $('#selRatio').onchange = e => {
 FILTRE_RATIO = RATIOS[pref.lire('ratio', '')] || pref.lire('ratio', '') === 'autre'
   ? pref.lire('ratio', '') : '';
 majRatio();
+// Double-clic sur le grand titre : on le renomme sur place. Entree garde,
+// Echap annule, vide revient a la liste des projets. Il est enregistre dans la
+// bibliotheque, pas dans le navigateur : tout le monde voit le meme.
+$('#titre').title = 'double-click to rename';
+$('#titre').addEventListener('dblclick', () => {
+  const h = $('#titre');
+  if (h.querySelector('input')) return;
+  if (ENLIGNE && !MOI.admin) { dire('only an administrator can rename the library'); return; }
+  const inp = document.createElement('input');
+  inp.value = ENTETE || h.textContent;
+  inp.maxLength = 80;
+  inp.style.cssText = 'font:inherit;letter-spacing:inherit;text-transform:none;' +
+    'width:min(520px,60vw);padding:1px 6px';
+  h.textContent = '';
+  h.appendChild(inp);
+  inp.focus(); inp.select();
+  let fini = false;
+  const fermer = async garder => {
+    if (fini) return;
+    fini = true;
+    const neuf = inp.value.trim().slice(0, 80);
+    const avant = ENTETE;
+    inp.remove();
+    if (garder && neuf !== avant) {
+      ENTETE = neuf;
+      majEntete();
+      try {
+        const d = await api('api/entete', {entete: neuf});
+        ENTETE = typeof d.entete === 'string' ? d.entete : neuf;
+        dire(ENTETE ? 'title saved: “' + ENTETE + '”' : 'title back to the project names');
+      } catch (err) {
+        ENTETE = avant;
+        dire('title not saved — ' + err.message, true);
+      }
+    }
+    majEntete();
+  };
+  inp.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); fermer(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); fermer(false); }
+  });
+  inp.addEventListener('blur', () => fermer(true));
+});
 $('#bFav').onclick = () => {
   favSeul = !favSeul; $('#bFav').classList.toggle('on', favSeul); rendreGrille();
 };
@@ -11943,6 +11990,7 @@ async function suivreRendu() {
     }
     LECTURE_SEULE = !!l.lecture_seule;
     TITRE = l.titre || '';
+    ENTETE = typeof l.entete === 'string' ? l.entete : '';
     // Le nom de la bibliotheque est connu : l en-tete et l onglet le portent
     // tout de suite, meme avant qu un projet soit ouvert.
     try { majEntete(); } catch (e) {}
