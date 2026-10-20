@@ -1925,6 +1925,28 @@ function agrandir(id) {
   l.className = 'on';
 }
 
+// Le rush voisin dans la grille, tel qu elle est affichee (filtres et tri
+// compris). Le pop-up suit : avec lui ouvert, haut / bas valent gauche / droite.
+function naviguerRush(touche) {
+  const cartes = [...grille.querySelectorAll('.c[data-id]')];
+  if (!cartes.length) return;
+  const courant = agrandi || [...selection].pop();
+  const i = cartes.findIndex(c => c.dataset.id === courant);
+  const top0 = cartes[0].offsetTop;
+  let cols = cartes.findIndex(c => c.offsetTop !== top0);
+  if (cols < 1) cols = cartes.length;
+  const pas = (touche === 'ArrowRight' || touche === 'ArrowLeft' || agrandi) ? 1 : cols;
+  const sens = (touche === 'ArrowRight' || touche === 'ArrowDown') ? 1 : -1;
+  const j = i < 0 ? 0 : Math.max(0, Math.min(cartes.length - 1, i + sens * pas));
+  if (j === i) return;
+  const id = cartes[j].dataset.id;
+  selection.clear(); selection.add(id);
+  rendreGrille();
+  const el = grille.querySelector('.c[data-id="' + id + '"]');
+  if (el) el.scrollIntoView({block: 'nearest'});
+  if (agrandi) agrandir(id);
+}
+
 function reduire() {
   if (!agrandi) return false;
   agrandi = null;
@@ -10654,6 +10676,15 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (ctrl) return;
+  // Mode Rushes : les fleches vont de rush en rush dans la grille — gauche /
+  // droite le voisin, haut / bas la rangee — et un rush agrandi passe au
+  // suivant sans se refermer (David, 20/10). Le montage garde ses fleches.
+  if (!document.body.classList.contains('edit') && FLECHES.has(e.key) &&
+      !e.altKey && !ED_CLES) {
+    e.preventDefault();
+    naviguerRush(e.key);
+    return;
+  }
   if (e.code === 'Space') { e.preventDefault(); enLecture ? pause() : lire(); return; }
   if (k === 'e') { ED_CLES ? fermerEdCles() : ouvrirEdCles(); return; }
   if (k === 'v') { setOutil('V'); return; }
