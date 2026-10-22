@@ -117,6 +117,24 @@ body.rangeable.lectureseule .pjt .plus{display:block}
 .pjt.on .plus:hover{color:#fff}
 .pjt.survol{outline:2px dashed var(--orange);outline-offset:-2px}
 .dos{margin-left:12px}
+/* Les sous-dossiers (1.3.58) : un retrait par niveau (style en ligne), un
+   triangle pour replier ceux qui ont des enfants, et le meme « + » que le
+   projet, qui cree un sous-dossier DANS ce dossier. */
+.dos .chev{flex:0 0 auto;width:11px;text-align:center;font-size:8px;color:var(--sourd);
+ cursor:pointer;user-select:none;margin-left:-2px}
+.dos .chev:hover{color:var(--encre)}
+.dos.on .chev{color:#fffb}
+.dos .plus{display:none;background:none;border:0;color:var(--sourd);cursor:pointer;
+ font-size:15px;line-height:1;padding:0 1px;flex:0 0 auto;visibility:hidden}
+body:not(.enligne):not(.lectureseule):not(.rangement) .dos .plus,
+body.rangement.enligne .dos .plus,
+body.rangement.rangeable .dos .plus,
+body.rangeable.enligne .dos .plus,
+body.rangeable.lectureseule .dos .plus{display:block}
+.dos:hover .plus,.dos.on .plus{visibility:visible}
+.dos .plus:hover{color:var(--vert)}
+.dos.on .plus{color:#fffb}
+.dos.on .plus:hover{color:#fff}
 /* La poignee a gauche du titre : on l attrape pour changer l ordre des
    projets et de leurs dossiers (David, 05/10). */
 .poignee{flex:0 0 auto;width:9px;margin-left:-4px;color:var(--sourd);cursor:grab;
@@ -1464,6 +1482,13 @@ const CAT_TEINTES = ['#3f9a94', '#c2577f', '#8f8a3a', '#d06a3a', '#5a67b8',
 const CAT_MAX = 40;
 let CATS = {suivant: 6, liste: CAT_DEPART.map(c => Object.assign({}, c))};
 let FILTRE_CAT = 0;
+// Les dossiers replies, par « projet/dossier » : retenus par bibliotheque.
+const DOS_REPLIES = new Set((pref.lire('dosReplies', '') || '').split('\t').filter(Boolean));
+function plierDossier(clef) {
+  DOS_REPLIES.has(clef) ? DOS_REPLIES.delete(clef) : DOS_REPLIES.add(clef);
+  pref.ecrire('dosReplies', [...DOS_REPLIES].join('\t'));
+  rendreDossiers();
+}
 // Filtre par proportion de l image (David, 20/10) : 16:9, 9:16, 4:3, 3:4, 1:1,
 // et « other » pour le reste. 5 % de tolerance : 864x480 (1,80) est un 16:9,
 // 1098x840 (1,31) un 4:3. Un son seul n a pas d image : il sort du filtre.
@@ -1573,15 +1598,29 @@ function rendreDossiers() {
       ' (' + (n[p.nom] || 0) + ')</option>';
     for (const d of DOSSIERS) {
       if (d.pj !== p.nom) continue;
+      // Un sous-dossier : decale sous son parent, sous son seul nom ; cache si
+      // un de ses parents est replie (1.3.58).
+      const vrai = d.d !== NONRANGE;
+      const bouts = vrai ? String(d.d).split('/') : [d.d];
+      let cache = false;
+      for (let k = 1; k < bouts.length; k++)
+        if (DOS_REPLIES.has(d.pj + '/' + bouts.slice(0, k).join('/'))) cache = true;
+      const enfants = vrai && DOSSIERS.some(x => x.pj === d.pj && x.d.startsWith(d.d + '/'));
+      const replie = DOS_REPLIES.has(d.clef);
       // Replie : la ligne n est pas rendue, mais reste dans le menu deroulant.
-      if (!plie)
+      if (!plie && !cache)
         h += '<div class="dos ' + (dossierActif === d.clef ? 'on' : '') +
           '" data-clef="' + ech(d.clef) + '" data-pj="' + ech(d.pj) +
-          '" data-d="' + ech(d.d) + '" title="double-click to rename">' +
+          '" data-d="' + ech(d.d) + '" style="margin-left:' + (12 + 14 * (bouts.length - 1)) +
+          'px" title="' + ech(d.d) + ' — double-click to rename">' +
           (d.d === NONRANGE || (VUE === 'rangement' && !RANGEABLE) ? ''
             : '<span class="poignee" draggable="true" data-ordre="dos" ' +
-              'title="drag to move this folder">⋮⋮</span>') + '<b>' +
-          ech(d.d) + '</b><i>' + (n[d.clef] || 0) + '</i></div>';
+              'title="drag to move this folder">⋮⋮</span>') +
+          (enfants ? '<span class="chev" data-plier-dos="' + ech(d.clef) + '" title="' +
+            (replie ? 'show' : 'hide') + ' its subfolders">' + (replie ? '▶' : '▼') + '</span>' : '') +
+          '<b>' + ech(bouts[bouts.length - 1]) + '</b><i>' + (n[d.clef] || 0) + '</i>' +
+          (vrai ? '<button class="plus" data-sous-de="' + ech(d.clef) +
+            '" title="new subfolder in “' + ech(d.d) + '”">+</button>' : '') + '</div>';
       o += '<option value="' + ech(d.clef) + '"' +
         (dossierActif === d.clef ? ' selected' : '') + '>' + ech(d.d) +
         ' (' + (n[d.clef] || 0) + ')</option>';
@@ -2797,6 +2836,15 @@ colDos.addEventListener('click', async e => {
   if (x) { e.stopPropagation(); fermerProjet(x.dataset.fermer); return; }
   const pl = e.target.closest('[data-nouveau]');
   if (pl) { e.stopPropagation(); nouveauDossier(pl.dataset.nouveau); return; }
+  const sd = e.target.closest('[data-sous-de]');
+  if (sd) {
+    e.stopPropagation();
+    const ligne = sd.closest('.dos');
+    nouveauDossier(ligne.dataset.pj, ligne.dataset.d);
+    return;
+  }
+  const pd = e.target.closest('[data-plier-dos]');
+  if (pd) { e.stopPropagation(); plierDossier(pd.dataset.plierDos); return; }
   const sc = e.target.closest('[data-scanner]');
   if (sc) { e.stopPropagation(); scannerProjet(sc.dataset.scanner); return; }
   const stTout = e.target.closest('[data-st-tout]');
@@ -3527,19 +3575,22 @@ $('#selDossier').onchange = e => {
 // Le « + » de la ligne du projet. Il vise CE projet : si le dossier ouvert
 // appartient a un autre, il ne sert pas de parent — l ancien bouton du bas,
 // lui, melangeait « projet courant » et « dossier actif ».
-async function nouveauDossier(pj) {
+// « parent » donne : le « + » d un dossier, qui cree DANS ce dossier.
+async function nouveauDossier(pj, parent) {
   if (!pj) return;
-  const dedans = dossierActif && dossierActif.indexOf('/') > 0 &&
-    dossierActif.slice(0, dossierActif.indexOf('/')) === pj
-    ? dossierActif.slice(pj.length + 1) : '';
+  const dedans = parent !== undefined ? parent
+    : dossierActif && dossierActif.indexOf('/') > 0 &&
+      dossierActif.slice(0, dossierActif.indexOf('/')) === pj
+      ? dossierActif.slice(pj.length + 1) : '';
+  if (parent !== undefined) DOS_REPLIES.delete(pj + '/' + parent);
   // En ligne ou en lecture seule, la vue Source ne peut pas creer de vrai
   // dossier : le « + » y cree un dossier « My folders » et bascule dans cette
   // vue, plutot que de disparaitre (David, 06/10 : « les dossiers ont perdu
   // leur + »).
   if (VUE !== 'rangement' && (ENLIGNE || LECTURE_SEULE) && RANGEABLE) {
     await basculerVue('rangement');
-    const nom = prompt('New folder in “' + pj + '” (My folders):');
-    if (nom) creerDossierVirtuel(pj, '', nom);
+    const nom = prompt('New folder in “' + (dedans || pj) + '” (My folders):');
+    if (nom) creerDossierVirtuel(pj, dedans === NONRANGE ? '' : dedans, nom);
     return;
   }
   if (VUE === 'rangement') {
