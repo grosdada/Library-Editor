@@ -424,7 +424,16 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
 .pEntete{position:relative;display:flex;align-items:center;gap:4px;padding:0 6px;
  border-bottom:1px solid var(--trait);font:11px/1 ui-monospace,monospace;
  flex-wrap:wrap;align-content:center;row-gap:4px}
-.pEntete b{flex:1 1 auto;font-weight:600;letter-spacing:.05em}
+.pEntete b{flex:0 1 auto;font-weight:600;letter-spacing:.05em}
+/* Le verrou, juste a droite du nom (1.3.59) : il pousse le reste a droite. */
+.pEntete button.k{margin-right:auto;padding:0 3px;border:0;background:none;
+ font-size:11px;line-height:1;opacity:.35;filter:grayscale(1)}
+.pEntete button.k:hover{opacity:.8}
+.pEntete button.k.on{opacity:1;filter:none}
+/* Une piste verrouillee : hachures par-dessus, blocs intouchables. */
+.lane.verrou{background-image:repeating-linear-gradient(135deg,#ffffff0d 0 6px,transparent 6px 12px)}
+.lane.verrou .clip{cursor:not-allowed;filter:saturate(.55) brightness(.85)}
+#barreProjets .pu em{font-style:normal}
 .pEntete i{font-style:normal;font-size:9px;color:var(--or);flex:0 0 auto}
 /* Le volume de piste s affiche meme a 100 % — sinon il n y aurait rien a
    double-cliquer —, mais en retrait : seul un volume change doit sauter aux
@@ -3023,11 +3032,15 @@ async function ajouterMontage(pj, nom) {
                     : ''), perdus > 0 || absents.length > 0);
 }
 
-function editerMontage(el) {
-  const pj = el.dataset.pj, ancien = el.dataset.mnom, b = el.querySelector('b');
+// « lab » : ce que le champ remplace — le nom dans la colonne, ou dans un
+// onglet de la bande des sequences (double-clic, 1.3.59).
+function editerMontage(el, lab) {
+  const pj = el.dataset.pj, ancien = el.dataset.mnom || el.dataset.p;
+  const b = lab || el.querySelector('b');
   if (!b) return;
   const inp = document.createElement('input');
-  inp.value = ancien; inp.style.width = '100%';
+  inp.value = ancien; inp.style.width = lab ? Math.max(90, ancien.length * 8) + 'px' : '100%';
+  if (lab) inp.style.cssText += ';font-size:11px;padding:0 4px;height:18px';
   b.replaceWith(inp); inp.focus(); inp.select();
   let clos = false;
   const fermer = async valider => {
@@ -4035,6 +4048,10 @@ const nomType = t => t === 'v' ? 'video' : t === 'm' ? 'music' : 'audio';
 const hauteurBase = p => (p.type === 'v' ? HV : (p.type === 'm' ? HM : HA)) * zoomV;
 const hauteurPiste = p => Math.round(hauteurBase(p) * (+p.hk || 1));
 const classePiste = p => p.type === 'v' ? 'va' : (p.type === 'm' ? 'ma' : 'aa');
+// Verrou de piste (1.3.59) : ses blocs ne se selectionnent plus, donc rien de ce
+// qui passe par la selection ne les touche ; on ne peut rien y deposer ni coller.
+const verrouillee = id => { const p = piste(id); return !!(p && p.lock); };
+function direVerrou(id) { dire('track ' + id + ' is locked — click its lock to unlock', true); }
 
 // Echappement HTML, partage par tout ce qui compose du balisage a la main.
 const echapHtml = x => String(x === undefined || x === null ? '' : x)
@@ -4414,6 +4431,8 @@ function rendreEntetes() {
       '<div class="pPoignee" data-hpiste="' + p.id + '" title="drag to make this ' +
       'track taller or shorter — double-click: back to normal"></div>' +
       '<b>' + p.id + '</b>' +
+      '<button class="k ' + (p.lock ? 'on' : '') + '" data-lock="' + p.id + '" title="' +
+      (p.lock ? 'locked — click to unlock' : 'lock this track') + '">🔒</button>' +
       (estSon(p) ? '<i class="pVal' + (v === 1 ? ' neutre' : '') +
         '" title="double-click to type the volume">' +
         Math.round(v * 100) + '%</i>' : '') +
@@ -4608,9 +4627,11 @@ function majMarqueurs() {
 }
 
 function rendreLanes() {
+  if (PISTES.some(p => p.lock))
+    clipsSel = new Set([...clipsSel].filter(u => { const c = parUid(u); return c && !verrouillee(c.piste); }));
   $('#lanes').style.position = 'relative';
   $('#lanes').innerHTML = pistesOrdonnees().map(p =>
-    '<div class="lane ' + classePiste(p) + '" data-piste="' + p.id +
+    '<div class="lane ' + classePiste(p) + (p.lock ? ' verrou' : '') + '" data-piste="' + p.id +
     '" style="height:' + hauteurPiste(p) + 'px;--pc:' + couleurPiste(p) + '">' +
     clipsDe(p.id).map(blocClip).join('') + '</div>').join('');
   dessinerOndes();
@@ -5472,6 +5493,16 @@ $('#entetes').addEventListener('dblclick', e => {
 });
 $('#entetes').addEventListener('click', e => {
   if (e.target.closest('[data-vol], .pVal, .saisieVal, [data-hpiste]')) return;
+  const k = e.target.closest('[data-lock]');
+  if (k) {
+    memoriser();
+    const p = piste(k.dataset.lock);
+    p.lock = !p.lock;
+    if (p.lock) clipsSel = new Set([...clipsSel].filter(u => { const c = parUid(u); return c && c.piste !== p.id; }));
+    rendreTimeline();
+    dire(p.lock ? 'track ' + p.id + ' locked' : 'track ' + p.id + ' unlocked');
+    return;
+  }
   const m = e.target.closest('[data-mute]'), s = e.target.closest('[data-solo]');
   // Couper ou isoler une piste change le montage. Ces deux boutons ne le
   // disaient pas : l enregistrement automatique et celui du changement de
@@ -5600,10 +5631,13 @@ function ajouterAuMontage(ids, pisteId, t0) {
   // sur une piste musique va sur cette piste musique, meme s il vient d un
   // dossier de rushes.
   const visee = (pisteId && piste(pisteId)) || (pisteActive && piste(pisteActive)) || null;
+  if (visee && visee.lock) { direVerrou(visee.id); return 0; }
   const pv = (visee && visee.type === 'v') ? visee
-    : (piste('V1') || PISTES.find(p => p.type === 'v') || PISTES[0]);
+    : ((piste('V1') && !piste('V1').lock ? piste('V1') : null) ||
+       PISTES.find(p => p.type === 'v' && !p.lock));
+  if (!pv) { dire('every video track is locked', true); return 0; }
   let t = (t0 === undefined || t0 === null) ? finDe(pv.id) : Math.max(0, t0);
-  const pa = PISTES.find(p => p.type === 'a');
+  const pa = PISTES.find(p => p.type === 'a' && !p.lock);
   let n = 0;
   ids.forEach(id => {
     const f = PAR_ID[id];
@@ -5615,8 +5649,8 @@ function ajouterAuMontage(ids, pisteId, t0) {
       let cible = (visee && estSon(visee)) ? visee : null;
       if (!cible) {
         const musique = estBibli(f.pj);
-        cible = PISTES.find(x => x.type === (musique ? 'm' : 'a')) ||
-                PISTES.find(x => estSon(x));
+        cible = PISTES.find(x => x.type === (musique ? 'm' : 'a') && !x.lock) ||
+                PISTES.find(x => estSon(x) && !x.lock);
         if (!cible) cible = ajouterPiste(musique ? 'm' : 'a');
       }
       const cs = nouveauClip(id, cible.id, (t0 === undefined || t0 === null)
@@ -5679,6 +5713,7 @@ $('#lanes').addEventListener('drop', e => {
   $$('.lane').forEach(x => x.classList.remove('cible'));
   if (!l) return;
   e.preventDefault();
+  if (verrouillee(l.dataset.piste)) { direVerrou(l.dataset.piste); return; }
   let d;
   try { d = JSON.parse(e.dataTransfer.getData('text/plain')); } catch (err) { return; }
   const r = $('#tlContenu').getBoundingClientRect();
@@ -5776,6 +5811,7 @@ $('#lanes').addEventListener('pointerdown', e => {
       $$('#lanes .lane').forEach(l => {
         const h = l.offsetTop, b = h + l.offsetHeight;
         if (b <= y1 || h >= y2) return;
+        if (verrouillee(l.dataset.piste)) return;
         clipsDe(l.dataset.piste).forEach(c => {
           if (fin(c) > t1 && c.t0 < t2) dedans.add(c.uid);
         });
@@ -5825,6 +5861,7 @@ $('#lanes').addEventListener('pointerdown', e => {
   }
   const c = parUid(+el.dataset.uid);
   if (!c) return;
+  if (verrouillee(c.piste)) { e.preventDefault(); direVerrou(c.piste); return; }
 
   if (outil === 'C') {
     const r = $('#tlContenu').getBoundingClientRect();
@@ -6064,7 +6101,9 @@ $('#lanes').addEventListener('pointerdown', e => {
       if (el2) el2.style.pointerEvents = ''; });
     if (!bougé) return;
     const monType = piste(c.piste).type;
-    if (laneCible && laneCible !== c.piste) {
+    if (laneCible && laneCible !== c.piste && verrouillee(laneCible)) {
+      direVerrou(laneCible);
+    } else if (laneCible && laneCible !== c.piste) {
       const pc = piste(laneCible);
       if (pc && pc.type === monType) {
         c.piste = laneCible;
@@ -6105,7 +6144,7 @@ function ejecter(moteurs) {
     const p = file.shift();
     const bout = fin(p);
     clipsDe(p.piste).slice().forEach(x => {
-      if (x.uid === p.uid || intouchables.has(x.uid)) return;
+      if (x.uid === p.uid || intouchables.has(x.uid) || verrouillee(x.piste)) return;
       if (fin(x) <= p.t0 + 0.001 || x.t0 >= bout - 0.001) return;
       const d = bout - x.t0;
       if (d <= 0.001) return;
@@ -6129,7 +6168,7 @@ function selectionnerDerriere(c, seulePiste) {
   const pris = new Set();
   CLIPS.forEach(x => {
     if (seulePiste && x.piste !== c.piste) return;
-    if (x.t0 < t) return;
+    if (x.t0 < t || verrouillee(x.piste)) return;
     if (seulePiste) pris.add(x.uid);
     else groupeLie(x).forEach(y => pris.add(y.uid));
   });
@@ -6271,7 +6310,8 @@ function collerBlocs() {
     }
     if (!piste(n.piste)) n.piste = PISTES[0].id;
     return n;
-  });
+  }).filter(n => !verrouillee(n.piste));
+  if (!neufs.length) { dire('nothing pasted — its tracks are locked', true); return; }
   CLIPS = CLIPS.concat(neufs);
   clipsSel = new Set(neufs.map(n => n.uid));
   rendreTimeline();
@@ -10064,6 +10104,7 @@ $('#lanes').addEventListener('dblclick', e => {
 // element qui n existe plus. Il est donc reconnu des le second appui (voir
 // plus bas, en phase de capture) ; l evenement natif ne sert que s il arrive.
 function blocDoubleClic(c) {
+  if (verrouillee(c.piste)) { direVerrou(c.piste); return; }
   if (performance.now() - (blocDoubleClic.t || 0) < 700) return;
   blocDoubleClic.t = performance.now();
   clipsSel = new Set(estSynth(c) ? [c.uid] : groupeLie(c).map(x => x.uid));
@@ -10491,6 +10532,7 @@ $('#lanes').addEventListener('pointerdown', e => {
   const c = bloc && parUid(+bloc.dataset.uid);
   if (!c) return;
   e.preventDefault(); e.stopPropagation();
+  if (verrouillee(c.piste)) { direVerrou(c.piste); return; }
   const depart = parseFloat(el.dataset.mqb);
   const i = mqBloc(c).findIndex(x => Math.abs(x - depart) < 1e-4);
   if (i < 0) return;
@@ -10748,7 +10790,7 @@ document.addEventListener('keydown', e => {
   }
   if (ctrl && k === 'a') {
     e.preventDefault();
-    clipsSel = new Set(CLIPS.map(c => c.uid));
+    clipsSel = new Set(CLIPS.filter(c => !verrouillee(c.piste)).map(c => c.uid));
     rendreLanes(); rendreReglages();
     return;
   }
@@ -11316,8 +11358,8 @@ async function rafraichirProjets() {
     (visibles.length ? visibles.map(m =>
       '<span class="pu ' + (actif(m) ? 'on' : '') + '" data-p="' +
       m.nom.replace(/"/g, '&quot;') + '" data-pj="' + m.projet +
-      '" title="' + m.projet + ' · modified on ' + m.maj + '">' +
-      m.projet + ' / ' + m.nom +
+      '" title="' + m.projet + ' · modified on ' + m.maj + ' — double-click to rename">' +
+      m.projet + ' / <em class="nomM">' + echapHtml(m.nom) + '</em>' +
       '<b class="x" data-fermerm="' + clefMontage(m).replace(/"/g, '&quot;') +
       '" title="close this tab — the file stays on disk">×</b>' +
       '</span>').join('')
@@ -11435,7 +11477,14 @@ function boiteRouvrir() {
   majOk();
 }
 
+$('#barreProjets').addEventListener('dblclick', e => {
+  const el = e.target.closest('[data-p]');
+  if (!el || e.target.closest('[data-fermerm]') || el.querySelector('input')) return;
+  e.preventDefault();
+  editerMontage(el, el.querySelector('.nomM'));
+});
 $('#barreProjets').addEventListener('click', async e => {
+  if (e.target.tagName === 'INPUT') return;
   const croix = e.target.closest('[data-fermerm]');
   if (croix) {
     e.stopPropagation();
@@ -12481,6 +12530,7 @@ $('#srcBarre').addEventListener('pointerdown', e => {
   }
   const cote = poi.dataset.srcpoi;
   const c = srcBloc();
+  if (c && verrouillee(c.piste)) { direVerrou(c.piste); return; }
   const dep = c ? srcGroupe(c) : [];
   const e0 = SRC.e, o0 = SRC.o, s = srcDuree();
   const dec = tA(e.clientX) - (cote === 'e' ? SRC.e : SRC.o);
@@ -12517,6 +12567,7 @@ function srcPoser(cote) {
   const v = srcVid();
   if (!v || !SRC.film || srcEstImage()) return;
   const t = srcCale(v.currentTime), c = srcBloc();
+  if (c && verrouillee(c.piste)) { direVerrou(c.piste); return; }
   const e0 = SRC.e, o0 = SRC.o;
   if (cote === 'e') SRC.e = Math.max(0, Math.min(t, SRC.o - SRC_MIN));
   else SRC.o = Math.min(srcDuree(), Math.max(t, SRC.e + SRC_MIN));
