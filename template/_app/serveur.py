@@ -3273,6 +3273,60 @@ def _est_python(pid):
         return False
 
 
+def voisins():
+    """Les bibliotheques soeurs, comme en ligne : un episodes.json dans le dossier
+    parent ([{dossier, nom}], meme forme que ground-run.placenta.tv/episodes.json).
+    Sans ce fichier, aucune : le menu n apparait pas."""
+    parent = os.path.dirname(BASE)
+    try:
+        with io.open(os.path.join(parent, "episodes.json"), encoding="utf-8") as fh:
+            liste = json.load(fh)
+    except Exception:
+        return []
+    out = []
+    for e in liste if isinstance(liste, list) else []:
+        dos = str((e or {}).get("dossier") or "")
+        if not dos or "/" in dos or "\\" in dos or dos.startswith("."):
+            continue
+        racine = os.path.join(parent, dos)
+        app = os.path.join(racine, "_app")
+        if not os.path.isfile(os.path.join(app, "serveur.py")):
+            continue
+        try:
+            with io.open(os.path.join(app, "bibliotheque.json"), encoding="utf-8") as fh:
+                port = int((json.load(fh) or {}).get("port") or 8779)
+        except Exception:
+            port = 8779
+        out.append({"dossier": dos, "nom": str(e.get("nom") or dos), "port": port,
+                    "ici": os.path.normcase(os.path.abspath(racine)) ==
+                           os.path.normcase(os.path.abspath(BASE))})
+    return out
+
+
+def ouvrir_voisin(dossier):
+    """Demarre la bibliotheque soeur si elle ne tourne pas (sans ouvrir d onglet :
+    c est cette page qui y bascule), attend qu elle reponde, rend son adresse."""
+    v = next((x for x in voisins() if x["dossier"] == dossier), None)
+    if v is None:
+        raise ValueError("unknown library")
+    url = "http://127.0.0.1:%d/" % v["port"]
+    if v["ici"] or _port_occupe(v["port"]):
+        return url
+    app = os.path.join(os.path.dirname(BASE), dossier, "_app")
+    py = os.path.join(app, "_python", "python.exe")
+    if not os.path.isfile(py):
+        py = sys.executable
+    # Sa propre fenetre, comme un lancement a la main : on voit qu elle tourne.
+    flags = 0x00000010 if sys.platform == "win32" else 0      # CREATE_NEW_CONSOLE
+    subprocess.Popen([py, "serveur.py", "--sans-navigateur"], cwd=app,
+                     creationflags=flags)
+    for _ in range(90):
+        time.sleep(0.5)
+        if _port_occupe(v["port"]):
+            return url
+    raise RuntimeError("the library did not start in 45 s")
+
+
 def arreter_precedent():
     """Libere le port : demande polie d abord, fermeture du processus ensuite.
 
@@ -3598,6 +3652,9 @@ class Poste(BaseHTTPRequestHandler):
             VEILLE["signe"] = time.time()
             return self._json({"ok": True, "id": fid, "usages": out})
 
+        if chemin == "/api/voisins":
+            return self._json({"ok": True, "voisins": voisins()})
+
         if chemin == "/api/presets":
             g = (req.get("genre") or ["secousse"])[0]
             if fichier_presets(g) is None:
@@ -3675,6 +3732,15 @@ class Poste(BaseHTTPRequestHandler):
                 return self._agir(chemin, d)
             except Exception as e:
                 return self._erreur("%s: %s" % (type(e).__name__, e), 500)
+        # Basculer vers une bibliotheque soeur : on attend qu elle demarre, hors
+        # du verrou, sans bloquer le reste du serveur.
+        if chemin == "/api/voisin/ouvrir":
+            try:
+                if d.get("jeton") != JETON:
+                    return self._erreur("invalid token", 403)
+                return self._json({"ok": True, "url": ouvrir_voisin(str(d.get("dossier") or ""))})
+            except Exception as e:
+                return self._erreur(str(e), 500)
         # « + Add rush » : le selecteur reste ouvert le temps qu on choisisse,
         # donc hors du verrou ; seule l ecriture des catalogues le prend.
         if chemin == "/api/ajouter_rushes":
@@ -4513,7 +4579,10 @@ def demarrer():
     print("  Quits by itself when you close the tab.")
     print("=" * 58)
     threading.Thread(target=veiller, daemon=True).start()
-    threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    # « --sans-navigateur » : lancee depuis le menu d une bibliotheque soeur, qui
+    # bascule elle-meme dans son onglet.
+    if "--sans-navigateur" not in sys.argv:
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

@@ -2570,6 +2570,32 @@ function majQui() {
 // une liste « episodes.json » ([{dossier, nom}]), un menu en haut a droite
 // passe de l une a l autre. Sur le bureau ce fichier n existe pas : rien.
 async function sitesVoisins() {
+  // Sur le bureau, le serveur connait les bibliotheques soeurs (episodes.json
+  // du dossier parent) : choisir l une la demarre et on y bascule (1.3.57).
+  if (!ENLIGNE) {
+    let v = [];
+    try { v = (await api('api/voisins')).voisins || []; } catch (e) { return; }
+    if (v.length < 2) return;
+    const s = $('#selEpisode');
+    s.innerHTML = v.map(e => '<option value="' + echapHtml(e.dossier) + '"' +
+      (e.ici ? ' selected' : '') + '>' + echapHtml(e.nom) + '</option>').join('');
+    s.hidden = false;
+    s.onchange = async () => {
+      const cible = v.find(e => e.dossier === s.value);
+      if (!cible || cible.ici) return;
+      s.disabled = true;
+      dire('opening ' + cible.nom + '…');
+      try {
+        const d = await api('api/voisin/ouvrir', {jeton: JETON, dossier: cible.dossier}, 60000);
+        location.href = d.url;
+      } catch (err) {
+        dire('could not open ' + cible.nom + ' — ' + err.message, true);
+        s.disabled = false;
+        s.value = (v.find(e => e.ici) || {}).dossier || '';
+      }
+    };
+    return;
+  }
   let l;
   try {
     const r = await fetch('../episodes.json', {cache: 'no-store'});
