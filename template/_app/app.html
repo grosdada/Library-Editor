@@ -8,7 +8,7 @@
  --rouge:#a8302f;
  --c0:#4a4843;--c1:#a8302f;--c2:#c98a2b;--c3:#6a9b4a;--c4:#4a7fa8;--c5:#7a5a9b;
  --wMoni:430px;--wRegl:236px;--hFooter:270px;--wDeck:250px;--wAside:196px;
- --wSource:380px;
+ --wSource:380px;--wEntetes:140px;
  --vign:206px}
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -404,7 +404,7 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
  border:4px solid transparent;border-top-color:var(--or);border-bottom:0;height:0}
 .atelier{display:flex;min-height:0;flex:1 1 auto}
 .tl{flex:1 1 auto;display:flex;min-width:0;min-height:0}
-.tl-entetes{flex:0 0 118px;border-right:1px solid var(--trait);overflow:hidden;
+.tl-entetes{flex:0 0 var(--wEntetes);border-right:1px solid var(--trait);overflow:hidden;
  background:#191816}
 .tl-defile{flex:1 1 auto;overflow:auto;position:relative}
 .tl-contenu{position:relative;min-width:100%}
@@ -1056,6 +1056,7 @@ here and change nothing to the files">My folders</button>
   <div class="atelier">
     <div class="tl">
       <div class="tl-entetes"><div class="hEntete"></div><div id="entetes"></div></div>
+      <div class="rz vert" data-rz="entetes" title="drag to widen the track headers"></div>
       <div class="tl-defile" id="tlDefile">
         <div class="tl-contenu" id="tlContenu">
           <div class="regle" id="regle"></div>
@@ -1408,7 +1409,9 @@ const RZ = {
   moni: {v: '--wMoni', min: 200, max: 900, sens: -1},
   regl: {v: '--wRegl', min: 150, max: 620, sens: -1},
   footer: {v: '--hFooter', min: 150, max: 900, sens: -1},
-  source: {v: '--wSource', min: 160, max: 1100, sens: 1}
+  source: {v: '--wSource', min: 160, max: 1100, sens: 1},
+  // La colonne des en-tetes de pistes (1.3.60) : nom, verrou, M, S, volume.
+  entetes: {v: '--wEntetes', min: 90, max: 420, sens: 1}
 };
 $$('.rz').forEach(el => {
   el.addEventListener('pointerdown', e => {
@@ -1432,7 +1435,7 @@ $$('.rz').forEach(el => {
       const d = ((vertical ? ev.clientY : ev.clientX) - p0) * cfg.sens;
       const val = Math.min(cfg.max, Math.max(cfg.min, dep + d));
       RACINE_CSS.setProperty(cfg.v, val + 'px');
-      if (cle === 'footer' || cle === 'regl') majMinimap();
+      if (cle === 'footer' || cle === 'regl' || cle === 'entetes') majMinimap();
       if (typeof dimensionnerMoniteur === 'function') {
         dimensionnerMoniteur();
         dessiner();
@@ -12092,7 +12095,7 @@ async function suivreRendu() {
     pref.ecrire('moni', '');
     pref.ecrire('dispo', 'moni2');
   }
-  ['aside', 'moni', 'regl', 'footer', 'source'].forEach(k => {
+  ['aside', 'moni', 'regl', 'footer', 'source', 'entetes'].forEach(k => {
     const v = pref.lire(k, null);
     if (v) RACINE_CSS.setProperty(RZ[k].v, v);
   });
