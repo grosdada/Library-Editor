@@ -614,6 +614,10 @@ if ($route === 'projets' && !$poste) {
         'media' => BASE_MEDIA,
         'posters' => BASE_POSTERS,
         'utilisateur' => utilisateur_courant(),
+        // Format et formats proposes de la bibliotheque, ecrits par « Publier ».
+        'format' => isset($l['format']) ? $l['format'] : null,
+        'formats' => isset($l['formats']) ? $l['formats'] : null,
+        'entete' => isset($l['entete']) ? (string) $l['entete'] : '',
     ));
 }
 
@@ -939,6 +943,27 @@ if ($route === 'polices' && !$poste) {
             'rendu' => false);
     }
     repondre(array('polices' => $out, 'dossier' => ''));
+}
+
+// ---- POST /api/entete : le grand titre de la bibliotheque (1.3.55) --------
+// Garde dans _data/projets.json, que « Publier » reecrit en y reportant celui
+// du bureau. Reserve a l administrateur.
+if ($route === 'entete' && $poste) {
+    exiger_admin();
+    $e = trim(preg_replace('/[\r\n\t]+/', ' ', (string) (isset($d['entete']) ? $d['entete'] : '')));
+    $e = function_exists('mb_substr') ? mb_substr($e, 0, 80, 'UTF-8') : substr($e, 0, 80);
+    $f = DOSSIER_DATA . '/projets.json';
+    $l = lire_json($f, null);
+    if (!is_array($l)) {
+        $l = projets_publies();
+    }
+    if ($e === '') {
+        unset($l['entete']);
+    } else {
+        $l['entete'] = $e;
+    }
+    ecrire_json($f, $l);
+    repondre(array('ok' => true, 'entete' => $e));
 }
 
 // ---- GET et POST /api/presets ---------------------------------------------
