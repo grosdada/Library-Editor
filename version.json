@@ -1,6 +1,6 @@
 {
- "version": "1.3.61",
- "date": "2026-10-26",
+ "version": "1.3.62",
+ "date": "2026-10-27",
  "notes": "",
  "genres": {
   "films": {
@@ -33,7 +33,7 @@
     },
     "_app/app.html": {
      "depot": "template/_app/app.html",
-     "sha256": "89ba8540542a28fc736b1f0cd8932ce25bd28f058ab59526648a2bfbc434a6e0",
+     "sha256": "5cb3d7d936291cb7105831fc6f20d660c631e3d996c32e10d2b9d76ea3a8dd95",
      "historique": [
       "bcaee501fc23d322034fee64afde7dff827884ddb7139dd4c370ed07d4fc2410",
       "5fdf04c279c4c900a3a202b2b3c5310bee53684a032f7c965e8f466684eae5d9",
@@ -99,7 +99,8 @@
       "72d38a475511d10f0065883e44710cc7d9d91ef8d36e1ad67ceea7fc969afd65",
       "5e871cd9a25980db03f9fc36e0a202f822d61a08aa422d49e44871046dc6b45e",
       "121197d07977d891e29be762468dead0aa8429b6b1841591954c92c43c8cb96c",
-      "a5a50523cbdc67d74e16f30fe38cdedc33641ef109d057ec3be62bb140c17bb3"
+      "a5a50523cbdc67d74e16f30fe38cdedc33641ef109d057ec3be62bb140c17bb3",
+      "89ba8540542a28fc736b1f0cd8932ce25bd28f058ab59526648a2bfbc434a6e0"
      ]
     },
     "_app/_maj.py": {
@@ -339,11 +340,11 @@
    }
   }
  },
- "commit": "74b327044aae580f1909d4a6b40f9db93247f439",
+ "commit": "933674beaf8cdfaf1e6d1583bc867ce1f9fd8ab8",
  "installeur": {
-  "version": "1.3.61",
-  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.3.61/Library-Editor-1.3.61.zip",
-  "octets": 38562273,
-  "sha256": "085fb6dc5e1157f0ec25b4ffb45905b0f3bff8c326b25b66a20177801e614c73"
+  "version": "1.3.62",
+  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.3.62/Library-Editor-1.3.62.zip",
+  "octets": 38563900,
+  "sha256": "2806f04c9de8a758285c7334f5053ae4b77090423d61e3a0970fd9029feb5555"
  }
 }
