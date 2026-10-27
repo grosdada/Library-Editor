@@ -1022,7 +1022,7 @@ here and change nothing to the files">My folders</button>
     <button id="bCache" class="outil cache"
       title="hold the sequence in memory — playback without a single hitch. Shift-click: release"><span
       class="jauge"></span><span class="txt">⚡ Cache</span></button>
-    <button id="oV" class="outil on" title="Move (V)">V ⟷</button>
+    <button id="oV" class="outil on" title="Move (V) — with blocks selected, tap Ctrl alone to duplicate them">V ⟷</button>
     <button id="oC" class="outil" title="Cut (C)">C ✂</button>
     <button id="oA" class="outil"
       title="Track select forward (A) — click and drag to shift everything after · Shift: this track only">A ⇥</button>
@@ -7157,7 +7157,7 @@ $('#lanes').addEventListener('contextmenu', e => {
       'E: edit them</span></div>' +
     '<div class="it" data-act="dupliquer">⧉ Duplicate ' +
       (clipsSel.size > 1 ? 'the ' + clipsSel.size + ' blocks' : 'the block') +
-      ' <span class="pousse" style="color:var(--sourd);font-size:10px">Ctrl+D</span>' +
+      ' <span class="pousse" style="color:var(--sourd);font-size:10px">Ctrl+D · Ctrl</span>' +
       '</div>' +
     '<div class="it clone" title="copies one after the other, right behind ' +
       'the selection — what follows on the same tracks moves back">' +
@@ -7591,7 +7591,7 @@ function rendreReglages() {
       '<b style="color:var(--encre)">V</b> move · ' +
       '<b style="color:var(--encre)">C</b> cut<br>' +
       'Space play · Del delete<br>Ctrl+C / Ctrl+V copy-paste<br>' +
-      'Ctrl+D duplicate<br>' +
+      'Ctrl+D or Ctrl alone (V): duplicate<br>' +
       'Ctrl+Z undo<br>Ctrl+wheel zoom<br>' +
       'Alt+wheel track height<br>' +
       'Alt+click: the block alone,<br>without its linked sound<br>' +
@@ -10840,6 +10840,43 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// Ctrl seul : un appui bref sur Ctrl, outil V (Move) actif et des blocs
+// selectionnes, duplique la selection juste derriere elle — comme Ctrl+D
+// (David, 27/10). Ctrl reste un modificateur : une autre touche, un clic, la
+// molette ou la perte du focus entre l appui et le relachement annulent.
+// Ctrl+Z, Ctrl+C, Ctrl+clic, Ctrl+molette et Ctrl tenu au lacher d un bloc
+// tire (pousser derriere) gardent donc leur role. Ctrl tenu plus de
+// CTRL_SEUL_MS puis relache ne fait rien : on hesitait, on ne dupliquait pas.
+const CTRL_SEUL_MS = 700;
+let ctrlSeul = 0, sourisBas = false;
+document.addEventListener('keydown', e => {
+  if (e.key === 'Control' && !e.altKey && !e.shiftKey && !e.metaKey) {
+    if (!e.repeat) ctrlSeul = sourisBas ? 0 : performance.now();
+  } else ctrlSeul = 0;
+}, true);
+addEventListener('pointerdown', () => { sourisBas = true; ctrlSeul = 0; }, true);
+addEventListener('pointerup', () => { sourisBas = false; }, true);
+addEventListener('pointercancel', () => { sourisBas = false; }, true);
+// Bouton relache hors de la fenetre : le premier survol sans bouton le dit.
+addEventListener('pointermove', ev => { if (!ev.buttons) sourisBas = false; },
+                 {capture: true, passive: true});
+addEventListener('wheel', () => { ctrlSeul = 0; }, {capture: true, passive: true});
+addEventListener('blur', () => { ctrlSeul = 0; sourisBas = false; });
+document.addEventListener('keyup', e => {
+  if (e.key !== 'Control') return;
+  const t0 = ctrlSeul;
+  ctrlSeul = 0;
+  if (!t0 || sourisBas || performance.now() - t0 > CTRL_SEUL_MS) return;
+  if (outil !== 'V' || !clipsSel.size) return;
+  if (!document.body.classList.contains('edit')) return;
+  if (saisieActive(e.target) || saisieActive(document.activeElement)) return;
+  const vl = $('#voile');
+  if (vl && vl.className === 'on') return;
+  if (ED_CLES || MQ_DESSIN || MQ_EDIT) return;
+  fermerMenu();
+  dupliquerBlocs();
+});
+
 // ===========================================================================
 //  Projets : sauver / ouvrir
 // ===========================================================================
@@ -12109,7 +12146,6 @@ async function suivreRendu() {
   // Avant tout le reste : y a-t-il des comptes, et suis-je entre ? Sur le
   // serveur de bureau cette route n existe pas, et rien ne change.
   await ouvrirPorte();
-  sitesVoisins();
   await chargerPolices();
   // Les prereglages de secousse : ils viennent de la bibliotheque.
   await chargerPresets();
@@ -12122,6 +12158,9 @@ async function suivreRendu() {
     // Le serveur de bureau n envoie aucun de ces trois champs : tout reste
     // exactement comme avant chez David.
     ENLIGNE = !!l.enligne;
+    // Le menu des sites freres choisit sa branche (bureau / en ligne) d apres
+    // ENLIGNE : l appeler avant ici le cachait en ligne (1.3.57 → 1.3.62).
+    sitesVoisins();
     RANGEABLE = ENLIGNE || !!l.rangement;
     PURGE = !ENLIGNE && !!l.purge;
     // En ligne, le navigateur calcule l onde lui-meme (ondeNavigateur).
