@@ -1022,7 +1022,7 @@ here and change nothing to the files">My folders</button>
     <button id="bCache" class="outil cache"
       title="hold the sequence in memory — playback without a single hitch. Shift-click: release"><span
       class="jauge"></span><span class="txt">⚡ Cache</span></button>
-    <button id="oV" class="outil on" title="Move (V) — with blocks selected, tap Ctrl alone to duplicate them">V ⟷</button>
+    <button id="oV" class="outil on" title="Move (V) — with blocks selected, tap Ctrl alone or Ctrl+drag (Cmd+drag on Mac) to duplicate them">V ⟷</button>
     <button id="oC" class="outil" title="Cut (C)">C ✂</button>
     <button id="oA" class="outil"
       title="Track select forward (A) — click and drag to shift everything after · Shift: this track only">A ⇥</button>
@@ -6034,7 +6034,7 @@ $('#lanes').addEventListener('pointerdown', e => {
   let grp = CLIPS.filter(x => clipsSel.has(x.uid));
   let dep = grp.map(x => ({c: x, t0: x.t0}));
   let ignorer = new Set(grp.map(x => x.uid));
-  let bougé = false, laneCible = null;
+  let bougé = false, laneCible = null, copie = 0;
   const auto = defilerPendant(ev => bouger(ev));
   const bouger = ev => {
     if (!bougé && Math.abs(ev.clientX - x0) < 3 && Math.abs(ev.clientY - y0) < 3) return;
@@ -6048,6 +6048,25 @@ $('#lanes').addEventListener('pointerdown', e => {
         dep = grp.map(x => ({c: x, t0: x.t0}));
         ignorer = new Set(grp.map(x => x.uid));
         rendreLanes(); rendreReglages();
+      }
+      // Ctrl (Cmd sur Mac) tenu quand le glisser demarre, outil Move : on
+      // duplique. Les copies restent a la place, la selection part avec le
+      // pointeur (David, 28/10). Ctrl enfonce en cours de route garde son
+      // role : au lacher, pousser derriere.
+      if (!modeA && (ev.ctrlKey || ev.metaKey)) {
+        const liens = {};
+        grp.forEach(x => {
+          const n = copieBloc(x, liens);
+          CLIPS.push(n);
+          const el0 = elClip(x.uid);
+          if (el0) {
+            const k = el0.cloneNode(true);
+            k.dataset.uid = n.uid;
+            k.classList.remove('sel');
+            el0.before(k);
+          }
+        });
+        copie = grp.length;
       }
       // Les blocs tires deviennent transparents au pointeur : ils ne
       // doivent intercepter ni le survol ni le relachement pendant qu on
@@ -6077,7 +6096,7 @@ $('#lanes').addEventListener('pointerdown', e => {
     const compatible = !!(pc && pc.type === piste(c.piste).type);
     $$('.lane').forEach(x => x.classList.toggle('cible',
       compatible && x.dataset.piste === laneCible));
-    marquerEjectables(ev.ctrlKey, compatible ? laneCible : null);
+    marquerEjectables(ev.ctrlKey && !copie, compatible ? laneCible : null);
   };
 
   // Surlignage a la volee, sans redessiner la piste : redessiner detruirait
@@ -6123,7 +6142,8 @@ $('#lanes').addEventListener('pointerdown', e => {
         (monType === 'v' ? '+V' : monType === 'm' ? '+M' : '+A') +
         ' so you can move this block');
     }
-    if (ev && ev.ctrlKey) {
+    if (copie) dire(copie + (copie > 1 ? ' blocks duplicated' : ' block duplicated'));
+    else if (ev && ev.ctrlKey) {
       const n = ejecter(grp);
       if (n) dire(n + (n > 1 ? ' blocks pushed behind' : ' block pushed behind'));
     }
@@ -6325,6 +6345,22 @@ function collerBlocs() {
 // Duplique la selection juste derriere elle, sur les memes pistes. Le son
 // lie suit, avec un nouveau lien : les deux copies restent appariees entre
 // elles sans rester collees a l original.
+// Un bloc copie, avec son propre rack, masque et cles ; « liens » apparie les
+// copies d un meme groupe lie sous un lien neuf.
+function copieBloc(c, liens) {
+  const n = {};
+  for (const k in c) if (k[0] !== '_') n[k] = c[k];
+  n.uid = uidSuivant++;
+  if (c.anim) n.anim = JSON.parse(JSON.stringify(c.anim));
+  if (c.fx) n.fx = JSON.parse(JSON.stringify(c.fx));
+  if (c.masque) n.masque = JSON.parse(JSON.stringify(c.masque));
+  if (c.lien) {
+    if (!liens[c.lien]) liens[c.lien] = lienLibre();
+    n.lien = liens[c.lien];
+  }
+  return n;
+}
+
 function dupliquerBlocs() {
   const src = CLIPS.filter(c => clipsSel.has(c.uid));
   if (!src.length) { dire('no block selected'); return; }
@@ -6351,17 +6387,8 @@ function dupliquerBlocs() {
   }
   const liens = {};
   const neufs = src.map(c => {
-    const n = {};
-    for (const k in c) if (k[0] !== '_') n[k] = c[k];
-    n.uid = uidSuivant++;
+    const n = copieBloc(c, liens);
     n.t0 = c.t0 + ecart;
-    if (c.anim) n.anim = JSON.parse(JSON.stringify(c.anim));
-    if (c.fx) n.fx = JSON.parse(JSON.stringify(c.fx));
-    if (c.masque) n.masque = JSON.parse(JSON.stringify(c.masque));
-    if (c.lien) {
-      if (!liens[c.lien]) liens[c.lien] = lienLibre();
-      n.lien = liens[c.lien];
-    }
     return n;
   });
   CLIPS = CLIPS.concat(neufs);
@@ -7157,7 +7184,7 @@ $('#lanes').addEventListener('contextmenu', e => {
       'E: edit them</span></div>' +
     '<div class="it" data-act="dupliquer">⧉ Duplicate ' +
       (clipsSel.size > 1 ? 'the ' + clipsSel.size + ' blocks' : 'the block') +
-      ' <span class="pousse" style="color:var(--sourd);font-size:10px">Ctrl+D · Ctrl</span>' +
+      ' <span class="pousse" style="color:var(--sourd);font-size:10px">Ctrl+D · Ctrl · Ctrl+drag</span>' +
       '</div>' +
     '<div class="it clone" title="copies one after the other, right behind ' +
       'the selection — what follows on the same tracks moves back">' +
@@ -7591,7 +7618,7 @@ function rendreReglages() {
       '<b style="color:var(--encre)">V</b> move · ' +
       '<b style="color:var(--encre)">C</b> cut<br>' +
       'Space play · Del delete<br>Ctrl+C / Ctrl+V copy-paste<br>' +
-      'Ctrl+D or Ctrl alone (V): duplicate<br>' +
+      'Ctrl+D, Ctrl alone or Ctrl+drag (V): duplicate<br>' +
       'Ctrl+Z undo<br>Ctrl+wheel zoom<br>' +
       'Alt+wheel track height<br>' +
       'Alt+click: the block alone,<br>without its linked sound<br>' +
