@@ -6215,9 +6215,14 @@ function pisteSousY(y) {
   return trouve;
 }
 
-function couper(c, t) {
-  if (t <= c.t0 + 0.05 || t >= fin(c) - 0.05) { dire('cut outside the shot'); return; }
-  memoriser();
+// « enLot » : une coupe parmi d autres (coupe aux plans) — l appelant
+// memorise une seule fois, redessine et parle a la fin.
+function couper(c, t, enLot) {
+  if (t <= c.t0 + 0.05 || t >= fin(c) - 0.05) {
+    if (!enLot) dire('cut outside the shot');
+    return false;
+  }
+  if (!enLot) memoriser();
   const grp = groupeLie(c);
   const decoupe = t - c.t0;
   const lien = grp.length > 1 ? lienLibre() : null;
@@ -6284,9 +6289,103 @@ function couper(c, t) {
     }
     CLIPS.push(droite);
   });
+  if (enLot) return true;
   clipsSel.clear();
   rendreTimeline();
   dire('cut at ' + tc(t));
+  return true;
+}
+
+// Coupe aux plans (29/10) : chaque bloc video selectionne est coupe la ou
+// l image change de plan, son lie compris. La detection se fait dans le
+// navigateur — bureau comme en ligne — sur une image de 48 x 27 : on
+// echantillonne la source 8 fois par seconde ; un changement de plan est un
+// saut ISOLE de l image, bien plus fort que ceux d avant et d apres, puis on
+// resserre a l image pres entre les deux echantillons. Un mouvement rapide
+// change beaucoup l image, mais d un echantillon a l autre : pas de pic, pas
+// de coupe. Mesure sur des rendus Mode-Cringe (29/10) : coupe dans le meme
+// decor 38 contre 10 autour ; mouvements les plus vifs 22 contre 21.
+const PLAN_PAS = 1 / 8, PLAN_MIN = 0.4;
+async function couperAuxPlans() {
+  const blocs = CLIPS.filter(c => clipsSel.has(c.uid) && !estSynth(c) &&
+    !estImage(c) && !estGel(c) && PAR_ID[c.film] && !verrouillee(c.piste) &&
+    piste(c.piste).type === 'v');
+  if (!blocs.length) { dire('select a video block first', true); return; }
+  const v = document.createElement('video');
+  v.muted = true; v.preload = 'auto'; v.playsInline = true;
+  const cv = document.createElement('canvas');
+  cv.width = 48; cv.height = 27;
+  const cx = cv.getContext('2d', {willReadFrequently: true});
+  const image = async s => {
+    v.currentTime = Math.max(0, Math.min(s, (v.duration || s + 1) - 0.02));
+    await attendreEvt(v, 'seeked');
+    cx.drawImage(v, 0, 0, 48, 27);
+    const d = cx.getImageData(0, 0, 48, 27).data;
+    const gris = new Float32Array(48 * 27);
+    for (let i = 0, j = 0; i < d.length; i += 4, j++)
+      gris[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    return gris;
+  };
+  // Ecart de deux images : moyenne des ecarts de gris (0-255).
+  const ecart = (a, b) => {
+    let p = 0;
+    for (let i = 0; i < a.length; i++) p += Math.abs(a[i] - b[i]);
+    return p / a.length;
+  };
+  const coupes = [];
+  try {
+    for (const c of blocs) {
+      const f = PAR_ID[c.film];
+      const u = urlMedia(f);
+      v.src = u;
+      await attendreEvt(v, 'loadeddata', 20000);
+      const lo = Math.min(c.e, c.o), hi = Math.max(c.e, c.o);
+      const ech = [];
+      for (let s = lo; s <= hi + 1e-6; s += PLAN_PAS) {
+        ech.push({s, im: await image(s)});
+        if (ech.length % 8 === 0)
+          dire('finding shot changes… ' + Math.round(100 * (s - lo) / Math.max(0.01, hi - lo)) + '%');
+      }
+      const sauts = [];
+      for (let i = 1; i < ech.length; i++) sauts.push(ecart(ech[i - 1].im, ech[i].im));
+      // Le seuil s adapte au plan : nettement au-dessus de l agitation
+      // ordinaire de ce rush-la, et jamais sous un plancher fixe.
+      const med = sauts.slice().sort((a, b) => a - b)[Math.floor(sauts.length / 2)] || 0;
+      const seuil = Math.max(18, 2.5 * med);
+      let dernier = lo;
+      for (let i = 0; i < sauts.length; i++) {
+        const x = sauts[i];
+        if (x < seuil) continue;
+        // un pic isole : nettement plus fort que les sauts voisins (ni
+        // mouvement soutenu, ni fondu)
+        if (x < 1.8 * Math.max(sauts[i - 1] || 0, sauts[i + 1] || 0)) continue;
+        let a = ech[i].s, b = ech[i + 1].s, ia = ech[i].im, ib = ech[i + 1].im;
+        while (b - a > 1 / 30) {
+          const m = (a + b) / 2, im = await image(m);
+          if (ecart(ia, im) <= ecart(im, ib)) { a = m; ia = im; } else { b = m; ib = im; }
+        }
+        if (b - dernier < PLAN_MIN || hi - b < PLAN_MIN) continue;
+        dernier = b;
+        coupes.push({c, t: tlA(c, b)});
+      }
+    }
+  } catch (err) {
+    dire('could not read the video to find its shots' +
+      (err && err.name === 'SecurityError' ? ' (the media server refuses it)' : ''), true);
+    return;
+  } finally {
+    v.removeAttribute('src'); v.load();
+  }
+  if (!coupes.length) { dire('no shot change found in ' + (blocs.length > 1 ? 'these blocks' : 'this block')); return; }
+  memoriser();
+  // De la fin vers le debut : le bloc garde la partie gauche a chaque coupe,
+  // la suivante tombe donc toujours dedans.
+  coupes.sort((x, y) => y.t - x.t);
+  let n = 0;
+  coupes.forEach(k => { if (couper(k.c, k.t, true)) n++; });
+  clipsSel.clear();
+  rendreTimeline(); resynchroniser(true);
+  dire(n + (n > 1 ? ' cuts' : ' cut') + ' at the shot changes');
 }
 
 function retirerSelection() {
@@ -7200,6 +7299,10 @@ $('#lanes').addEventListener('contextmenu', e => {
       : '<div class="it" data-act="figer">' + (estGel(c)
           ? '▶ Unfreeze — the shot moves again'
           : '⏸ Freeze frame') + '</div>') +
+    (estSynth(c) || estImage(c) || estGel(c) || !PAR_ID[c.film] ||
+     piste(c.piste).type !== 'v' ? ''
+      : '<div class="it" data-act="plans" title="cut the block wherever the picture ' +
+        'changes shot — its linked audio is cut too">✂ Auto cut at shot changes</div>') +
     (estSynth(c) ? ''
      : '<div class="it" data-act="usages">⌕ Used in which sequences…</div>' +
        '<div class="it" data-act="voirProjet">⌖ Show in project</div>' +
@@ -7362,6 +7465,7 @@ menu.addEventListener('click', async e => {
     dire(CLES_VUES ? 'keyframes shown on the blocks' : 'keyframes hidden on the blocks');
   }
   else if (a === 'dupliquer') dupliquerBlocs();
+  else if (a === 'plans') couperAuxPlans();
   else if (a === 'delier') delier();
   else if (a === 'relier') relier();
   else if (a === 'copier') copierBlocs();
