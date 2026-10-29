@@ -6296,6 +6296,69 @@ function couper(c, t, enLot) {
   return true;
 }
 
+// Mix sound (29/10) : sur les blocs son de la selection (et le son lie des
+// blocs image choisis), chaque fois que deux blocs d une meme piste sont
+// colles bout a bout, on les fait se chevaucher de MIX_D secondes autour de
+// la coupe — la queue du premier prolongee dans sa source, la tete du second
+// avancee — avec un fondu de chaque cote : un fondu enchaine tres court au
+// lieu d une coupe franche dans le son. Le son reste synchrone avec l image
+// (la source n est jamais decalee). Si un rush n a plus de matiere au-dela,
+// l autre cote prend le relais ; s il n y en a d aucun cote, deux fondus
+// courts (un creux) evitent au moins le claquement.
+const MIX_D = 0.12, MIX_COLLE = 0.04;
+function mixerSon() {
+  const sons = new Set();
+  CLIPS.forEach(c => {
+    if (!clipsSel.has(c.uid)) return;
+    groupeLie(c).forEach(x => {
+      if (estSon(piste(x.piste)) && !estSynth(x) && PAR_ID[x.film] && !verrouillee(x.piste))
+        sons.add(x);
+    });
+  });
+  const parPiste = {};
+  sons.forEach(c => (parPiste[c.piste] = parPiste[c.piste] || []).push(c));
+  const paires = [];
+  Object.keys(parPiste).forEach(k => {
+    const l = parPiste[k].sort((a, b) => a.t0 - b.t0);
+    for (let i = 1; i < l.length; i++)
+      if (Math.abs(fin(l[i - 1]) - l[i].t0) <= MIX_COLLE) paires.push([l[i - 1], l[i]]);
+  });
+  if (!paires.length) {
+    dire('no sound blocks butting against each other in the selection', true);
+    return;
+  }
+  memoriser();
+  let croises = 0, creux = 0;
+  paires.forEach(([a, b]) => {
+    const va = vAbs(a), vb = vAbs(b);
+    const la = (PAR_ID[a.film] || {}).s || 0, lb = (PAR_ID[b.film] || {}).s || 0;
+    // Matiere disponible, en secondes de timeline : apres la fin de a, avant
+    // le debut de b (a l envers, les bouts de la source s echangent).
+    const dispoA = Math.max(0, a.rev ? a.e / va : (la - a.o) / va);
+    const dispoB = Math.max(0, b.rev ? (lb - b.o) / vb : b.e / vb);
+    const deja = Math.max(0, fin(a) - b.t0);
+    const manque = Math.max(0, MIX_D - deja);
+    const ha = Math.min(dispoA, Math.max(manque / 2, manque - dispoB));
+    const hb = Math.min(dispoB, manque - ha);
+    if (ha > 0) { if (a.rev) a.e -= ha * va; else a.o += ha * va; }
+    if (hb > 0) { b.t0 -= hb; if (b.rev) b.o += hb * vb; else b.e -= hb * vb; }
+    const recouv = deja + ha + hb;
+    if (recouv >= 0.02) {
+      a.fo = Math.max(a.fo || 0, recouv);
+      b.fi = Math.max(b.fi || 0, recouv);
+      croises++;
+    } else {
+      a.fo = Math.max(a.fo || 0, MIX_D / 2);
+      b.fi = Math.max(b.fi || 0, MIX_D / 2);
+      creux++;
+    }
+  });
+  rendreTimeline(); resynchroniser(true);
+  dire(croises + (croises > 1 ? ' sound cuts' : ' sound cut') + ' mixed (' +
+    Math.round(MIX_D * 1000) + ' ms crossfades)' +
+    (creux ? ' — ' + creux + ' without spare sound, given a short dip instead' : ''));
+}
+
 // Coupe aux plans (29/10) : chaque bloc video selectionne est coupe la ou
 // l image change de plan, son lie compris. La detection se fait dans le
 // navigateur — bureau comme en ligne — sur une image de 48 x 27 : on
@@ -7281,6 +7344,10 @@ $('#lanes').addEventListener('contextmenu', e => {
     '<div class="it" data-act="cles-vues">◆ ' + (CLES_VUES ? 'Hide' : 'Show') +
       ' keyframes on blocks <span class="pousse" style="color:var(--sourd);font-size:10px">' +
       'E: edit them</span></div>' +
+    // au moins deux plans : une image et son son lie n en font qu un
+    (new Set([...clipsSel].map(u => { const x = parUid(u); return x && (x.lien || 'u' + x.uid); })).size > 1
+      ? '<div class="it" data-act="mixson" title="sound blocks that touch get a very short ' +
+        'crossfade at each cut, instead of a hard cut">♫ Mix sound — soften the cuts</div>' : '') +
     '<div class="it" data-act="dupliquer">⧉ Duplicate ' +
       (clipsSel.size > 1 ? 'the ' + clipsSel.size + ' blocks' : 'the block') +
       ' <span class="pousse" style="color:var(--sourd);font-size:10px">Ctrl+D · Ctrl · Ctrl+drag</span>' +
@@ -7466,6 +7533,7 @@ menu.addEventListener('click', async e => {
   }
   else if (a === 'dupliquer') dupliquerBlocs();
   else if (a === 'plans') couperAuxPlans();
+  else if (a === 'mixson') mixerSon();
   else if (a === 'delier') delier();
   else if (a === 'relier') relier();
   else if (a === 'copier') copierBlocs();

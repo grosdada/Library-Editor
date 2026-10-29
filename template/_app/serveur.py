@@ -3080,6 +3080,23 @@ def rendre(montage, nom, pr, cible=None, mode="mp4"):
         # segment ; celui d un rush incruste se mixe comme un son libre.
         liens_pv = {p.get("lien") for p in plans
                     if p.get("piste") == pv and p.get("lien")}
+        # Un son lie qui ne recouvre plus exactement son plan (« Mix sound »
+        # l allonge et le fond aux coupes, ou on l a rogne a part) ne peut pas
+        # etre cuit dans le segment de l image, qui a les bornes de l image :
+        # il se mixe comme un son libre, avec ses propres bornes et fondus.
+        # Un fondu pose sur l image seule continue de fondre le son avec elle,
+        # comme avant ; seul un son qui a ses PROPRES fondus, plus longs, sort.
+        def _meme_etendue(s, im):
+            v = lambda d, k: float(d.get(k, 0) or 0)
+            return (all(abs(v(s, k) - v(im, k)) < 0.01
+                        for k in ("position", "duree", "entree"))
+                    and all(v(s, k) <= v(im, k) + 0.01
+                            for k in ("fondu_entree", "fondu_sortie")))
+        images_pv = {p["lien"]: p for p in plans
+                     if p.get("piste") == pv and p.get("lien")}
+        for l_, s_ in list(sons.items()):
+            if l_ in images_pv and not _meme_etendue(s_, images_pv[l_]):
+                del sons[l_]
         libres = []
         for p in plans:
             pid = p.get("piste", "")
