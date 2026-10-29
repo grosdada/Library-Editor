@@ -1516,8 +1516,12 @@ const catDe = id => CATS.liste.find(c => c.id === +id) || null;
 const couleurCat = id => { const c = id ? catDe(id) : null; return c ? c.coul : ''; };
 
 function correspond(f) {
-  if (dossierActif !== null &&
-      dossierActif !== f.pj && dossierActif !== clefDossier(f)) return false;
+  // Un dossier montre aussi le contenu de ses sous-dossiers, comme son
+  // compteur le dit (29/10).
+  if (dossierActif !== null && dossierActif !== f.pj) {
+    const c = clefDossier(f);
+    if (c !== dossierActif && !c.startsWith(dossierActif + '/')) return false;
+  }
   if (favSeul && !f.fav) return false;
   if (FILTRE_CAT && +f.coul !== FILTRE_CAT) return false;
   if (FILTRE_RATIO && ratioDe(f) !== FILTRE_RATIO) return false;
@@ -1533,7 +1537,15 @@ function rendreDossiers() {
     const c = clefDossier(f);
     // Un fichier a la racine du projet a pour clef le projet lui-meme : il
     // etait compte deux fois (4 rushes affichaient 8).
-    if (c !== f.pj) n[c] = (n[c] || 0) + 1;
+    // Un dossier compte aussi ce que contiennent ses sous-dossiers : un
+    // parent qui n a que des sous-dossiers affichait 0 (David, 29/10).
+    if (c !== f.pj) {
+      const bouts = c.slice(f.pj.length + 1).split('/');
+      for (let k = 1; k <= bouts.length; k++) {
+        const cl = f.pj + '/' + bouts.slice(0, k).join('/');
+        n[cl] = (n[cl] || 0) + 1;
+      }
+    }
     n[f.pj] = (n[f.pj] || 0) + 1;
   });
   const vivants = FILMS.filter(f => !f.absent).length;
