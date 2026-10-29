@@ -69,6 +69,10 @@ body.edit .rushOnly{display:none}
 #cats .cat.on{border-color:var(--cc);color:var(--encre);
  box-shadow:0 0 0 1px var(--cc)}
 #catPlus{padding:0 7px;border-radius:11px;font-size:13px;line-height:18px}
+/* « Sans couleur » : un rond en pointilles, qui montre les rushes sans couleur. */
+#cats .cat.aucune i{box-sizing:border-box;background:none;box-shadow:none;
+ border:1px dashed var(--sourd)}
+#cats .cat.aucune.on{border-color:var(--encre);box-shadow:0 0 0 1px var(--encre)}
 
 main{flex:1 1 auto;display:flex;min-height:0}
 aside{flex:0 0 var(--wAside);border-right:1px solid var(--trait);overflow-y:auto;
@@ -1523,7 +1527,8 @@ function correspond(f) {
     if (c !== dossierActif && !c.startsWith(dossierActif + '/')) return false;
   }
   if (favSeul && !f.fav) return false;
-  if (FILTRE_CAT && +f.coul !== FILTRE_CAT) return false;
+  // -1 : le filtre « sans couleur » (une couleur effacee ne compte plus).
+  if (FILTRE_CAT === -1 ? catDe(f.coul) : FILTRE_CAT && +f.coul !== FILTRE_CAT) return false;
   if (FILTRE_RATIO && ratioDe(f) !== FILTRE_RATIO) return false;
   if (q && !f.nom.toLowerCase().includes(q)) return false;
   return true;
@@ -2199,7 +2204,7 @@ async function enregistrerCats() {
 function rendreCats() {
   const b = $('#cats');
   if (!b) return;
-  if (FILTRE_CAT && !catDe(FILTRE_CAT)) FILTRE_CAT = 0;
+  if (FILTRE_CAT > 0 && !catDe(FILTRE_CAT)) FILTRE_CAT = 0;
   b.innerHTML = CATS.liste.map(c =>
     '<button class="cat' + (c.nom ? '' : ' vide') +
     (FILTRE_CAT === c.id ? ' on' : '') + '" data-cat="' + c.id +
@@ -2208,6 +2213,8 @@ function rendreCats() {
     'double-click or right-click: edit"><i></i>' +
     (c.nom ? '<span>' + echapHtml(c.nom) + '</span>' : '') + '</button>')
     .join('') +
+    '<button class="cat vide aucune' + (FILTRE_CAT === -1 ? ' on' : '') +
+    '" data-cat="-1" title="no colour — click: show only the clips without a colour"><i></i></button>' +
     (CATS.liste.length < CAT_MAX
       ? '<button id="catPlus" title="add a new colour">+</button>' : '');
 }
@@ -2327,7 +2334,7 @@ $('#cats').addEventListener('click', e => {
 });
 $('#cats').addEventListener('dblclick', e => {
   const b = e.target.closest('[data-cat]');
-  if (!b) return;
+  if (!b || +b.dataset.cat < 0) return;   // « sans couleur » ne s edite pas
   FILTRE_CAT = FILTRE_AVANT;
   rendreCats(); rendreGrille();
   ouvrirEditeurCat(+b.dataset.cat);
@@ -2336,6 +2343,7 @@ $('#cats').addEventListener('contextmenu', e => {
   const b = e.target.closest('[data-cat]');
   if (!b) return;
   e.preventDefault();
+  if (+b.dataset.cat < 0) return;
   ouvrirEditeurCat(+b.dataset.cat);
 });
 

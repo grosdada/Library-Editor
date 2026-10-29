@@ -3467,6 +3467,30 @@ class Poste(BaseHTTPRequestHandler):
         except Exception:
             return {}
 
+    # Garde du poste (1.3.67). Le serveur n ecoute que cette machine, mais une
+    # page web ouverte dans le navigateur peut quand meme lui parler : en se
+    # faisant passer pour 127.0.0.1 (DNS rebinding, refuse par l en-tete Host)
+    # ou en lui envoyant des commandes a l aveugle (refuse par l origine). Les
+    # outils en Python n envoient ni origine ni Sec-Fetch : ils passent.
+    def _etranger(self, chemin):
+        # Le port reellement ouvert, pas celui des reglages : les essais
+        # lancent le serveur sur un port libre quelconque.
+        port = self.server.server_address[1]
+        hotes = {"127.0.0.1:%d" % port, "localhost:%d" % port}
+        hote = (self.headers.get("Host") or "").strip().lower()
+        if hote and hote not in hotes:
+            return True
+        if self.command != "POST" and not chemin.startswith("/api/"):
+            return False
+        site = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
+        if site and site not in ("same-origin", "none"):
+            return True
+        if self.command == "POST":
+            o = (self.headers.get("Origin") or "").strip().lower()
+            if o and o not in {"http://" + h for h in hotes}:
+                return True
+        return False
+
     def do_HEAD(self):
         self.do_GET()
 
@@ -3474,6 +3498,8 @@ class Poste(BaseHTTPRequestHandler):
         morceaux = urllib.parse.urlparse(self.path)
         req = urllib.parse.parse_qs(morceaux.query)
         chemin = urllib.parse.unquote(posixpath.normpath(morceaux.path))
+        if self._etranger(chemin):
+            return self._erreur("refused: request from another site", 403)
 
         if chemin == "/api/rendu":
             return self._json(RENDU)
@@ -3740,7 +3766,9 @@ class Poste(BaseHTTPRequestHandler):
 
     def do_POST(self):
         chemin = urllib.parse.urlparse(self.path).path
-        d = self._corps()
+        d = self._corps()   # lu meme si on refuse : la connexion reste propre
+        if self._etranger(chemin):
+            return self._erreur("refused: request from another site", 403)
         # Le selecteur de dossier reste ouvert tant que l on n a pas choisi :
         # on le traite hors du verrou, sinon il bloquerait tout le serveur
         # pendant qu on navigue — enregistrements et scans compris.

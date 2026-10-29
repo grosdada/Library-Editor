@@ -45,6 +45,10 @@ données, routes). Le code fait foi : `K:\Claude-projets\Library-Editor\template
 
 ### A · `outils/monteur.py` (CLI + MCP « bibliotheques-video »)
 
+Le MCP est enregistré dans Claude Code (`claude mcp list` → `bibliotheques-video … ✔ Connected`) et dans Codex (`codex mcp list`) : s'il est chargé, appeler ses outils (`bibliotheques`, `projets`, `catalogue`, `sequences`, `lire_sequence`, `ecrire_sequence`) plutôt que la ligne de commande.
+
+Depuis la 1.3.67, le serveur de bureau refuse toute requête d'un navigateur venue d'une autre page (Origin / Sec-Fetch-Site / Host) : écrire par script (Python, curl) ou depuis l'onglet de la bibliothèque, jamais par `fetch` depuis un autre site.
+
 ```
 python K:\Claude-projets\Library-Editor\outils\monteur.py bibliotheques
 python …\monteur.py projets   "EP-06"
