@@ -11,7 +11,7 @@ function extraire(debut, fin, quoi) {
 }
 
 const helpers = extraire('const vAbs = c =>', 'const dur = c => Math.max(0.04, (c.o - c.e) / vAbs(c));', 'helpers');
-const couperSrc = extraire('function couper(c, t) {', '\n}', 'couper');
+const couperSrc = extraire('function couper(c, t, enLot) {', '\n}', 'couper');
 const rognage = extraire("          if (cote === 'g') {\n            const no = Math.max(", "            s.c.e = Math.min(Math.max(0, s.e - d), s.c.o - 0.08);\n          }", 'rognage');
 
 let CLIPS = [], uidSuivant = 100, sorties = [];
