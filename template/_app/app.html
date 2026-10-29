@@ -174,6 +174,21 @@ body.rangeable.lectureseule .dos .plus{display:block}
 .dos.mont b{font-weight:400}
 .dos.mont.on{background:var(--or);color:#1a1917}
 .dos.mont.on b{color:#1a1917}
+/* La couleur d une sequence (1.3.68) : pale au repos, franche quand elle est
+   ouverte. --sc la couleur, --st le texte qui se lit dessus. */
+.dos.mont.teinte{background:color-mix(in srgb,var(--sc) 24%,transparent)}
+.dos.mont.teinte:hover{background:color-mix(in srgb,var(--sc) 36%,transparent)}
+.dos.mont.teinte.on{background:var(--sc);color:var(--st)}
+.dos.mont.teinte.on b,.dos.mont.teinte.on i{color:var(--st)}
+.dos.mont .sPast{flex:0 0 auto;width:11px;height:11px;border-radius:50%;
+ margin-left:auto;background:var(--sc);box-shadow:inset 0 0 0 1px #0006;
+ cursor:pointer;opacity:.75}
+.dos.mont .sPast.aucune{background:none;box-shadow:none;border:1px dashed #8a857c;
+ box-sizing:border-box;opacity:.45}
+.dos.mont:hover .sPast{opacity:1}
+.dos.mont .sPast:hover{transform:scale(1.3)}
+.dos.mont.on .sPast{box-shadow:0 0 0 1px var(--st)}
+.dos.mont.on .sPast.aucune{border-color:#1a1917}
 .dosVide{padding:2px 9px 6px 26px;font-size:10px;color:var(--sourd)}
 .aScan{padding:3px 9px 6px 21px;font-size:11px;color:var(--sourd);
  display:flex;gap:6px;align-items:center}
@@ -1578,11 +1593,14 @@ function rendreDossiers() {
     if (ouv) h += (toutes.length
       ? toutes.map(x => '<div class="dos mont seq' +
           (x.nom === projetNom && x.projet === PROJET.pj ? ' on' : '') +
+          (couleurSeq(x.projet, x.nom) ? ' teinte' : '') + styleSeq(x.projet, x.nom) +
           '" data-mont="1" data-pj="' + ech(x.projet) + '" data-mnom="' +
           ech(x.nom) + '" title="modified on ' + ech(x.maj) +
           ' — click to open, double-click to rename, right-click for the menu">' +
           '<b>' + ech(x.nom) + '</b>' +
-          (plusieurs ? '<i>' + ech(x.projet) + '</i>' : '') + '</div>').join('')
+          (plusieurs ? '<i>' + ech(x.projet) + '</i>' : '') +
+          '<span class="sPast' + (couleurSeq(x.projet, x.nom) ? '' : ' aucune') +
+          '" data-seq-coul="1" title="colour of this sequence"></span></div>').join('')
       : '<div class="dosVide">no saved sequence yet</div>');
   }
 
@@ -2191,6 +2209,78 @@ async function chargerCategories() {
     if (v && Array.isArray(v.liste)) CATS = nettoyerCats(v);
   } catch (e) {}
   rendreCats();
+}
+
+// ---- la couleur des sequences (1.3.68) ------------------------------------
+// Rangee dans les prereglages de la bibliotheque (genre « couleurs-seq »), pas
+// dans la sequence : la changer ne reecrit pas un montage qu un autre a peut-
+// etre ouvert, et en ligne tous les comptes voient la meme. La clef est une
+// empreinte de « projet / nom » : un nom de prereglage tient en 40 caracteres.
+const PALETTE_SEQ = ['#f2c14e', '#ff9f43', '#ff6b4a', '#ff4d6d', '#ff6fb5',
+  '#e056fd', '#a17cff', '#6c8cff', '#3fa7ff', '#2ed8e6', '#2fd6a0', '#4cd964',
+  '#a6e04a', '#e8e15a', '#c9a27e', '#b0b8c4'];
+let SEQ_COUL = {};
+function clefSeq(pj, nom) {
+  const t = pj + '\n' + nom;
+  let a = 0x811c9dc5, b = 0x9747b28c;
+  for (let i = 0; i < t.length; i++) {
+    const c = t.charCodeAt(i);
+    a = Math.imul(a ^ c, 16777619) >>> 0;
+    b = Math.imul(b ^ c, 2246822507) >>> 0;
+  }
+  return 'q' + a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
+}
+function couleurSeq(pj, nom) {
+  const v = SEQ_COUL[clefSeq(pj, nom)];
+  const c = v && (typeof v === 'string' ? v : v.c);
+  return /^#[0-9a-f]{6}$/i.test(c || '') ? c : '';
+}
+// Le texte d une ligne ouverte : sombre sur une couleur claire, blanc sinon.
+function styleSeq(pj, nom) {
+  const c = couleurSeq(pj, nom);
+  if (!c) return '';
+  const n = parseInt(c.slice(1), 16);
+  const l = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return '" style="--sc:' + c + ';--st:' + (l > 0.55 ? '#1a1917' : '#fff');
+}
+async function chargerCouleursSeq() {
+  try {
+    const d = await api('api/presets?genre=couleurs-seq');
+    SEQ_COUL = (d && d.presets) || {};
+  } catch (e) {}
+}
+function menuCouleurSeq(ligne, pastille) {
+  if (!ligne) return;
+  const m = $('#menu'), pj = ligne.dataset.pj, nom = ligne.dataset.mnom;
+  const ici = couleurSeq(pj, nom).toLowerCase();
+  m.innerHTML = '<div class="lbl">Sequence colour</div><div class="couls">' +
+    PALETTE_SEQ.map(c => '<span data-seq-c="' + c + '" style="background:' + c +
+      (c === ici ? ';outline:2px solid var(--encre);outline-offset:1px' : '') +
+      '"></span>').join('') +
+    '<span class="aucune" data-seq-c="" title="no colour"></span></div>';
+  m.dataset.pj = pj; m.dataset.mnom = nom;
+  placerMenu(m, (pastille || ligne).getBoundingClientRect());
+}
+async function poserCouleurSeq(pj, nom, c, discret) {
+  const k = clefSeq(pj, nom), avant = SEQ_COUL[k];
+  c = /^#[0-9a-f]{6}$/i.test(c || '') ? c : '';
+  if (!c && !avant) return;
+  if (c) SEQ_COUL[k] = {c: c, n: (pj + ' / ' + nom).slice(0, 120)};
+  else delete SEQ_COUL[k];
+  if (!discret) rendreDossiers();
+  try {
+    await api('api/presets', c ? {genre: 'couleurs-seq', nom: k, valeur: SEQ_COUL[k]}
+                               : {genre: 'couleurs-seq', nom: k, effacer: true});
+  } catch (err) {
+    if (avant) SEQ_COUL[k] = avant; else delete SEQ_COUL[k];
+    if (!discret) { rendreDossiers(); dire('colour not saved — ' + err.message, true); }
+  }
+}
+async function deplacerCouleurSeq(pj, nom, pj2, nom2) {
+  const c = couleurSeq(pj, nom);
+  if (!c || (pj === pj2 && nom === nom2)) return;
+  await poserCouleurSeq(pj2, nom2, c, true);
+  await poserCouleurSeq(pj, nom, '', true);
 }
 
 async function enregistrerCats() {
@@ -2904,6 +2994,8 @@ colDos.addEventListener('click', async e => {
     rendreDossiers();
     return;
   }
+  const sp = e.target.closest('[data-seq-coul]');
+  if (sp) { menuCouleurSeq(sp.closest('[data-mont]'), sp); return; }
   const mo = e.target.closest('[data-mont]');
   if (mo && e.target.tagName !== 'INPUT') {
     ouvrirMontage(mo.dataset.pj, mo.dataset.mnom);
@@ -2915,6 +3007,7 @@ colDos.addEventListener('click', async e => {
   appliquerProfil(); rendre();
 });
 colDos.addEventListener('dblclick', e => {
+  if (e.target.closest('[data-seq-coul]')) return;
   const m = e.target.closest('[data-mont]');
   if (m) { editerMontage(m); return; }
   const d = e.target.closest('.dos');
@@ -3073,6 +3166,7 @@ function editerMontage(el, lab) {
       try {
         const r = await api('api/montage/renommer',
           {projet: pj, ancien: ancien, nom: neuf});
+        await deplacerCouleurSeq(pj, ancien, pj, r.nom);
         // Si c est le montage ouvert, il change de nom sous nos pieds.
         if (projetNom === ancien && PROJET.pj === pj) {
           projetNom = r.nom; PROJET.nom = r.nom;
@@ -3112,6 +3206,7 @@ async function effacerMontage(pj, nom) {
     $('#mOk').disabled = true;
     try {
       const r = await api('api/montage/effacer', {projet: pj, nom: nom});
+      poserCouleurSeq(pj, nom, '', true);
       FERMES.delete(pj + '|' + nom); noterFermes();
       rafraichirProjets();
     } catch (err) {
@@ -3360,6 +3455,7 @@ colDos.addEventListener('contextmenu', e => {
       '</div>' +
       '<div class="it" data-mont-act="ajouter">＋ Add to timeline</div>' +
       '<div class="it" data-mont-act="renommer">✎ Rename…</div>' +
+      '<div class="it" data-mont-act="couleur">● Colour…</div>' +
       '<div class="sep"></div>' +
       '<div class="it" data-mont-act="effacer">✕ Delete…</div>';
     colMenu.dataset.pj = mo.dataset.pj;
@@ -3403,11 +3499,24 @@ colDos.addEventListener('contextmenu', e => {
 });
 
 colMenu.addEventListener('click', async e => {
+  const sc = e.target.closest('[data-seq-c]');
+  if (sc) {
+    const pj = colMenu.dataset.pj, nom = colMenu.dataset.mnom;
+    fermerColMenu();
+    poserCouleurSeq(pj, nom, sc.dataset.seqC);
+    return;
+  }
   const ma = e.target.closest('[data-mont-act]');
   if (ma) {
     const act = ma.dataset.montAct;
     const pj = colMenu.dataset.pj, nom = colMenu.dataset.mnom;
     fermerColMenu();
+    if (act === 'couleur') {
+      const el = $$('[data-mont]').find(x => x.dataset.pj === pj &&
+        x.dataset.mnom === nom);
+      if (el) menuCouleurSeq(el, el.querySelector('[data-seq-coul]'));
+      return;
+    }
     if (act === 'ajouter') ajouterMontage(pj, nom);
     else if (act === 'effacer') effacerMontage(pj, nom);
     else {
@@ -11528,6 +11637,7 @@ async function assurerSauvegarde(silencieux) {
     if (ancien) {
       try {
         await api('api/montage/effacer', {projet: ancien, nom: nom});
+        await deplacerCouleurSeq(ancien, nom, hote, nom);
         rafraichirProjets();
       } catch (e) {}
     }
@@ -12370,6 +12480,7 @@ async function suivreRendu() {
   await chargerPresets();
   // Et les couleurs de rangement, avant la premiere grille.
   await chargerCategories();
+  await chargerCouleursSeq();
 
   try {
     const l = await api('api/projets');
