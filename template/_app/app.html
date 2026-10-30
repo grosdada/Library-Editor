@@ -870,6 +870,13 @@ body.mqEdit #mqCalque{pointer-events:auto;cursor:default}
 .projets .pu .x:hover{color:#fff;background:var(--rouge)}
 .projets .pu.on .x{color:#fff9}
 .projets .pu.on .x:hover{color:#fff;background:#0004}
+/* La couleur de la sequence (1.3.69), comme dans la colonne : pale au repos,
+   franche sur l onglet ouvert. */
+.projets .pu.teinte{background:color-mix(in srgb,var(--sc) 24%,var(--carte));
+ border-color:color-mix(in srgb,var(--sc) 60%,transparent)}
+.projets .pu.teinte:hover{background:color-mix(in srgb,var(--sc) 36%,var(--carte))}
+.projets .pu.teinte.on{background:var(--sc);border-color:var(--sc);color:var(--st)}
+.projets .pu.teinte.on .x{color:var(--st);opacity:.75}
 #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
  background:var(--haut);border:1px solid var(--trait);border-radius:5px;
  padding:8px 15px;z-index:90;display:none;max-width:70vw}
@@ -2267,14 +2274,32 @@ async function poserCouleurSeq(pj, nom, c, discret) {
   if (!c && !avant) return;
   if (c) SEQ_COUL[k] = {c: c, n: (pj + ' / ' + nom).slice(0, 120)};
   else delete SEQ_COUL[k];
-  if (!discret) rendreDossiers();
+  if (!discret) { rendreDossiers(); teinterOnglets(); }
   try {
     await api('api/presets', c ? {genre: 'couleurs-seq', nom: k, valeur: SEQ_COUL[k]}
                                : {genre: 'couleurs-seq', nom: k, effacer: true});
   } catch (err) {
     if (avant) SEQ_COUL[k] = avant; else delete SEQ_COUL[k];
-    if (!discret) { rendreDossiers(); dire('colour not saved — ' + err.message, true); }
+    if (!discret) {
+      rendreDossiers(); teinterOnglets();
+      dire('colour not saved — ' + err.message, true);
+    }
   }
+}
+// Les onglets au-dessus de la timeline prennent la couleur de leur sequence.
+function teinterOnglets() {
+  $$('.projets .pu[data-p]').forEach(o => {
+    const c = couleurSeq(o.dataset.pj, o.dataset.p);
+    o.classList.toggle('teinte', !!c);
+    if (c) {
+      const v = styleSeq(o.dataset.pj, o.dataset.p).split('--st:')[1];
+      o.style.setProperty('--sc', c);
+      o.style.setProperty('--st', v);
+    } else {
+      o.style.removeProperty('--sc');
+      o.style.removeProperty('--st');
+    }
+  });
 }
 async function deplacerCouleurSeq(pj, nom, pj2, nom2) {
   const c = couleurSeq(pj, nom);
@@ -11739,6 +11764,7 @@ async function rafraichirProjets() {
     '<span class="pu neuf" data-nouveau="1" title="create a new sequence">' +
     '+ new</span>' +
     '<span class="pu neuf" data-recharger="1" title="refresh the list">↻</span>';
+  teinterOnglets();
 }
 
 // ---- clic droit sur la bande : gerer les onglets en lot -----------------
