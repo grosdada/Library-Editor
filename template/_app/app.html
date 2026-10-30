@@ -249,6 +249,15 @@ body.edit.srcOuvert .rz[data-rz=source]{display:block}
 #srcBarre .poi[data-srcpoi=o]::after{right:6px;border-left:0}
 #srcBarre .lect{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:#fff;
  pointer-events:none;z-index:1}
+/* La poignee du milieu (1.3.70) : elle fait glisser l entree ET la sortie
+   dans le rush, la duree ne change pas. Sous les poignees d entree et de
+   sortie, et cachee quand la zone est trop etroite pour les trois. */
+#srcBarre .glis{position:absolute;top:4px;bottom:4px;width:20px;margin-left:-10px;z-index:1;
+ border-radius:3px;background:var(--or);color:#1a1917;cursor:grab;text-align:center;
+ font:bold 11px/18px ui-monospace,monospace;user-select:none}
+#srcBarre .glis:active{cursor:grabbing}
+#srcBarre .glis:hover{box-shadow:0 0 7px #e8b93a}
+#srcBarre .glis.cache{display:none}
 #fenSource .transport .tc{margin-left:4px}
 /* Surtout PAS overflow:hidden ici : un element de grille dont le debordement
    est masque voit sa contribution de hauteur s effondrer, la ligne se calcule
@@ -1010,7 +1019,8 @@ here and change nothing to the files">My folders</button>
       class="vide">Double-click a rush (or a block) to load it here — or drop a rush from the strip.</div></div>
     <div id="srcBarre"><div id="srcZone"></div><div class="lect" id="srcLect"></div>
       <div class="poi" data-srcpoi="e" title="in point — drag to adjust"></div>
-      <div class="poi" data-srcpoi="o" title="out point — drag to adjust"></div></div>
+      <div class="poi" data-srcpoi="o" title="out point — drag to adjust"></div>
+      <div class="glis" data-srcpoi="m" title="drag to slide the in and out points together inside the rush — the length stays the same">↔</div></div>
     <div class="transport">
       <button id="srcPlay" class="tr" title="play the range (Space with the mouse over this window)">▶</button>
       <button id="srcIn" class="tr" title="in point here (I with the mouse over this window)">[</button>
@@ -12747,6 +12757,10 @@ function srcMajBarre() {
   z.style.width = Math.max(0, srcPc(SRC.o) - srcPc(SRC.e)) + '%';
   $('#srcBarre [data-srcpoi=e]').style.left = srcPc(SRC.e) + '%';
   $('#srcBarre [data-srcpoi=o]').style.left = srcPc(SRC.o) + '%';
+  const g = $('#srcBarre [data-srcpoi=m]');
+  g.style.left = srcPc((SRC.e + SRC.o) / 2) + '%';
+  g.classList.toggle('cache',
+    (srcPc(SRC.o) - srcPc(SRC.e)) / 100 * $('#srcBarre').clientWidth < 44);
   $('#srcLect').style.left = Math.max(0, Math.min(100, srcPc(ct))) + '%';
   $('#srcTc').textContent = !SRC.film ? '' : srcEstImage() ? 'still image'
     : tc(ct) + '  ·  in ' + tc(SRC.e) + '  out ' + tc(SRC.o) + '  ·  ' +
@@ -12899,6 +12913,17 @@ function srcAppliquerBloc(dep, dE, dO) {
     if (el) el.style.width = (dur(s.c) * PPS) + 'px';
   });
 }
+// Glisser (poignee du milieu) : tout le groupe du meme ecart, borne pour que
+// personne ne sorte de son rush — aucune duree ne change.
+function srcGlisserBloc(dep, d) {
+  dep.forEach(s => {
+    const f = PAR_ID[s.c.film], max = (f && f.s) || s.o;
+    d = Math.max(d, -s.e);
+    d = Math.min(d, max - s.o);
+  });
+  dep.forEach(s => { s.c.e = s.e + d; s.c.o = s.o + d; });
+  return d;
+}
 function srcFiniBloc() {
   rendreTimeline(); resynchroniser(true); dessiner();
 }
@@ -12931,6 +12956,7 @@ $('#srcBarre').addEventListener('pointerdown', e => {
   if (c && verrouillee(c.piste)) { direVerrou(c.piste); return; }
   const dep = c ? srcGroupe(c) : [];
   const e0 = SRC.e, o0 = SRC.o, s = srcDuree();
+  if (cote === 'm') { srcGlisser(e, tA, v, c, dep, e0, o0, s); return; }
   const dec = tA(e.clientX) - (cote === 'e' ? SRC.e : SRC.o);
   let bouge = false;
   SRC.tire = cote;
@@ -12958,6 +12984,38 @@ $('#srcBarre').addEventListener('pointerdown', e => {
   addEventListener('pointermove', bouger);
   addEventListener('pointerup', lacher);
 });
+
+// La poignee du milieu : l entree et la sortie glissent ensemble dans le rush
+// (David, 30/10). Pour un bloc, il garde sa place et sa longueur sur la
+// timeline : seul le passage du rush qu il montre change. L image affichee
+// est celle de l entree.
+function srcGlisser(e, tA, v, c, dep, e0, o0, s) {
+  const x0 = tA(e.clientX), lg = o0 - e0;
+  let bouge = false;
+  SRC.tire = 'm';
+  const bouger = ev => {
+    let d = srcCale(e0 + tA(ev.clientX) - x0) - e0;
+    d = Math.max(-e0, Math.min(s - o0, d));
+    if (!bouge) { bouge = true; if (c) memoriser(); }
+    if (c) d = srcGlisserBloc(dep, d);
+    SRC.e = e0 + d; SRC.o = SRC.e + lg;
+    if (v) v.currentTime = SRC.e;
+    srcMajBarre();
+  };
+  const lacher = () => {
+    removeEventListener('pointermove', bouger);
+    removeEventListener('pointerup', lacher);
+    SRC.tire = null;
+    if (!bouge) return;
+    if (c) srcFiniBloc();
+    else SRC_MARQUES.set(SRC.film, {e: SRC.e, o: SRC.o});
+    dire((c ? 'block slid — ' : '') + 'in ' + tc(SRC.e) + '  out ' + tc(SRC.o) +
+         ' — ' + lg.toFixed(2) + 's');
+    srcCadrerVue(); srcMajBarre(); srcBoucle();
+  };
+  addEventListener('pointermove', bouger);
+  addEventListener('pointerup', lacher);
+}
 
 // [ et ] (ou I et O, souris sur la fenetre) : l entree ou la sortie a
 // l image affichee.
