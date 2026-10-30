@@ -5019,8 +5019,9 @@ $('#tlDefile').addEventListener('wheel', e => {
   }
   if (!e.ctrlKey) return;
   e.preventDefault();
-  const r = $('#tlContenu').getBoundingClientRect();
-  zoom(e.deltaY < 0 ? 1.18 : 1 / 1.18, (e.clientX - r.left) / PPS);
+  // Ctrl + molette : le zoom se fait sur la tete de lecture, au centre de la
+  // vue, avant comme arriere — plus sur le pointeur (David, 30/10, 1.3.74).
+  zoom(e.deltaY < 0 ? 1.18 : 1 / 1.18, tLect);
 }, {passive: false});
 
 // Se placer dans le montage revient a poser la tete de lecture : on la deplace
