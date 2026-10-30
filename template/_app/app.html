@@ -12728,16 +12728,12 @@ function srcDuree() {
 function srcEstImage() { const f = PAR_ID[SRC.film]; return !!(f && f.image); }
 const srcBloc = () => SRC.uid ? parUid(SRC.uid) : null;
 
-// La barre montre le rush entier pour un rush de la bande, et le bloc avec une
-// marge de chaque cote pour un bloc : on regle au plus fin sans viser dans dix
-// minutes de rush. Tirer une poignee au-dela de la barre continue d allonger.
+// La barre montre toujours le rush entier, bloc compris (1.3.71) : la zone est
+// a sa vraie place dans le rush et y reste quand on la tire. Le cadrage sur le
+// bloc avec une marge la ramenait au milieu a chaque lacher (David, 30/10).
 function srcCadrerVue() {
   const s = srcDuree();
-  if (SRC.uid) {
-    const pad = Math.max(1.5, (SRC.o - SRC.e) * 0.5);
-    SRC.v0 = Math.max(0, SRC.e - pad);
-    SRC.v1 = Math.min(s, SRC.o + pad);
-  } else { SRC.v0 = 0; SRC.v1 = s; }
+  SRC.v0 = 0; SRC.v1 = s;
   if (SRC.v1 - SRC.v0 < 0.1) SRC.v1 = SRC.v0 + 0.1;
   SRC.cle = '';
 }
@@ -12760,7 +12756,7 @@ function srcMajBarre() {
   const g = $('#srcBarre [data-srcpoi=m]');
   g.style.left = srcPc((SRC.e + SRC.o) / 2) + '%';
   g.classList.toggle('cache',
-    (srcPc(SRC.o) - srcPc(SRC.e)) / 100 * $('#srcBarre').clientWidth < 44);
+    (srcPc(SRC.o) - srcPc(SRC.e)) / 100 * $('#srcBarre').clientWidth < 34);
   $('#srcLect').style.left = Math.max(0, Math.min(100, srcPc(ct))) + '%';
   $('#srcTc').textContent = !SRC.film ? '' : srcEstImage() ? 'still image'
     : tc(ct) + '  ·  in ' + tc(SRC.e) + '  out ' + tc(SRC.o) + '  ·  ' +
