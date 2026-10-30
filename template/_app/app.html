@@ -577,6 +577,11 @@ body.outilA .clip .poi,body.outilA .clip .att{display:none}
  z-index:5;pointer-events:none}
 .tete::before{content:"";position:absolute;top:0;left:-5px;border:5px solid transparent;
  border-top-color:var(--orange);border-bottom:0;height:0}
+/* La tete vient de se coller (Maj) a une coupe, une cle ou un marqueur : elle
+   s allume en orange, comme le repere bleu des blocs (1.3.73). */
+.tete.collee{width:3px;margin-left:-1px;background:#ff9a3c;
+ box-shadow:0 0 8px #ff9a3c,0 0 3px #ff9a3c}
+.tete.collee::before{left:-6px;border-width:7px 7px 0;border-top-color:#ff9a3c}
 /* La case garde la largeur ; le panneau la remplit. En pop-up, le panneau
    s en detache et la case reste en place : la timeline ne bouge pas d un
    pixel pendant qu on tient Tab. */
@@ -5099,8 +5104,14 @@ $('#minimap').addEventListener('pointerdown', e => {
     const r = mm.getBoundingClientRect();
     const frac = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
     let t = frac * etendue();
-    if (ev.shiftKey) t = accrocher(t, pointsTete(), 10 * (etendue() * PPS / r.width));
+    let pris = false;
+    if (ev.shiftKey) {
+      const pts = pointsTete();
+      t = accrocher(t, pts, 10 * (etendue() * PPS / r.width));
+      pris = pts.includes(t);
+    }
     allerAuTemps(t);
+    teteCollee(pris);
   };
   aller(e);
   const lacher = () => {
@@ -5114,12 +5125,20 @@ $('#minimap').addEventListener('pointerdown', e => {
 // La tete de lecture circule sur toute l etendue de la regle, pas seulement
 // jusqu au dernier plan : on peut se placer dans le vide et y laisser du noir.
 function poserTete(x, colle) {
-  let t = x / PPS;
-  if (colle) t = accrocher(t, pointsTete());
+  let t = x / PPS, pris = false;
+  if (colle) {
+    const pts = pointsTete();
+    t = accrocher(t, pts);
+    pris = pts.includes(t);
+  }
   tLect = Math.max(0, Math.min(etendue(), t));
   if (enLecture) { t0Lect = tLect; horloge0 = performance.now(); }
   majTete(); resynchroniser(true);
+  teteCollee(pris);
 }
+// La tete allumee tant qu elle est collee ; eteinte des qu on relache.
+function teteCollee(on) { $('#tete').classList.toggle('collee', !!on); }
+addEventListener('pointerup', () => teteCollee(false), true);
 $('#regle').addEventListener('pointerdown', e => {
   const r = $('#tlContenu').getBoundingClientRect();
   poserTete(e.clientX - r.left, e.shiftKey);
