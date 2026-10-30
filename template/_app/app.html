@@ -258,6 +258,14 @@ body.edit.srcOuvert .rz[data-rz=source]{display:block}
 #srcBarre .glis:active{cursor:grabbing}
 #srcBarre .glis:hover{box-shadow:0 0 7px #e8b93a}
 #srcBarre .glis.cache{display:none}
+/* Les graduations (1.3.72), comme sur la reglette de la timeline : la duree
+   du rush, et ou la plage se trouve dedans. Par-dessus la zone, sous la tete
+   de lecture et les poignees. */
+#srcGrad{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+#srcGrad i{position:absolute;bottom:0;width:1px;height:5px;background:#ffffff4a}
+#srcGrad i.maj{height:10px;background:#ffffff8c}
+#srcGrad b{position:absolute;top:1px;margin-left:3px;font:9px/10px ui-monospace,monospace;
+ color:#ffffffc0;font-weight:normal;white-space:nowrap}
 #fenSource .transport .tc{margin-left:4px}
 /* Surtout PAS overflow:hidden ici : un element de grille dont le debordement
    est masque voit sa contribution de hauteur s effondrer, la ligne se calcule
@@ -1017,7 +1025,7 @@ here and change nothing to the files">My folders</button>
     <div id="srcCadre" draggable="true"
       title="drag this picture onto the timeline to insert the rush between its in and out points"><div
       class="vide">Double-click a rush (or a block) to load it here — or drop a rush from the strip.</div></div>
-    <div id="srcBarre"><div id="srcZone"></div><div class="lect" id="srcLect"></div>
+    <div id="srcBarre"><div id="srcZone"></div><div id="srcGrad"></div><div class="lect" id="srcLect"></div>
       <div class="poi" data-srcpoi="e" title="in point — drag to adjust"></div>
       <div class="poi" data-srcpoi="o" title="out point — drag to adjust"></div>
       <div class="glis" data-srcpoi="m" title="drag to slide the in and out points together inside the rush — the length stays the same">↔</div></div>
@@ -12744,9 +12752,11 @@ const srcCale = t => { const ips = PROJET.fps || 24; return Math.round(t * ips) 
 function srcMajBarre() {
   const v = srcVid();
   const ct = v ? v.currentTime : SRC.e;
-  const cle = [SRC.film, SRC.e, SRC.o, SRC.v0, SRC.v1, ct.toFixed(3)].join('|');
+  const larg = $('#srcBarre').clientWidth;
+  const cle = [SRC.film, SRC.e, SRC.o, SRC.v0, SRC.v1, ct.toFixed(3), larg].join('|');
   if (cle === SRC.cle) return;
   SRC.cle = cle;
+  srcGraduer(larg);
   $('#srcBarre').classList.toggle('sans', !SRC.film || srcEstImage());
   const z = $('#srcZone');
   z.style.left = srcPc(SRC.e) + '%';
@@ -12760,7 +12770,37 @@ function srcMajBarre() {
   $('#srcLect').style.left = Math.max(0, Math.min(100, srcPc(ct))) + '%';
   $('#srcTc').textContent = !SRC.film ? '' : srcEstImage() ? 'still image'
     : tc(ct) + '  ·  in ' + tc(SRC.e) + '  out ' + tc(SRC.o) + '  ·  ' +
-      (SRC.o - SRC.e).toFixed(2) + 's';
+      (SRC.o - SRC.e).toFixed(2) + 's  ·  rush ' + srcDuree().toFixed(2) + 's';
+}
+
+// Un pas lisible : les chiffres a 55 px au moins, des petits traits entre.
+const SRC_PAS = [[0.5, 5], [1, 4], [2, 4], [5, 5], [10, 5], [15, 3], [30, 3],
+  [60, 4], [120, 4], [300, 5], [600, 4], [1200, 4], [1800, 3], [3600, 4]];
+function srcEtiq(t) {
+  if (t < 60) return (Math.round(t * 10) / 10) + 's';
+  const m = Math.floor(t / 60), s = Math.round(t % 60);
+  return m + ':' + String(s).padStart(2, '0');
+}
+function srcGraduer(larg) {
+  const el = $('#srcGrad');
+  const cle = [SRC.film, SRC.v0, SRC.v1, larg].join('|');
+  if (el.dataset.cle === cle) return;
+  el.dataset.cle = cle;
+  const plage = SRC.v1 - SRC.v0;
+  if (!SRC.film || srcEstImage() || !larg || plage <= 0) { el.innerHTML = ''; return; }
+  const pps = larg / plage;
+  const [pas, div] = SRC_PAS.find(([p]) => p * pps >= 55) || SRC_PAS[SRC_PAS.length - 1];
+  const fin = pas / div * pps >= 5 ? pas / div : pas;
+  let h = '';
+  const n0 = Math.ceil(SRC.v0 / fin - 1e-6), n1 = Math.floor(SRC.v1 / fin + 1e-6);
+  for (let n = n0; n <= n1; n++) {
+    const t = n * fin, x = ((t - SRC.v0) * pps).toFixed(1);
+    const maj = Math.abs(t / pas - Math.round(t / pas)) < 1e-6;
+    h += '<i' + (maj ? ' class="maj"' : '') + ' style="left:' + x + 'px"></i>';
+    // Pas d etiquette collee au bord droit : elle serait coupee.
+    if (maj && x < larg - 22) h += '<b style="left:' + x + 'px">' + srcEtiq(t) + '</b>';
+  }
+  el.innerHTML = h;
 }
 
 function srcMajTete() {
