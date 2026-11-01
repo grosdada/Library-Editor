@@ -1057,7 +1057,8 @@ def _secousse(cad, decalage=0.0, duree=0.0):
         if not _couche_active(q):
             continue
         a = max(0.0, min(20.0, float(q.get("a", 1.5) or 0)))
-        if a < 0.02:
+        # Plus de seuil a 0,02 : l amplitude descend a 0,01 % (1.3.77).
+        if a <= 0:
             continue
         f = max(0.1, min(30.0, float(q.get("f", 6) or 6)))
         r = _rampe_couche(q, u, duree)

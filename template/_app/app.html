@@ -8179,7 +8179,7 @@ function rendreReglages() {
         '<div style="' + petit + '">Rate</div>' +
         curs('rShkF', k, 0.5, 20, 0.1, p.f === undefined ? SHK_F : p.f, ' Hz', 1) +
         '<div style="' + petit + '">Amount</div>' +
-        curs('rShkA', k, 0.1, 10, 0.1, p.a === undefined ? SHK_A : p.a, '%', 1) +
+        curs('rShkA', k, 0.01, 10, 0.01, p.a === undefined ? SHK_A : p.a, '%', 2) +
         '<div style="' + petit + '">Rotation</div>' +
         curs('rShkR', k, 0, 8, 0.1, p.r === undefined ? SHK_R : p.r, '\u00b0', 1) +
         (SHK_PLI === k
@@ -8406,7 +8406,8 @@ function rendreReglages() {
     });
   };
   curseurCouche('rShkF', 'f', ' Hz', 1);
-  curseurCouche('rShkA', 'a', '%', 1);
+  // Jusqu a 0,01 % (David, 01/11, 1.3.77) : deux decimales.
+  curseurCouche('rShkA', 'a', '%', 2);
   curseurCouche('rShkR', 'r', '\u00b0', 1);
   curseurCouche('rShkIn', 'i', 's', 2);
   curseurCouche('rShkOut', 'o', 's', 2);
