@@ -6714,6 +6714,91 @@ async function couperAuxPlans() {
   dire(n + (n > 1 ? ' cuts' : ' cut') + ' at the shot changes');
 }
 
+// Multicut (David, 01/11, 1.3.78) : N coupes reparties a egale distance sur
+// la longueur de chaque bloc selectionne, soit N+1 morceaux egaux. couper()
+// coupe tout le groupe lie : on ne prend donc qu un bloc par groupe, sinon
+// l image et son son seraient coupes deux fois. Dans son groupe, c est le
+// bloc clique qui donne la longueur.
+let MULTICUT_N = Math.max(1, Math.min(200, parseInt(pref.lire('multicutN', '3'), 10) || 3));
+const MULTICUT_MIN = 0.1;
+function blocsMulticut(uid) {
+  const vus = new Set(), l = [];
+  const prendre = c => {
+    if (!c || vus.has(c.uid) || verrouillee(c.piste)) return;
+    groupeLie(c).forEach(x => vus.add(x.uid));
+    l.push(c);
+  };
+  prendre(parUid(uid));
+  CLIPS.forEach(c => { if (clipsSel.has(c.uid)) prendre(c); });
+  return l;
+}
+function boiteMulticut(uid) {
+  const blocs = blocsMulticut(uid);
+  if (!blocs.length) { dire('no block to cut — its track is locked', true); return; }
+  const longs = blocs.map(c => fin(c) - c.t0);
+  const court = Math.min.apply(null, longs), long = Math.max.apply(null, longs);
+  const s = x => x.toFixed(2) + ' s';
+  const b = $('#boite');
+  b.innerHTML = '<h3>Multicut</h3>' +
+    '<div style="display:flex;flex-direction:column;gap:12px">' +
+    '<div><label style="font-size:11px;color:var(--sourd)">Number of cuts' +
+    (blocs.length > 1 ? ' — on each of the ' + blocs.length + ' blocks' : '') +
+    '</label><br><input id="mcN" type="number" min="1" max="200" step="1" value="' +
+    MULTICUT_N + '" style="width:100%"></div>' +
+    '<div id="mcInfo" style="font-size:11px;color:var(--sourd);line-height:1.5"></div>' +
+    '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+    '<button id="mcAnnule">Cancel</button>' +
+    '<button id="mcOk" class="on">Cut</button></div></div>';
+  const ch = $('#mcN'), info = $('#mcInfo'), ok = $('#mcOk');
+  const lire = () => Math.max(1, Math.min(200, parseInt(ch.value, 10) || 1));
+  const maj = () => {
+    const n = lire(), trop = court / (n + 1) < MULTICUT_MIN;
+    info.innerHTML = n + (n > 1 ? ' cuts' : ' cut') + ' → ' + (n + 1) +
+      ' equal pieces of ' + (blocs.length > 1 && long - court > 0.01
+        ? s(court / (n + 1)) + ' to ' + s(long / (n + 1))
+        : s(court / (n + 1))) +
+      '. The linked audio is cut too · Ctrl+Z to undo.' +
+      (trop ? '<br><b style="color:var(--rouge,#e55)">Too many cuts: pieces under ' +
+        MULTICUT_MIN + ' s.</b>' : '');
+    ok.disabled = trop;
+  };
+  const fermer = () => { $('#voile').className = ''; };
+  const valider = () => {
+    const n = lire();
+    if (court / (n + 1) < MULTICUT_MIN) return;
+    MULTICUT_N = n;
+    pref.ecrire('multicutN', String(n));
+    fermer();
+    multicut(blocs, n);
+  };
+  ch.oninput = maj;
+  ch.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); valider(); }
+    else if (e.key === 'Escape') { e.preventDefault(); fermer(); }
+  });
+  $('#mcAnnule').onclick = fermer;
+  ok.onclick = valider;
+  maj();
+  $('#voile').className = 'on';
+  ch.focus(); ch.select();
+}
+function multicut(blocs, n) {
+  memoriser();
+  let faites = 0;
+  blocs.forEach(c => {
+    const t0 = c.t0, pas = (fin(c) - t0) / (n + 1);
+    // De la fin vers le debut : le bloc garde la partie gauche a chaque
+    // coupe, la suivante tombe donc toujours dedans.
+    for (let k = n; k >= 1; k--) if (couper(c, t0 + k * pas, true)) faites++;
+  });
+  clipsSel.clear();
+  rendreTimeline(); resynchroniser(true);
+  dire(faites + (faites > 1 ? ' cuts' : ' cut') +
+    (blocs.length > 1 ? ' on ' + blocs.length + ' blocks' : '') +
+    ' — ' + (n + 1) + ' equal pieces · Ctrl+Z to undo');
+}
+
 function retirerSelection() {
   if (!clipsSel.size) { dire('no block selected'); return; }
   memoriser();
@@ -7633,6 +7718,8 @@ $('#lanes').addEventListener('contextmenu', e => {
      piste(c.piste).type !== 'v' ? ''
       : '<div class="it" data-act="plans" title="cut the block wherever the picture ' +
         'changes shot — its linked audio is cut too">✂ Auto cut at shot changes</div>') +
+    '<div class="it" data-act="multicut" title="cuts spread evenly over the length ' +
+      'of the block — its linked audio is cut too">✂ Multicut…</div>' +
     (estSynth(c) ? ''
      : '<div class="it" data-act="usages">⌕ Used in which sequences…</div>' +
        '<div class="it" data-act="voirProjet">⌖ Show in project</div>' +
@@ -7796,6 +7883,7 @@ menu.addEventListener('click', async e => {
   }
   else if (a === 'dupliquer') dupliquerBlocs();
   else if (a === 'plans') couperAuxPlans();
+  else if (a === 'multicut') boiteMulticut(+menu.dataset.uid);
   else if (a === 'mixson') mixerSon();
   else if (a === 'delier') delier();
   else if (a === 'relier') relier();
