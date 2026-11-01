@@ -337,6 +337,22 @@ body.forme-rond .c .nom{text-align:center}
 #loupe .loupeTete b{font-weight:500;overflow:hidden;text-overflow:ellipsis;
  white-space:nowrap}
 #loupe .loupeTete .sp{flex:1 1 auto}
+/* L etoile et les couleurs dans le pop-up (1.3.75) : on range le rush qu on
+   regarde sans refermer. Memes pastilles nommees que dans le menu des cartes. */
+#loupe .loupeMarques{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;
+ width:100%;font-size:11px}
+#loupe .loupeMarques .etoile{position:static;font-size:20px;padding:0 4px 0 0;
+ color:#fff8;background:none;border:0}
+#loupe .loupeMarques .etoile:hover,#loupe .loupeMarques .etoile.on{color:var(--or)}
+#loupe .chipsCat{display:flex;flex-wrap:wrap;gap:4px}
+#loupe .chipsCat span{display:inline-flex;align-items:center;gap:4px;
+ padding:1px 7px 1px 3px;border-radius:10px;border:1px solid var(--trait);
+ line-height:15px;cursor:pointer;color:var(--sourd)}
+#loupe .chipsCat span i{width:11px;height:11px;border-radius:50%;flex:0 0 auto;
+ box-shadow:inset 0 0 0 1px #0006}
+#loupe .chipsCat span i.aucune{box-shadow:none;border:1px dashed var(--sourd)}
+#loupe .chipsCat span:hover{border-color:var(--sourd);color:var(--encre)}
+#loupe .chipsCat span.on{border-color:var(--encre);color:var(--encre)}
 .c .reduire{position:absolute;top:5px;right:5px;z-index:3;background:#000a;
  border:1px solid #fff3;color:#fff;border-radius:4px;padding:1px 6px;
  font-size:11px;line-height:1.5;cursor:pointer}
@@ -1912,12 +1928,7 @@ grille.addEventListener('click', async e => {
   const et = e.target.closest('[data-fav]');
   if (et) {
     e.stopPropagation();
-    const f = PAR_ID[et.dataset.fav];
-    try {
-      const d = await api('api/marquer',
-                          {projet: f.pj, id: f.id, fav: !f.fav});
-      Object.assign(f, d.film); rendreGrille();
-    } catch (err) { dire('favourite not saved — ' + err.message, true); }
+    await favRush(et.dataset.fav);
     return;
   }
   const red = e.target.closest('[data-reduire]');
@@ -2036,6 +2047,7 @@ function agrandir(id) {
     (f.s || 0).toFixed(1) + 's' + (f.w ? ' · ' + f.w + '×' + f.h : '') +
     '</span><span class="sp"></span>' +
     '<button data-loupe-x="1" title="close (Esc)">⤡</button></div>' +
+    '<div class="loupeMarques">' + loupeMarques(f) + '</div>' +
     media + '</div>';
   reglerApercu(l.querySelector('video, audio'));
   l.className = 'on';
@@ -2075,9 +2087,38 @@ function reduire() {
   return true;
 }
 
+// Etoile et couleur du rush, sous le titre du pop-up (David, 01/11, 1.3.75).
+function loupeMarques(f) {
+  return '<button class="etoile' + (f.fav ? ' on' : '') + '" data-loupe-fav="1"' +
+    ' title="favourite">' + (f.fav ? '★' : '☆') + '</button>' +
+    chipsCats('data-loupe-coul', catDe(f.coul) ? +f.coul : 0);
+}
+function majLoupeMarques() {
+  const z = $('#loupe .loupeMarques');
+  if (z && agrandi && PAR_ID[agrandi]) z.innerHTML = loupeMarques(PAR_ID[agrandi]);
+}
+
+// L etoile d un rush, depuis sa carte ou depuis le pop-up.
+async function favRush(id) {
+  const f = PAR_ID[id];
+  if (!f) return;
+  try {
+    const d = await api('api/marquer', {projet: f.pj, id: f.id, fav: !f.fav});
+    Object.assign(f, d.film); rendreGrille();
+  } catch (err) { dire('favourite not saved — ' + err.message, true); }
+}
+
 // Le fond et la croix referment. Un clic DANS le cadre ne doit rien faire :
-// on manipule les controles du lecteur.
-$('#loupe').addEventListener('click', e => {
+// on manipule les controles du lecteur — sauf l etoile et les couleurs.
+$('#loupe').addEventListener('click', async e => {
+  if (e.target.closest('[data-loupe-fav]') && agrandi) {
+    await favRush(agrandi); majLoupeMarques(); return;
+  }
+  const lc = e.target.closest('[data-loupe-coul]');
+  if (lc && agrandi) {
+    const fin = couleurRush([agrandi], +lc.dataset.loupeCoul);
+    majLoupeMarques(); await fin; majLoupeMarques(); return;
+  }
   if (e.target.closest('[data-loupe-x]') || e.target.id === 'loupe') reduire();
 });
 
