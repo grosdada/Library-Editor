@@ -789,6 +789,13 @@ body.mqEdit #mqCalque{pointer-events:auto;cursor:default}
 #mqCalque path.eteint{opacity:.35}
 .clip .mqBadge{position:absolute;top:1px;right:14px;font-size:9px;
  color:#8fe0d4;pointer-events:none;z-index:3;text-shadow:0 1px 2px #000}
+/* Pastille « A » d un bloc annote (1.3.79) : un clic ouvre l annotation. En
+   bas a gauche, a l ecart des fondus (haut), des badges (haut droite) et de la
+   duree (bas droite). */
+.clip .annot{position:absolute;left:10px;bottom:2px;width:13px;height:13px;
+ border-radius:50%;background:#f2c94c;color:#1a1a1a;font:bold 9px/13px system-ui,sans-serif;
+ text-align:center;z-index:6;cursor:pointer;box-shadow:0 0 0 1px #0009,0 1px 3px #000}
+.clip .annot:hover{background:#ffe08a;box-shadow:0 0 0 1px #000,0 0 6px #f2c94c}
 #menu .mqRang{display:flex;gap:7px;align-items:center;padding:2px 10px 6px}
 #menu .mqRang input{flex:1 1 auto;min-width:0}
 #menu .mqRang .val{font:11px/1 ui-monospace,monospace;color:var(--sourd);
@@ -4804,6 +4811,8 @@ function blocClip(c) {
         '">✦</div>' : '') +
     (typeof masqueActif === 'function' && masqueActif(c)
       ? '<div class="mqBadge" title="masked">◐</div>' : '') +
+    (c.annot ? '<div class="annot" data-annot="1" title="' +
+      echapHtml(String(c.annot).slice(0, 120)) + '">A</div>' : '') +
     '<div class="bande" data-bande="1" title="drag here: fade in / fade out">' +
     '</div>' +
     '<div class="poi g' + (bordCoupe(c, 'g') ? ' coupe' : '') + '" data-poi="g"' +
@@ -6799,6 +6808,71 @@ function multicut(blocs, n) {
     ' — ' + (n + 1) + ' equal pieces · Ctrl+Z to undo');
 }
 
+// Annotations (David, 02/11, 1.3.79) : un petit texte — note, instruction —
+// accroche a un bloc (champ « annot », sauve avec la sequence). Le bloc porte
+// alors une pastille « A » ; un clic dessus rouvre l annotation. Coupe, clone
+// et copie la gardent, comme la couleur du bloc. Ctrl+Z la defait, sans vider
+// le cache de lecture : elle ne change pas l image.
+function poserAnnotation(uid, txt) {
+  const c = parUid(uid);
+  if (!c) return;
+  txt = String(txt || '').trim();
+  if ((c.annot || '') === txt) return;
+  HISTO.push(instantane());
+  if (HISTO.length > 80) HISTO.shift();
+  modifie = true;
+  if (txt) c.annot = txt; else delete c.annot;
+  rendreLanes();
+  dire(txt ? 'annotation saved · Ctrl+Z to undo' : 'annotation deleted · Ctrl+Z to undo');
+}
+function boiteAnnotation(uid) {
+  const c = parUid(uid);
+  if (!c) return;
+  const f = PAR_ID[c.film];
+  const b = $('#boite');
+  b.innerHTML = '<h3>Annotation</h3>' +
+    '<div style="display:flex;flex-direction:column;gap:12px">' +
+    '<div style="font-size:11px;color:var(--sourd)">' + echapHtml(c.piste + ' · ' + tc(c.t0) +
+      (f ? ' · ' + f.nom : c.genre === 'texte' ? ' · text' : '')) + '</div>' +
+    '<textarea id="anTxt" rows="5" placeholder="a note, an instruction…" ' +
+    'style="width:100%;min-width:320px;resize:vertical">' + echapHtml(c.annot || '') +
+    '</textarea>' +
+    '<div style="display:flex;gap:8px;align-items:center">' +
+    (c.annot ? '<button id="anSuppr">Delete annotation</button>' : '') +
+    '<span style="flex:1;font-size:10px;color:var(--sourd);text-align:right">Ctrl+Enter</span>' +
+    '<button id="anAnnule">Cancel</button>' +
+    '<button id="anOk" class="on">Save</button></div></div>';
+  const ta = $('#anTxt');
+  const fermer = () => { $('#voile').className = ''; };
+  const valider = () => { const t = ta.value; fermer(); poserAnnotation(uid, t); };
+  ta.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); valider(); }
+    else if (e.key === 'Escape') { e.preventDefault(); fermer(); }
+  });
+  $('#anAnnule').onclick = fermer;
+  $('#anOk').onclick = valider;
+  if (c.annot) $('#anSuppr').onclick = () => { fermer(); poserAnnotation(uid, ''); };
+  $('#voile').className = 'on';
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+// Un clic sur la pastille ouvre l annotation au lieu de saisir le bloc :
+// l appui est intercepte en phase de capture, avant le glisser et la
+// selection ; la boite s ouvre au clic, une fois le bouton relache.
+$('#lanes').addEventListener('pointerdown', e => {
+  if (e.button !== 0 || !e.target.closest('[data-annot]')) return;
+  e.preventDefault(); e.stopPropagation();
+  fermerMenu();
+}, true);
+$('#lanes').addEventListener('click', e => {
+  const pa = e.target.closest('[data-annot]');
+  if (!pa) return;
+  e.preventDefault(); e.stopPropagation();
+  const el = pa.closest('.clip');
+  if (el) boiteAnnotation(+el.dataset.uid);
+}, true);
+
 function retirerSelection() {
   if (!clipsSel.size) { dire('no block selected'); return; }
   memoriser();
@@ -7696,6 +7770,9 @@ $('#lanes').addEventListener('contextmenu', e => {
     (new Set([...clipsSel].map(u => { const x = parUid(u); return x && (x.lien || 'u' + x.uid); })).size > 1
       ? '<div class="it" data-act="mixson" title="sound blocks that touch get a very short ' +
         'crossfade at each cut, instead of a hard cut">♫ Mix sound — soften the cuts</div>' : '') +
+    '<div class="it" data-act="annoter">Ⓐ ' + (c.annot ? 'Edit annotation…' : 'Annotation…') +
+      '</div>' +
+    (c.annot ? '<div class="it" data-act="annot-suppr">✕ Delete annotation</div>' : '') +
     '<div class="it" data-act="dupliquer">⧉ Duplicate ' +
       (clipsSel.size > 1 ? 'the ' + clipsSel.size + ' blocks' : 'the block') +
       ' <span class="pousse" style="color:var(--sourd);font-size:10px">Ctrl+D · Ctrl · Ctrl+drag</span>' +
@@ -7884,6 +7961,8 @@ menu.addEventListener('click', async e => {
   else if (a === 'dupliquer') dupliquerBlocs();
   else if (a === 'plans') couperAuxPlans();
   else if (a === 'multicut') boiteMulticut(+menu.dataset.uid);
+  else if (a === 'annoter') boiteAnnotation(+menu.dataset.uid);
+  else if (a === 'annot-suppr') poserAnnotation(+menu.dataset.uid, '');
   else if (a === 'mixson') mixerSon();
   else if (a === 'delier') delier();
   else if (a === 'relier') relier();
@@ -10675,7 +10754,7 @@ $('#lanes').addEventListener('pointerdown', e => {
   if (e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
   if (outil !== 'V') return;
   const el = e.target.closest('.clip');
-  if (!el || e.target.closest('[data-poi], [data-fade], .mqb')) {
+  if (!el || e.target.closest('[data-poi], [data-fade], .mqb, [data-annot]')) {
     APPUI_BLOC.uid = 0; return;
   }
   const uid = +el.dataset.uid, now = performance.now();
