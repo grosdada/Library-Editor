@@ -6988,6 +6988,25 @@ document.addEventListener('pointerdown', e => {
   rendreLanes(); rendreReglages();
 });
 
+// Le lasso part aussi du vide sous les pistes (David, 02/11, 1.3.82) : l appui
+// y est renvoye aux pistes, qui tracent le rectangle comme depuis une piste
+// vide (et deselectionnent sur un simple clic). Il ne remonte pas jusqu a la
+// deselection du document : Maj+clic doit garder la selection, comme ailleurs.
+$('#tlDefile').addEventListener('pointerdown', e => {
+  const t = e.target;
+  if (e.button !== 0 || (t.id !== 'tlDefile' && t.id !== 'tlContenu')) return;
+  const r = t.getBoundingClientRect();
+  if (e.clientX - r.left >= t.clientLeft + t.clientWidth ||
+      e.clientY - r.top >= t.clientTop + t.clientHeight) return;   // barre de defilement
+  e.stopPropagation();
+  $('#lanes').dispatchEvent(new PointerEvent('pointerdown', {
+    bubbles: false, cancelable: true, clientX: e.clientX, clientY: e.clientY,
+    button: 0, buttons: e.buttons, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey,
+    metaKey: e.metaKey, altKey: e.altKey, pointerId: e.pointerId,
+    pointerType: e.pointerType, isPrimary: e.isPrimary}));
+  e.preventDefault();
+});
+
 function retirerSelection() {
   if (!clipsSel.size) { dire('no block selected'); return; }
   memoriser();
