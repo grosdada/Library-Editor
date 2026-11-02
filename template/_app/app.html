@@ -6847,8 +6847,12 @@ function boiteAnnotation(uid) {
   const b = $('#boite');
   b.innerHTML = '<h3>Annotation</h3>' +
     '<div style="display:flex;flex-direction:column;gap:12px">' +
-    '<div style="font-size:11px;color:var(--sourd)">' + echapHtml(c.piste + ' · ' + tc(c.t0) +
+    '<div style="display:flex;align-items:center;gap:8px">' +
+    '<div style="flex:1;min-width:0;font-size:11px;color:var(--sourd);overflow:hidden;' +
+      'text-overflow:ellipsis;white-space:nowrap">' + echapHtml(c.piste + ' · ' + tc(c.t0) +
       (f ? ' · ' + f.nom : c.genre === 'texte' ? ' · text' : '')) + '</div>' +
+    '<button id="anCopie" title="copy the annotation" style="padding:2px 8px;font-size:12px">' +
+      '⧉ Copy</button></div>' +
     '<textarea id="anTxt" rows="5" placeholder="a note, an instruction…" ' +
     'style="width:100%;min-width:320px;resize:vertical">' + echapHtml(c.annot || '') +
     '</textarea>' +
@@ -6867,6 +6871,25 @@ function boiteAnnotation(uid) {
   });
   $('#anAnnule').onclick = fermer;
   $('#anOk').onclick = valider;
+  // Copier (1.3.85) : le texte tel qu il est dans la boite, meme pas encore
+  // enregistre. Le presse-papiers moderne d abord ; s il est refuse (page non
+  // securisee), l ancienne commande « copy » sur le champ selectionne.
+  $('#anCopie').onclick = async () => {
+    const t = ta.value, bt = $('#anCopie');
+    if (!t.trim()) { dire('nothing to copy', true); return; }
+    let ok = false;
+    try { await navigator.clipboard.writeText(t); ok = true; } catch (e) {}
+    if (!ok) {
+      ta.focus(); ta.select();
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }
+    if (ok) {
+      bt.textContent = '✓ Copied';
+      setTimeout(() => { if (bt.isConnected) bt.textContent = '⧉ Copy'; }, 1200);
+    } else dire('the browser refused to copy', true);
+    ta.focus();
+  };
   if (c.annot) $('#anSuppr').onclick = () => { fermer(); poserAnnotation(uid, ''); };
   $('#voile').className = 'on';
   ta.focus();
