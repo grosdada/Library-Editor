@@ -11544,6 +11544,13 @@ document.addEventListener('keydown', e => {
   }
 }, true);
 
+// La souris est-elle sur la timeline (tout le bas : onglets, outils, pistes,
+// reglages) ? Comme pour la fenetre source, c est le survol qui decide a qui
+// vont les fleches en mode Rushes.
+let SOURIS_TL = false;
+$('footer').addEventListener('pointerenter', () => { SOURIS_TL = true; });
+$('footer').addEventListener('pointerleave', () => { SOURIS_TL = false; });
+
 document.addEventListener('keydown', e => {
   const t = e.target || {};
   // Échap passe toujours : c est la sortie de secours, y compris depuis un
@@ -11609,8 +11616,12 @@ document.addEventListener('keydown', e => {
   // Mode Rushes : les fleches vont de rush en rush dans la grille — gauche /
   // droite le voisin, haut / bas la rangee — et un rush agrandi passe au
   // suivant sans se refermer (David, 20/10). Le montage garde ses fleches.
+  // Souris sur la timeline (le bas de l ecran), gauche / droite y avancent
+  // d une image comme en mode Sequence (David, 02/11, 1.3.86) : elles
+  // tombent plus bas dans le cas general.
   if (!document.body.classList.contains('edit') && FLECHES.has(e.key) &&
-      !e.altKey && !ED_CLES) {
+      !e.altKey && !ED_CLES &&
+      !(SOURIS_TL && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'))) {
     e.preventDefault();
     naviguerRush(e.key);
     return;
@@ -11634,7 +11645,7 @@ document.addEventListener('keydown', e => {
   if (k === 'f') { $('#bPlein').click(); return; }
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     e.preventDefault();
-    const pas = e.shiftKey ? 1 : 1 / 24;
+    const pas = e.shiftKey ? 1 : 1 / (PROJET.fps || 24);
     tLect = Math.max(0, Math.min(etendue(),
       tLect + (e.key === 'ArrowRight' ? pas : -pas)));
     pause(); majTete(); resynchroniser(true);
