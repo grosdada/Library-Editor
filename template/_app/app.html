@@ -12,6 +12,23 @@
  --wSource:380px;--wEntetes:140px;
  --vign:206px}
 *{box-sizing:border-box}
+/* Barres de defilement (David, 02/11, 1.3.87) : le blanc du navigateur jurait
+   avec le fond. Rail d un gris chaud a peine plus clair que la page, sans
+   fleches ; poignee plus epaisse, couleur ambre (l accent de l app), avec
+   trois traits au milieu pour qu on sente qu elle s attrape. Elle s allume au
+   survol et a la prise. Chrome, Edge et Safari lisent ::-webkit-scrollbar ;
+   Firefox, qui l ignore, recoit au moins les deux couleurs. */
+::-webkit-scrollbar{width:14px;height:14px}
+::-webkit-scrollbar-track{background:#22201d}
+::-webkit-scrollbar-corner{background:#22201d}
+::-webkit-scrollbar-button{display:none;width:0;height:0}
+::-webkit-scrollbar-thumb{border:3px solid #22201d;border-radius:7px;
+ background:repeating-linear-gradient(90deg,#0007 0 1px,transparent 1px 3px) center/9px 6px no-repeat,#8a6c38}
+::-webkit-scrollbar-thumb:vertical{
+ background:repeating-linear-gradient(0deg,#0007 0 1px,transparent 1px 3px) center/6px 9px no-repeat,#8a6c38}
+::-webkit-scrollbar-thumb:hover{background-color:#c4973c}
+::-webkit-scrollbar-thumb:active{background-color:var(--or)}
+@supports not selector(::-webkit-scrollbar){*{scrollbar-color:#8a6c38 #22201d}}
 html,body{height:100%}
 body{margin:0;background:var(--fond);color:var(--encre);overflow:hidden;
  font:13px/1.5 "Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column;
@@ -891,7 +908,10 @@ body.mqEdit #mqCalque{pointer-events:auto;cursor:default}
 #alerte button{background:#0004;border-color:#ffffff44}
 .projets{display:flex;gap:6px;align-items:center;padding:5px 11px;
  border-bottom:1px solid var(--trait);overflow-x:auto;background:#131210;
- flex:0 0 auto;scrollbar-width:thin}
+ flex:0 0 auto}
+.projets::-webkit-scrollbar{height:8px}
+.projets::-webkit-scrollbar-thumb{border-width:2px;background:#8a6c38}
+.projets::-webkit-scrollbar-thumb:hover{background-color:#c4973c}
 .projets .et{font:10px/1 ui-monospace,monospace;letter-spacing:.13em;
  text-transform:uppercase;color:var(--sourd);flex:0 0 auto;margin-right:3px}
 .projets .pu{flex:0 0 auto;padding:3px 11px;border:1px solid var(--trait);
