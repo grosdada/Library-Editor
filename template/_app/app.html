@@ -164,6 +164,11 @@ body.rangeable.lectureseule .dos .plus{display:block}
 .pjt.sequences:hover{border-color:var(--or)}
 .pjt.sequences b{color:var(--or)}
 .pjt.sequences i{color:var(--or);opacity:.8}
+/* Le « + » de la section Sequences (1.3.83) : une nouvelle sequence, comme
+   « + new » dans la barre des onglets. Toujours la, a ses memes conditions. */
+.pjt.sequences .plusSeq{background:none;border:0;color:var(--or);opacity:.75;
+ cursor:pointer;font-size:16px;line-height:1;padding:0 1px;flex:0 0 auto}
+.pjt.sequences .plusSeq:hover{opacity:1;color:var(--vert)}
 .pjt.soustitres{background:#18222b;border-color:#2f5470}
 .pjt.soustitres b,.pjt.soustitres i{color:#8cc8f0}
 .dos.st b{font-weight:400;font-size:11px}
@@ -1642,7 +1647,8 @@ function rendreDossiers() {
     h += '<div class="pjt sequences" data-montages="*replie" title="all the ' +
       'sequences of this library">' +
       '<span class="chev">' + (ouv ? '▼' : '▶') + '</span>' +
-      '<b>Sequences</b><i>' + toutes.length + '</i></div>';
+      '<b>Sequences</b><i>' + toutes.length + '</i>' +
+      '<button class="plusSeq" data-nouvelle-seq="1" title="create a new sequence">+</button></div>';
     if (ouv) h += (toutes.length
       ? toutes.map(x => '<div class="dos mont seq' +
           (x.nom === projetNom && x.projet === PROJET.pj ? ' on' : '') +
@@ -3054,6 +3060,8 @@ colDos.addEventListener('click', async e => {
   if (x) { e.stopPropagation(); fermerProjet(x.dataset.fermer); return; }
   const pl = e.target.closest('[data-nouveau]');
   if (pl) { e.stopPropagation(); nouveauDossier(pl.dataset.nouveau); return; }
+  // Avant le repli de la section : le « + » est dans sa ligne d en-tete.
+  if (e.target.closest('[data-nouvelle-seq]')) { e.stopPropagation(); boiteProjet(true); return; }
   const sd = e.target.closest('[data-sous-de]');
   if (sd) {
     e.stopPropagation();
