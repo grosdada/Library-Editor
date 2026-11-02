@@ -7,6 +7,7 @@
  --sourd:#8c877e;--orange:#d9532b;--trait:#34322e;--vert:#6a9b4a;--or:#e8b93a;
  --rouge:#a8302f;
  --c0:#4a4843;--c1:#a8302f;--c2:#c98a2b;--c3:#6a9b4a;--c4:#4a7fa8;--c5:#7a5a9b;
+ --c6:#ff7a00;
  --wMoni:430px;--wRegl:236px;--hFooter:270px;--wDeck:250px;--wAside:196px;
  --wSource:380px;--wEntetes:140px;
  --vign:206px}
@@ -535,6 +536,10 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
 .clip .vign{position:absolute;inset:0;background-size:auto 100%;
  background-repeat:repeat-x;opacity:.5}
 .clip .teinte{position:absolute;inset:0;opacity:.28}
+/* L orange fluo doit trancher : teinte plus franche et un liseré lumineux. */
+.clip.fluo .teinte{opacity:.55}
+.clip.fluo{border-width:2px;box-shadow:0 0 6px #ff7a0099}
+.clip.fluo.sel{box-shadow:0 0 0 1px var(--orange),0 0 8px #ff7a00}
 /* L onde du son : dessinee dans le bloc, sous son nom et ses attaches. */
 .clip canvas.onde{position:absolute;left:0;top:0;width:100%;height:100%;
  z-index:1;pointer-events:none}
@@ -4407,7 +4412,8 @@ function poserSynth(champs, duree) {
   rendreTimeline(); resynchroniser(true); dessiner();
   return c;
 }
-const COULS = ['--c0', '--c1', '--c2', '--c3', '--c4', '--c5'];
+// --c6, orange fluo (David, 02/11, 1.3.84) : la couleur qui se voit de loin.
+const COULS = ['--c0', '--c1', '--c2', '--c3', '--c4', '--c5', '--c6'];
 // ---- vitesse et sens de lecture ----------------------------------------
 // « vitesse » reste TOUJOURS positive : c est un facteur, et une douzaine de
 // calculs s en servent — durees, rognage, decoupe, setpts, atempo. Un nombre
@@ -4792,6 +4798,7 @@ function blocClip(c) {
     ? ' ' + (c.rev ? '◀' : '') + '×' +
       vAbs(c).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') : '';
   return '<div class="clip ' + (clipsSel.has(c.uid) ? 'sel' : '') +
+    (c.couleur === 6 ? ' fluo' : '') +
     '" data-uid="' + c.uid + '"' + (aud || estSynth(c) ? '' : ' data-vmil="' +
     (cleMilieu(c) || '') + '"') + ' style="left:' + (c.t0 * PPS) + 'px;width:' +
     (dur(c) * PPS) + 'px;border-color:' + coul + '">' +
