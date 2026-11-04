@@ -4319,6 +4319,11 @@ let zoomV = Math.min(ZOOM_V_MAX, Math.max(ZOOM_V_MIN,
 // et la musique se mixe au rendu sans etre liee a un plan.
 const estSon = p => !!p && (p.type === 'a' || p.type === 'm');
 const nomType = t => t === 'v' ? 'video' : t === 'm' ? 'music' : 'audio';
+// Pistes audio (A) et musique (M) : le meme genre, du son. Un bloc passe de
+// l une a l autre en le glissant (David, 05/11, 1.3.89) ; seule la video
+// reste a part.
+const memeGenre = (t1, t2) => t1 === t2 ||
+  ((t1 === 'a' || t1 === 'm') && (t2 === 'a' || t2 === 'm'));
 // « hk » : la hauteur propre de la piste, tiree a sa poignee (1.3.31), par-
 // dessus le zoom commun (Alt + molette). Elle voyage avec la sequence.
 const hauteurBase = p => (p.type === 'v' ? HV : (p.type === 'm' ? HM : HA)) * zoomV;
@@ -6383,7 +6388,7 @@ $('#lanes').addEventListener('pointerdown', e => {
     if (!modeA) {
       const sous = pisteSousY(ev.clientY);
       const ps = sous ? piste(sous) : null;
-      if (ps && ps.type === piste(c.piste).type &&
+      if (ps && memeGenre(ps.type, piste(c.piste).type) &&
           (sous === c.piste || !verrouillee(sous))) laneCible = sous;
       else if (!laneCible) laneCible = c.piste;
     }
@@ -6415,7 +6420,7 @@ $('#lanes').addEventListener('pointerdown', e => {
       elT.style.opacity = dy ? '.85' : '';
     }
     const pc = laneCible ? piste(laneCible) : null;
-    const compatible = !!(pc && pc.type === piste(c.piste).type);
+    const compatible = !!(pc && memeGenre(pc.type, piste(c.piste).type));
     $$('.lane').forEach(x => x.classList.toggle('cible',
       compatible && x.dataset.piste === laneCible));
     marquerEjectables(ev.ctrlKey && !copie, compatible ? laneCible : null);
@@ -6449,7 +6454,7 @@ $('#lanes').addEventListener('pointerdown', e => {
       direVerrou(laneCible);
     } else if (laneCible && laneCible !== c.piste) {
       const pc = piste(laneCible);
-      if (pc && pc.type === monType) {
+      if (pc && memeGenre(pc.type, monType)) {
         c.piste = laneCible;
         dire('moved to ' + laneCible);
       } else if (pc) {
@@ -6457,7 +6462,7 @@ $('#lanes').addEventListener('pointerdown', e => {
           nomType(monType) + ' blocks', true);
       }
     } else if (!modeA && laneCible === c.piste &&
-               PISTES.filter(p => p.type === monType).length < 2) {
+               PISTES.filter(p => memeGenre(p.type, monType)).length < 2) {
       // Rien a dire quand on repose le bloc chez lui, sauf s il n a nulle
       // part ou aller : mieux vaut l expliquer qu un silence.
       dire('only one ' + nomType(monType) + ' track for now — add one with ' +
