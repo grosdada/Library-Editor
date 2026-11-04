@@ -2223,9 +2223,33 @@ def _incruster(base, sortie, calques, a0, b0, travail, pr_defaut=""):
             # fondus — le melange du moniteur (reglageSur).
             graphe = _graphe_fx(_fx_actifs(plan), "rs%d" % n, "rq%d" % n, d,
                                 "r%d" % n)
-            if not graphe:
+            # Son shake (David, 04/11, 1.3.88) : la copie du montage, sur la
+            # duree du calque, est posee secouee comme un rush (agrandie de la
+            # marge, decalee, tournee) puis remplace le montage dessous, a
+            # plein — ni la transparence ni les fondus du calque ne la dosent,
+            # comme au moniteur. Elle passe avant les effets du calque.
+            cad_shk = {"shk": bool(cad.get("shk")), "shks": cad.get("shks")}
+            secoue = bool(_secousse(cad_shk)[0] or _rotation_secousse(cad_shk))
+            if not graphe and not secoue:
                 n -= 1
                 continue
+            if secoue:
+                chaine.append("[%s]split[zb%d][za%d]" % (etiq, n, n))
+                chaine.append("[za%d]trim=start=%.3f:duration=%.3f,"
+                              "setpts=PTS-STARTPTS[zs%d]" % (n, pos, d, n))
+                chaine.append(_placement("zs%d" % n, "zp%d" % n, cad_shk, d,
+                                         "z%d" % n, alpha=True,
+                                         decalage=-float(plan.get("_decalage") or 0),
+                                         duree_shk=plan.get("_duree_bloc")))
+                f = "[zp%d]" % n
+                f += ("tpad=start_duration=%.3f:start_mode=add:color=black@0.0"
+                      % pos if pos > 0.001 else "null")
+                chaine.append(f + "[zc%d]" % n)
+                chaine.append("[zb%d][zc%d]overlay=x=0:y=0:eof_action=pass[zo%d]"
+                              % (n, n, n))
+                etiq = "zo%d" % n
+                if not graphe:
+                    continue
             chaine.append("[%s]split[rb%d][ra%d]" % (etiq, n, n))
             chaine.append("[ra%d]trim=start=%.3f:duration=%.3f,"
                           "setpts=PTS-STARTPTS[rs%d]" % (n, pos, d, n))

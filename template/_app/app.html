@@ -641,6 +641,21 @@ body.regPop .reglages{position:fixed;z-index:60;left:50%;top:50%;
  animation:regPop .12s ease-out}
 @keyframes regPop{from{opacity:0;transform:translate(-50%,-50%) scale(.965)}
  to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+/* La poignee du pop-up (David, 04/11, 1.3.88) : invisible dans la colonne,
+   elle coiffe le pop-up et reste en haut quand on fait defiler ses reglages.
+   Trois traits ambre, comme les poignees des barres de defilement. */
+.regPoignee{display:none}
+body.regPop .regPoignee{display:block;position:sticky;top:-16px;z-index:3;
+ flex:0 0 22px;margin:-16px -18px -2px;border-radius:10px 10px 0 0;
+ border-bottom:1px solid var(--trait);cursor:grab;touch-action:none;
+ background:repeating-linear-gradient(0deg,#8a6c38 0 2px,transparent 2px 5px)
+ center/44px 12px no-repeat,#24221f}
+body.regPop .regPoignee:hover{background:repeating-linear-gradient(0deg,#c4973c 0 2px,
+ transparent 2px 5px) center/44px 12px no-repeat,#2b2824}
+body.regPop .regPoignee.tenue{cursor:grabbing}
+/* Deplace : il reste ou on l a lache, sans recentrage ni animation. */
+body.regPop.regDeplace .reglages{left:var(--regX);top:var(--regY);
+ transform:none;animation:none}
 /* La case vide, le temps du pop-up : un cadre en pointilles dit d ou il
    vient, et qu il y retournera. */
 body.regPop .colReg{border-left:1px dashed var(--trait)}
@@ -8413,7 +8428,7 @@ function rendreReglages() {
   const r = $('#reglages');
   const sel = CLIPS.filter(c => clipsSel.has(c.uid));
   if (!sel.length) {
-    r.innerHTML = '<div style="color:var(--sourd);font-size:12px;line-height:1.9">' +
+    r.innerHTML = poigneeReg() + '<div style="color:var(--sourd);font-size:12px;line-height:1.9">' +
       'Yellow tabs on top of a block:<br>fades, zero by default.<br><br>' +
       '<b style="color:var(--encre)">V</b> move · ' +
       '<b style="color:var(--encre)">C</b> cut<br>' +
@@ -8617,7 +8632,13 @@ function rendreReglages() {
   if (estReglage(c)) {
     // Un calque d effet n a ni cadre ni son : sa transparence dose l effet,
     // et son rack fait tout le reste.
-    h += barreCles() + rangee('opac', 'Amount', 'rOpac') + rackFx(c, sel);
+    // Son shake (1.3.88) secoue tout ce qui est dessous, en plus du shake
+    // propre a chaque bloc.
+    h += barreCles() + rangee('opac', 'Amount', 'rOpac') + rackFx(c, sel) +
+      rangeeSecousse(c) +
+      '<div style="font-size:10px;color:var(--sourd);margin-top:-4px">' +
+      'shakes everything below this layer, on top of each block\u2019s own shake' +
+      '</div>';
   } else if (estV) {
     const ONG = [['tr', 'Transform'], ['fx', 'Effects'], ['sh', 'Anim']];
     if (!ONG.some(o => o[0] === REG_ONGLET)) REG_ONGLET = 'tr';
@@ -8648,7 +8669,7 @@ function rendreReglages() {
     ((c._xIn > 0.02 || c._xOut > 0.02) ? ' (crossfade on the overlap)'
      : (fonduIn(c) > 0.02 || fonduOut(c) > 0.02) ? '' : ' (none)') +
     '</div></div>';
-  r.innerHTML = h;
+  r.innerHTML = poigneeReg() + h;
   lierRackFx(r, c, sel);
   const bv = r.querySelector('[data-cles-vues]');
   if (bv) bv.onclick = () => {
@@ -10462,6 +10483,31 @@ function appliquerFx(t1, fx, w, h) {
 // dessous, pendant sa duree. Sa transparence dose l effet — 0 %, rien ; 100 %,
 // l effet entier ; les fondus l amenent et le retirent en douceur.
 function reglageSur(c, cw, ch) {
+  // Shake d un calque d effet (David, 04/11, 1.3.88) : tout ce qui est deja
+  // pose dessous est secoue d un bloc, a plein — ni « Amount » ni les fondus
+  // du calque ne le dosent (a demi, on verrait l image en double) ; ses
+  // couches ont leurs propres montee et descente. Comme au rendu, la secousse
+  // passe avant les effets du calque, et le masque ne la limite pas.
+  if (c.shk) {
+    const [sx, sy] = secousse(c, tLect);
+    const rot = rotationSecousse(c, tLect);
+    if (sx || sy || rot) {
+      const t0 = toileFx(4, cw, ch);
+      t0.getContext('2d').drawImage(moni, 0, 0);
+      const k = margeSecousse(c), w = cw * k, h = ch * k;
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, cw, ch);
+      // L ordre du rendu : le plan est decale, puis le cadre tourne autour
+      // de SON centre.
+      ctx.translate(cw / 2, ch / 2);
+      if (rot) ctx.rotate(rot * Math.PI / 180);
+      ctx.translate(-cw / 2, -ch / 2);
+      ctx.drawImage(t0, (cw - w) / 2 + sx * cw / 100, (ch - h) / 2 + sy * ch / 100, w, h);
+      ctx.restore();
+    }
+  }
   const fx = fxA(c, tLect);
   if (!fx.length) return;
   const a = alpha(c, tLect) * valAnim(c, 'opac', tLect);
@@ -11545,7 +11591,59 @@ function popReglages(on) {
   if (on === regPop) return;
   regPop = on;
   document.body.classList.toggle('regPop', on);
+  placerReglages();
 }
+// Pop-up mobile (David, 04/11, 1.3.88) : on le tire par sa poignee pour
+// degager l image qu il cachait. Il se rouvre la ou on l a laisse (preference
+// « regPos ») ; un double-clic sur la poignee le remet au centre. La position
+// est ramenee dans l ecran a chaque ouverture : la poignee reste attrapable,
+// meme apres un changement de taille de fenetre.
+function poigneeReg() {
+  return '<div class="regPoignee" data-poignee="1" ' +
+    'title="drag to move · double-click to centre"></div>';
+}
+let REG_POS = null;
+try { REG_POS = JSON.parse(pref.lire('regPos', 'null')); } catch (e) { REG_POS = null; }
+if (!REG_POS || !isFinite(REG_POS.x) || !isFinite(REG_POS.y)) REG_POS = null;
+function placerReglages() {
+  const r = $('#reglages');
+  if (!regPop || !REG_POS) { document.body.classList.remove('regDeplace'); return; }
+  const w = r.offsetWidth || 580;
+  const x = Math.max(80 - w, Math.min(innerWidth - 80, REG_POS.x));
+  const y = Math.max(0, Math.min(innerHeight - 30, REG_POS.y));
+  r.style.setProperty('--regX', Math.round(x) + 'px');
+  r.style.setProperty('--regY', Math.round(y) + 'px');
+  document.body.classList.add('regDeplace');
+}
+$('#reglages').addEventListener('pointerdown', e => {
+  const p = e.target.closest && e.target.closest('[data-poignee]');
+  if (e.button !== 0 || !regPop || !p) return;
+  e.preventDefault();
+  const b = $('#reglages').getBoundingClientRect();
+  const dx = e.clientX - b.left, dy = e.clientY - b.top;
+  p.classList.add('tenue');
+  const bouger = ev => {
+    REG_POS = {x: ev.clientX - dx, y: ev.clientY - dy};
+    placerReglages();
+  };
+  const lacher = () => {
+    removeEventListener('pointermove', bouger);
+    removeEventListener('pointerup', lacher);
+    removeEventListener('pointercancel', lacher);
+    p.classList.remove('tenue');
+    if (REG_POS) pref.ecrire('regPos', JSON.stringify(REG_POS));
+  };
+  addEventListener('pointermove', bouger);
+  addEventListener('pointerup', lacher);
+  addEventListener('pointercancel', lacher);
+});
+$('#reglages').addEventListener('dblclick', e => {
+  if (!regPop || !e.target.closest || !e.target.closest('[data-poignee]')) return;
+  e.preventDefault(); e.stopPropagation();
+  REG_POS = null;
+  pref.ecrire('regPos', 'null');
+  placerReglages();
+});
 // Alt+Tab, un clic dans une autre fenetre : la touche ne sera jamais relachee
 // ici. Sans cela, le pop-up resterait ouvert pour de bon. Un pop-up collant,
 // lui, reste : la liste d un menu deroulant fait aussi perdre le focus.
