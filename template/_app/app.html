@@ -3331,6 +3331,39 @@ function editerMontage(el, lab) {
   inp.addEventListener('blur', () => fermer(true));
 }
 
+// Dupliquer une sequence (David, 05/11, 1.3.90) : une copie du fichier dans
+// le meme projet, « <nom> copy » (puis « copy 2 »…), jamais par-dessus un
+// montage existant. Si c est la sequence ouverte, ce qui est a l ecran est
+// d abord enregistre : la copie part de l etat present. La copie garde la
+// couleur de la sequence ; l ouverte reste ouverte.
+async function dupliquerMontage(pj, nom) {
+  if (projetNom === nom && PROJET.pj === pj) await assurerSauvegarde(true);
+  let d;
+  try {
+    d = await api('api/montage?projet=' + encodeURIComponent(pj) +
+      '&nom=' + encodeURIComponent(nom));
+  } catch (err) { dire('could not read — ' + err.message, true); return; }
+  if (!d || !d.montage) { dire('unreadable sequence', true); return; }
+  let noms;
+  try {
+    noms = ((await api('api/montages?projet=' + encodeURIComponent(pj)))
+      .montages || []).map(m => String(m.nom).toLowerCase());
+  } catch (err) {
+    noms = (typeof MONTAGES !== 'undefined' ? MONTAGES : [])
+      .filter(m => m.projet === pj).map(m => String(m.nom).toLowerCase());
+  }
+  const base = nom + ' copy';
+  let neuf = base, k = 1;
+  while (noms.includes(neuf.toLowerCase()) && k < 200) { k++; neuf = base + ' ' + k; }
+  try {
+    const r = await api('api/montage', {projet: pj, nom: neuf, montage: d.montage});
+    const c = couleurSeq(pj, nom);
+    if (c) await poserCouleurSeq(pj, r.nom, c, true);
+    await rafraichirProjets();
+    dire('sequence duplicated: ' + r.nom);
+  } catch (err) { dire('duplicate refused — ' + err.message, true); }
+}
+
 async function effacerMontage(pj, nom) {
   const ouvert = projetNom === nom && PROJET.pj === pj;
   const b = $('#boite');
@@ -3599,6 +3632,7 @@ colDos.addEventListener('contextmenu', e => {
       '</div>' +
       '<div class="it" data-mont-act="ajouter">＋ Add to timeline</div>' +
       '<div class="it" data-mont-act="renommer">✎ Rename…</div>' +
+      '<div class="it" data-mont-act="dupliquer">⧉ Duplicate</div>' +
       '<div class="it" data-mont-act="couleur">● Colour…</div>' +
       '<div class="sep"></div>' +
       '<div class="it" data-mont-act="effacer">✕ Delete…</div>';
@@ -3662,6 +3696,7 @@ colMenu.addEventListener('click', async e => {
       return;
     }
     if (act === 'ajouter') ajouterMontage(pj, nom);
+    else if (act === 'dupliquer') dupliquerMontage(pj, nom);
     else if (act === 'effacer') effacerMontage(pj, nom);
     else {
       const el = $$('[data-mont]').find(x => x.dataset.pj === pj &&
@@ -11107,6 +11142,7 @@ function lire() {
     viderCache('cache released — the sequence changed');
   enLecture = true; t0Lect = tLect; horloge0 = performance.now();
   $('#bPlay').classList.add('on');
+  suivreTete(true);
   resynchroniser(true);
 }
 function pause() {
@@ -11163,10 +11199,34 @@ function boucle() {
       tLect = tIn; t0Lect = tIn; horloge0 = performance.now();
       resynchroniser(true);
     } else if (tLect >= fi) { tLect = fi; pause(); }
-    majTete(); resynchroniser(false);
+    majTete(); suivreTete(); resynchroniser(false);
   }
   dessiner();
   requestAnimationFrame(boucle);
+}
+// La timeline suit la tete pendant la lecture (David, 05/11, 1.3.90) : quand
+// elle atteint le bord droit, la vue tourne la page et la tete repart a
+// gauche ; quand elle revient en arriere hors du cadre (boucle I/O, retour a
+// l entree), la vue la rattrape. Si l on a fait defiler la vue ailleurs
+// pendant la lecture, on ne la ramene pas de force : le suivi reprend des que
+// la tete repasse dans le cadre. « force » : au depart de la lecture.
+// Une vue qui a bouge depuis l image precedente, c est quelqu un qui la fait
+// defiler (molette, barre, zoom) : on le laisse faire.
+let teteVue = true, vuePrec = -1;
+function suivreTete(force) {
+  const d = $('#tlDefile');
+  if (!d) return;
+  const x = tLect * PPS, g = d.scrollLeft, w = d.clientWidth;
+  const marge = Math.min(60, w / 4);
+  const dedans = x >= g - 1 && x <= g + w;
+  const deplacee = vuePrec >= 0 && Math.abs(g - vuePrec) > 0.5;
+  if ((force && (!dedans || x > g + w - 30)) ||
+      (!force && !deplacee && teteVue && (x > g + w - 30 || x < g - 1))) {
+    d.scrollLeft = Math.max(0, x - marge);
+    majVue();
+  }
+  teteVue = x >= d.scrollLeft - 1 && x <= d.scrollLeft + d.clientWidth;
+  vuePrec = d.scrollLeft;
 }
 </script>
 <style>
@@ -12368,14 +12428,21 @@ const ongletsFermes = () =>
 
 $('#barreProjets').addEventListener('contextmenu', e => {
   const nf = ongletsFermes().length;
-  // Rien de fermé : rien à proposer, on laisse le menu du navigateur.
-  if (!nf) return;
+  // Sur un onglet : le dupliquer (1.3.90).
+  const og = e.target.closest('[data-p]');
+  // Rien de fermé ni d onglet vise : on laisse le menu du navigateur.
+  if (!nf && !og) return;
   e.preventDefault();
   const m = $('#menu');
-  m.innerHTML = '<div class="lbl">Closed tabs</div>' +
+  m.dataset.pj = og ? og.dataset.pj : '';
+  m.dataset.p = og ? og.dataset.p : '';
+  m.innerHTML = (og ? '<div class="lbl">' + echap(og.dataset.p.slice(0, 28)) +
+    '</div><div class="it" data-bar="dupliquer">⧉ Duplicate</div>' : '') +
+    (!nf ? '' : (og ? '<div class="sep"></div>' : '') +
+  '<div class="lbl">Closed tabs</div>' +
     '<div class="it" data-bar="tout">⟲ ' + (nf > 1
       ? 'Reopen the ' + nf + ' closed' : 'Reopen the closed tab') + '</div>' +
-    '<div class="it" data-bar="choisir">☑ Choose which to reopen…</div>';
+    '<div class="it" data-bar="choisir">☑ Choose which to reopen…</div>');
   m.className = 'on';
   const r = m.getBoundingClientRect();
   m.style.left = Math.min(e.clientX, innerWidth - r.width - 8) + 'px';
@@ -12390,7 +12457,9 @@ $('#menu').addEventListener('click', e => {
   if (!it) return;
   const a = it.dataset.bar;
   $('#menu').className = '';
-  if (a === 'tout') {
+  if (a === 'dupliquer') {
+    if ($('#menu').dataset.p) dupliquerMontage($('#menu').dataset.pj, $('#menu').dataset.p);
+  } else if (a === 'tout') {
     const n = ongletsFermes().length;
     FERMES.clear(); noterFermes(); rafraichirProjets();
     dire(n + ' tab' + (n > 1 ? 's reopened' : ' reopened'));
