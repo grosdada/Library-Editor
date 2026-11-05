@@ -786,6 +786,13 @@ body.regPop .colReg{border-left:1px dashed var(--trait)}
 .fxCouleur{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--sourd)}
 .fxCouleur input{width:34px;height:20px;padding:0;border:1px solid var(--trait)}
 .fxAppliquer{font-size:11px;padding:4px 6px}
+/* L editeur de courbes RVB (1.3.96) : un carre, la diagonale en pointille. */
+.fxCourbe{display:block;width:100%;max-width:280px;margin:0 auto;aspect-ratio:1/1;
+ border:1px solid var(--trait);
+ border-radius:4px;cursor:crosshair;touch-action:none}
+.fxCourbeBas{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--sourd);
+ line-height:1.3}
+.fxCourbeBas span{flex:1}
 .reglages .val{font:11px/1 ui-monospace,monospace;color:var(--sourd);
  min-width:40px;text-align:right}
 /* Les curseurs etaient laisses au navigateur : gros et bleu vif. Un rail fin
@@ -8848,6 +8855,7 @@ const COUL_CLES = {
   dy: ['#57c27a', 'Position'], opac: ['#f2efe8', 'Opacity'],
   gain: ['#e8b93a', 'Volume'],
   flou: ['#c77dff', 'Blur'], etal: ['#ff7a45', 'Colour'],
+  lumi: ['#ffd84d', 'Brightness · contrast'], courbes: ['#ff9ad5', 'RGB curves'],
   nb: ['#b9b2a6', 'B&W'], vignette: ['#8c6dff', 'Vignette'],
   grain: ['#9fd36a', 'Grain'], halation: ['#ff4d6d', 'Halation'],
   aberration: ['#2ed3d3', 'Chromatic aberration']
@@ -10804,6 +10812,8 @@ const FX = {
   flou: {nom: 'Blur', neuf: () => ({mode: 'gauss', force: 1, angle: 0,
                                     centre: 50, largeur: 30, fondu: 20})},
   etal: {nom: 'Colour', neuf: () => ({expo: 0, contraste: 0, satu: 0, temp: 0})},
+  lumi: {nom: 'Brightness · contrast', neuf: () => ({lum: 0, contraste: 0})},
+  courbes: {nom: 'RGB curves', neuf: () => ({dose: 100, pts: courbesNeuves()})},
   nb: {nom: 'B&W · sepia · tint', neuf: () => ({mode: 'nb', teinte: '#d9a066',
                                                 dose: 100})},
   vignette: {nom: 'Vignette', neuf: () => ({force: 40})},
@@ -10828,6 +10838,9 @@ const FX_REGLAGES = {
          ['satu', 'Saturation', -100, 100, 1, ''],
          ['temp', 'Temperature', -100, 100, 1, '']],
   nb: [['dose', 'Amount', 0, 100, 1, '%']],
+  lumi: [['lum', 'Brightness', -100, 100, 1, ''],
+         ['contraste', 'Contrast', -100, 100, 1, '']],
+  courbes: [['dose', 'Amount', 0, 100, 1, '%']],
   vignette: [['force', 'Strength', 0, 100, 1, '']],
   grain: [['force', 'Strength', 0, 100, 1, '']],
   halation: [['force', 'Strength', 0, 100, 1, ''],
@@ -10953,8 +10966,201 @@ function etapesCouleur(x) {
       m = [0.2126, 0.7152, 0.0722, 0.2126, 0.7152, 0.0722, 0.2126, 0.7152, 0.0722];
     }
     e.push({m: melange(m, d)});
+  } else if (x.t === 'lumi') {
+    // Luminosite : +N ajoute N niveaux sur 255 ; contraste autour du gris
+    // moyen. Une seule etape lineaire, une seule borne.
+    const b = fxNum(x, 'lum', 0) / 255, C = 1 + fxNum(x, 'contraste', 0) / 100;
+    if (Math.abs(b) > 1e-4 || Math.abs(C - 1) > 1e-4)
+      e.push({pente: C, origine: C * b + 0.5 - 0.5 * C});
+  } else if (x.t === 'courbes') {
+    const tb = tablesCourbes(x);
+    if (tb) e.push({table: tb});
   }
   return e;
+}
+
+// ---- courbes RVB (1.3.96) -------------------------------------------------
+// x.pts = {m, r, g, b} : des points [entree, sortie] en 0..1, m = la courbe
+// maitresse (les trois canaux), puis celle du canal. Entre les points, une
+// cubique monotone (Fritsch-Carlson) : pas de bosse au-dela des points. La
+// courbe est echantillonnee en 256 valeurs par canal — une table que le
+// moniteur passe a feComponentTransfer et le rendu a lut1d : la MEME table
+// des deux cotes (_tables_courbes dans serveur.py).
+function courbesNeuves() {
+  return {m: [[0, 0], [1, 1]], r: [[0, 0], [1, 1]], g: [[0, 0], [1, 1]],
+          b: [[0, 0], [1, 1]]};
+}
+function ptsCourbe(l) {
+  const p = (Array.isArray(l) ? l : [])
+    .filter(q => Array.isArray(q) && q.length >= 2 &&
+                 isFinite(parseFloat(q[0])) && isFinite(parseFloat(q[1])))
+    .map(q => [Math.max(0, Math.min(1, parseFloat(q[0]))),
+               Math.max(0, Math.min(1, parseFloat(q[1])))])
+    .sort((a, b) => a[0] - b[0]);
+  const out = [];
+  for (const q of p) if (!out.length || q[0] - out[out.length - 1][0] > 1e-6) out.push(q);
+  return out.length >= 2 ? out : [[0, 0], [1, 1]];
+}
+const courbeNeutre = l => {
+  const q = ptsCourbe(l);
+  return q.length === 2 && q[0][0] === 0 && q[0][1] === 0 && q[1][0] === 1 && q[1][1] === 1;
+};
+function fonctionCourbe(p) {
+  const n = p.length, d = [], m = new Array(n).fill(0);
+  for (let k = 0; k < n - 1; k++) d.push((p[k + 1][1] - p[k][1]) / (p[k + 1][0] - p[k][0]));
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  for (let k = 1; k < n - 1; k++) m[k] = d[k - 1] * d[k] <= 0 ? 0 : (d[k - 1] + d[k]) / 2;
+  for (let k = 0; k < n - 1; k++) {
+    if (Math.abs(d[k]) < 1e-12) { m[k] = 0; m[k + 1] = 0; continue; }
+    const a = m[k] / d[k], b = m[k + 1] / d[k], s = a * a + b * b;
+    if (s > 9) { const t = 3 / Math.sqrt(s); m[k] = t * a * d[k]; m[k + 1] = t * b * d[k]; }
+  }
+  return v => {
+    if (v <= p[0][0]) return p[0][1];
+    if (v >= p[n - 1][0]) return p[n - 1][1];
+    let k = 0;
+    while (k < n - 2 && v > p[k + 1][0]) k++;
+    const h = p[k + 1][0] - p[k][0], t = (v - p[k][0]) / h, t2 = t * t, t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * p[k][1] + (t3 - 2 * t2 + t) * h * m[k] +
+           (-2 * t3 + 3 * t2) * p[k + 1][1] + (t3 - t2) * h * m[k + 1];
+  };
+}
+function tablesCourbes(x) {
+  const P = x.pts || {};
+  const d = Math.max(0, Math.min(1, fxNum(x, 'dose', 100) / 100));
+  if (d <= 1e-4 || ['m', 'r', 'g', 'b'].every(k => courbeNeutre(P[k]))) return null;
+  const fm = fonctionCourbe(ptsCourbe(P.m));
+  return ['r', 'g', 'b'].map(k => {
+    const fc = fonctionCourbe(ptsCourbe(P[k]));
+    const t = [];
+    for (let i = 0; i < 256; i++) {
+      const v = i / 255;
+      const y = Math.max(0, Math.min(1, fc(Math.max(0, Math.min(1, fm(v))))));
+      t.push(v + d * (y - v));
+    }
+    return t;
+  });
+}
+
+// L editeur : le canal choisi (commun a tous les blocs), le dessin du carre.
+let FX_CANAL = 'm';
+const CANAUX = [['m', 'RGB', '#f2efe8'], ['r', 'Red', '#ff5a5a'],
+                ['g', 'Green', '#5ad16a'], ['b', 'Blue', '#5a9bff']];
+function editeurCourbes(x, i) {
+  return '<div class="fxModes">' + CANAUX.map(([k, n, co]) =>
+      '<button data-fx-canal="' + k + '" class="' + (FX_CANAL === k ? 'on' : '') + '"' +
+      (FX_CANAL === k || courbeNeutre((x.pts || {})[k]) ? '' : ' style="color:' + co + '"') +
+      '>' + n + '</button>').join('') + '</div>' +
+    '<canvas class="fxCourbe" data-fx-courbe="' + i + '"></canvas>' +
+    '<div class="fxCourbeBas"><span>click: add a point · drag: move it · ' +
+    'double-click or drag it out: remove</span><button class="fxPetit" ' +
+    'data-fx-canal-raz="' + i + '" title="reset this channel">↺</button></div>';
+}
+function dessinerCourbe(cv, x) {
+  const r = window.devicePixelRatio || 1, S = Math.max(60, cv.clientWidth || 220);
+  const px = Math.round(S * r);
+  if (cv.width !== px || cv.height !== px) { cv.width = px; cv.height = px; }
+  const g = cv.getContext('2d');
+  g.setTransform(r, 0, 0, r, 0, 0);
+  const P = x.pts || {};
+  g.fillStyle = '#151413'; g.fillRect(0, 0, S, S);
+  g.strokeStyle = '#2c2a27'; g.lineWidth = 1;
+  g.beginPath();
+  for (let i = 1; i < 4; i++) {
+    const q = Math.round(S * i / 4) + 0.5;
+    g.moveTo(q, 0); g.lineTo(q, S); g.moveTo(0, q); g.lineTo(S, q);
+  }
+  g.stroke();
+  g.setLineDash([3, 3]); g.strokeStyle = '#45413c';
+  g.beginPath(); g.moveTo(0, S); g.lineTo(S, 0); g.stroke(); g.setLineDash([]);
+  const trace = (k, coul, ep) => {
+    const f = fonctionCourbe(ptsCourbe(P[k]));
+    g.strokeStyle = coul; g.lineWidth = ep; g.beginPath();
+    for (let u = 0; u <= S; u++) {
+      const y = S - Math.max(0, Math.min(1, f(u / S))) * S;
+      u ? g.lineTo(u, y) : g.moveTo(u, y);
+    }
+    g.stroke();
+  };
+  CANAUX.forEach(([k, , co]) => {
+    if (k === FX_CANAL || courbeNeutre(P[k])) return;
+    g.globalAlpha = 0.5; trace(k, co, 1); g.globalAlpha = 1;
+  });
+  const coul = CANAUX.find(c => c[0] === FX_CANAL)[2];
+  trace(FX_CANAL, coul, 1.6);
+  for (const [a, b] of ptsCourbe(P[FX_CANAL])) {
+    g.fillStyle = '#151413'; g.strokeStyle = coul; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(a * S, S - b * S, 4, 0, 2 * Math.PI); g.fill(); g.stroke();
+  }
+}
+// Les gestes sur le carre : clic = un point, glisser = le deplacer, double-
+// clic ou glisser hors du carre = l oter. Les deux bouts restent.
+function lierCourbe(cv, x) {
+  dessinerCourbe(cv, x);
+  let prise = -1, dehors = false;
+  const pos = e => {
+    const b = cv.getBoundingClientRect();
+    return [(e.clientX - b.left) / b.width, 1 - (e.clientY - b.top) / b.height];
+  };
+  const pts = () => {
+    if (!x.pts || typeof x.pts !== 'object') x.pts = courbesNeuves();
+    return (x.pts[FX_CANAL] = ptsCourbe(x.pts[FX_CANAL]));
+  };
+  const proche = (l, u, v) => {
+    const R = 9 / Math.max(1, cv.getBoundingClientRect().width);
+    let j = -1, best = R;
+    l.forEach(([a, b], k) => {
+      const dd = Math.hypot(a - u, b - v);
+      if (dd < best) { best = dd; j = k; }
+    });
+    return j;
+  };
+  const apres = () => { modifie = true; dessinerCourbe(cv, x); dessiner(); };
+  cv.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const [u, v] = pos(e);
+    let l = pts();
+    memoriser();
+    prise = proche(l, u, v);
+    if (prise < 0) {
+      const q = [Math.max(0, Math.min(1, u)), Math.max(0, Math.min(1, v))];
+      if (l.some(p => Math.abs(p[0] - q[0]) < 0.01)) return;
+      l.push(q);
+      l.sort((a, b) => a[0] - b[0]);
+      prise = l.indexOf(q);
+    }
+    dehors = false;
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    apres();
+  });
+  cv.addEventListener('pointermove', e => {
+    if (prise < 0) return;
+    const l = x.pts[FX_CANAL];
+    const [u, v] = pos(e);
+    const bout = prise === 0 || prise === l.length - 1;
+    dehors = !bout && l.length > 2 && (u < -0.12 || u > 1.12 || v < -0.12 || v > 1.12);
+    const mn = prise > 0 ? l[prise - 1][0] + 0.01 : 0;
+    const mx = prise < l.length - 1 ? l[prise + 1][0] - 0.01 : 1;
+    l[prise] = [Math.max(mn, Math.min(mx, u)), Math.max(0, Math.min(1, v))];
+    apres();
+  });
+  const lacher = () => {
+    if (prise < 0) return;
+    if (dehors) x.pts[FX_CANAL].splice(prise, 1);
+    prise = -1; dehors = false;
+    apres();
+  };
+  cv.addEventListener('pointerup', lacher);
+  cv.addEventListener('pointercancel', lacher);
+  cv.addEventListener('dblclick', e => {
+    e.preventDefault(); e.stopPropagation();
+    const l = pts(), [u, v] = pos(e), j = proche(l, u, v);
+    if (j <= 0 || j >= l.length - 1) return;
+    memoriser();
+    l.splice(j, 1);
+    apres();
+  });
 }
 
 // Un filtre SVG par suite d etapes, fabrique une fois et garde.
@@ -10973,6 +11179,10 @@ function filtreCouleur(etapes) {
     ? '<feColorMatrix type="matrix" values="' +
       [e.m[0], e.m[1], e.m[2], 0, 0, e.m[3], e.m[4], e.m[5], 0, 0,
        e.m[6], e.m[7], e.m[8], 0, 0, 0, 0, 0, 1, 0].map(f5).join(' ') + '"/>'
+    : e.table
+    ? '<feComponentTransfer>' + ['R', 'G', 'B'].map((c, j) =>
+        '<feFunc' + c + ' type="table" tableValues="' +
+        e.table[j].map(f5).join(' ') + '"/>').join('') + '</feComponentTransfer>'
     : '<feComponentTransfer>' + ['R', 'G', 'B'].map(c =>
         '<feFunc' + c + ' type="linear" slope="' + f5(e.pente) +
         '" intercept="' + f5(e.origine) + '"/>').join('') +
@@ -11171,7 +11381,7 @@ function appliquerFx(t1, fx, w, h) {
   for (const x of fx) {
     g1.setTransform(1, 0, 0, 1, 0, 0);
     g1.globalAlpha = 1; g1.globalCompositeOperation = 'source-over'; g1.filter = 'none';
-    if (x.t === 'etal' || x.t === 'nb') {
+    if (x.t === 'etal' || x.t === 'nb' || x.t === 'lumi' || x.t === 'courbes') {
       const etapes = etapesCouleur(x);
       if (!etapes.length) continue;
       const t2 = toileFx(2, w, h), g2 = t2.getContext('2d');
@@ -11308,6 +11518,7 @@ function rackFx(c, sel) {
     if (x.t === 'nb' && mode === 'virage')
       h += '<div class="fxCouleur">Tint colour <input type="color" data-fx-couleur="' +
         i + '" value="' + (x.teinte || '#d9a066') + '"></div>';
+    if (x.t === 'courbes') h += editeurCourbes(x, i);
     const regl = x.t === 'flou' ? FX_REGLAGES.flou[mode] : FX_REGLAGES[x.t];
     const def = FX[x.t].neuf();
     regl.forEach(([k, et, mn, mx, pas, u]) => {
@@ -11395,6 +11606,10 @@ function lierRackFx(r, c, sel) {
     if (refaire) rendreReglages();
   };
   let glisse = false;
+  rack.querySelectorAll('canvas[data-fx-courbe]').forEach(cv => {
+    const x = liste()[+cv.dataset.fxCourbe];
+    if (x) lierCourbe(cv, x);
+  });
   // ---- les cles des reglages d effet ----
   rack.addEventListener('click', e => {
     const b = e.target.closest('[data-fx-anim],[data-fx-cle],[data-fx-cle-prec],' +
@@ -11534,6 +11749,14 @@ function lierRackFx(r, c, sel) {
       memoriser(); const k = +d.fxDescend; [L[k + 1], L[k]] = [L[k], L[k + 1]]; fini(true);
     } else if (d.fxMode !== undefined) {
       memoriser(); L[+d.fxI].mode = d.fxMode; fini(true);
+    } else if (d.fxCanal !== undefined) {
+      FX_CANAL = d.fxCanal; rendreReglages();
+    } else if (d.fxCanalRaz !== undefined) {
+      memoriser();
+      const x = L[+d.fxCanalRaz];
+      if (!x.pts || typeof x.pts !== 'object') x.pts = courbesNeuves();
+      x.pts[FX_CANAL] = [[0, 0], [1, 1]];
+      fini(true);
     } else if (d.fxPartout !== undefined) {
       memoriser();
       const cibles = sel.filter(x => x !== c && (!estSynth(x) || estReglage(x)) &&

@@ -1207,7 +1207,7 @@ def _placement(entree, sortie, cadrage, duree, pre, alpha=False,
 #   noise  : c0s=S donne un ecart-type de 0,33 x S ;
 #   vignette (rgb24) : exactement cos^4(angle x distance/demi-diagonale).
 FX_CONNUS = ("flou", "etal", "nb", "vignette", "grain", "halation",
-             "aberration")
+             "aberration", "lumi", "courbes")
 
 
 # ---- effets animes (1.3.25) -------------------------------------------------
@@ -1443,7 +1443,113 @@ def _etapes_couleur(x):
         else:
             m = [0.2126, 0.7152, 0.0722] * 3
         e.append(("m", melange(m, d)))
+    elif x.get("t") == "lumi":
+        b = _fx_num(x, "lum", 0) / 255.0
+        c = 1 + _fx_num(x, "contraste", 0) / 100.0
+        if abs(b) > 1e-4 or abs(c - 1) > 1e-4:
+            e.append(("pente", c, c * b + 0.5 - 0.5 * c))
+    elif x.get("t") == "courbes":
+        tb = _tables_courbes(x)
+        if tb:
+            e.append(("table", tb))
     return e
+
+
+# ---- courbes RVB (1.3.96) ---------------------------------------------------
+# Le MEME calcul que tablesCourbes() dans app.html : points nettoyes, cubique
+# monotone (Fritsch-Carlson), courbe maitresse puis courbe du canal, dosage,
+# 256 valeurs par canal. La table part a ffmpeg dans un fichier .cube (lut1d),
+# le navigateur la passe a feComponentTransfer : l image est la meme.
+def _pts_courbe(l):
+    p = []
+    for q in (l if isinstance(l, list) else []):
+        try:
+            a, b = float(q[0]), float(q[1])
+        except (TypeError, ValueError, IndexError, KeyError):
+            continue
+        if not (math.isfinite(a) and math.isfinite(b)):
+            continue
+        p.append([max(0.0, min(1.0, a)), max(0.0, min(1.0, b))])
+    p.sort(key=lambda q: q[0])
+    out = []
+    for q in p:
+        if not out or q[0] - out[-1][0] > 1e-6:
+            out.append(q)
+    return out if len(out) >= 2 else [[0.0, 0.0], [1.0, 1.0]]
+
+
+def _courbe_neutre(l):
+    q = _pts_courbe(l)
+    return len(q) == 2 and q[0] == [0.0, 0.0] and q[1] == [1.0, 1.0]
+
+
+def _fonction_courbe(p):
+    n = len(p)
+    d = [(p[k + 1][1] - p[k][1]) / (p[k + 1][0] - p[k][0]) for k in range(n - 1)]
+    m = [0.0] * n
+    m[0] = d[0]
+    m[n - 1] = d[n - 2]
+    for k in range(1, n - 1):
+        m[k] = 0.0 if d[k - 1] * d[k] <= 0 else (d[k - 1] + d[k]) / 2
+    for k in range(n - 1):
+        if abs(d[k]) < 1e-12:
+            m[k] = 0.0
+            m[k + 1] = 0.0
+            continue
+        a, b = m[k] / d[k], m[k + 1] / d[k]
+        s = a * a + b * b
+        if s > 9:
+            t = 3 / math.sqrt(s)
+            m[k] = t * a * d[k]
+            m[k + 1] = t * b * d[k]
+
+    def f(v):
+        if v <= p[0][0]:
+            return p[0][1]
+        if v >= p[n - 1][0]:
+            return p[n - 1][1]
+        k = 0
+        while k < n - 2 and v > p[k + 1][0]:
+            k += 1
+        h = p[k + 1][0] - p[k][0]
+        t = (v - p[k][0]) / h
+        t2, t3 = t * t, t * t * t
+        return ((2 * t3 - 3 * t2 + 1) * p[k][1] + (t3 - 2 * t2 + t) * h * m[k] +
+                (-2 * t3 + 3 * t2) * p[k + 1][1] + (t3 - t2) * h * m[k + 1])
+    return f
+
+
+def _tables_courbes(x):
+    P = x.get("pts") if isinstance(x.get("pts"), dict) else {}
+    d = max(0.0, min(1.0, _fx_num(x, "dose", 100) / 100.0))
+    if d <= 1e-4 or all(_courbe_neutre(P.get(k)) for k in "mrgb"):
+        return None
+    fm = _fonction_courbe(_pts_courbe(P.get("m")))
+    out = []
+    for k in "rgb":
+        fc = _fonction_courbe(_pts_courbe(P.get(k)))
+        t = []
+        for i in range(256):
+            v = i / 255.0
+            y = max(0.0, min(1.0, fc(max(0.0, min(1.0, fm(v))))))
+            t.append(v + d * (y - v))
+        out.append(t)
+    return out
+
+
+def _fichier_lut(tables):
+    """La table en fichier .cube 1D, dans le dossier temporaire, nommee par
+    son contenu : la meme courbe sert le meme fichier."""
+    lignes = ["LUT_1D_SIZE %d" % len(tables[0])]
+    lignes += ["%.6f %.6f %.6f" % (r, g, b) for r, g, b in zip(*tables)]
+    txt = "\n".join(lignes) + "\n"
+    nom = os.path.join(tempfile.gettempdir(), "le_lut_" +
+                       hashlib.sha1(txt.encode("ascii")).hexdigest()[:16] + ".cube")
+    if not os.path.isfile(nom):
+        with open(nom + ".part", "w", encoding="ascii", newline="\n") as f:
+            f.write(txt)
+        os.replace(nom + ".part", nom)
+    return nom
 
 
 def _etapes_halo(x):
@@ -1461,6 +1567,8 @@ def _etapes_halo(x):
 
 
 def _ff_etape(e):
+    if e[0] == "table":
+        return "lut1d=file=%s:interp=linear" % _chemin_filtre(_fichier_lut(e[1]))
     if e[0] == "pente":
         p, o = e[1], e[2] * 255.0
         f = "clip(val*%.6f%+.4f,0,255)" % (p, o)
@@ -1479,7 +1587,7 @@ def _graphe_fx(fx, entree, sortie, duree, prefixe=""):
         n += 1
         nxt = "%sfx%d" % (prefixe, n)
         t = x.get("t")
-        if t in ("etal", "nb"):
+        if t in ("etal", "nb", "lumi", "courbes"):
             etapes = _etapes_couleur(x)
             if not etapes:
                 continue
