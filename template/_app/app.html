@@ -292,6 +292,16 @@ body.edit.srcOuvert .rz[data-rz=source]{display:block}
 #srcBarre .glis:active{cursor:grabbing}
 #srcBarre .glis:hover{box-shadow:0 0 7px #e8b93a}
 #srcBarre .glis.cache{display:none}
+/* La duree de la plage (1.3.92) : double-clic pour la taper. */
+#srcDur{font:11px ui-monospace,monospace;color:var(--or);background:#2a2418;
+ border:1px solid #5a4824;border-radius:4px;padding:2px 7px;cursor:text;
+ white-space:nowrap}
+#srcDur:empty{display:none}
+#srcDur input{width:78px;font:11px ui-monospace,monospace;background:var(--fond);
+ color:var(--encre);border:1px solid var(--or);border-radius:3px;padding:0 4px}
+#menu .it.duree .pousse{font-family:ui-monospace,monospace;color:var(--or)}
+#menu .it.duree input{width:84px;font:11px ui-monospace,monospace;background:var(--fond);
+ color:var(--encre);border:1px solid var(--or);border-radius:3px;padding:0 4px}
 /* Les graduations (1.3.72), comme sur la reglette de la timeline : la duree
    du rush, et ou la plage se trouve dedans. Par-dessus la zone, sous la tete
    de lecture et les poignees. */
@@ -1117,6 +1127,7 @@ here and change nothing to the files">My folders</button>
       <button id="srcPlay" class="tr" title="play the range (Space with the mouse over this window)">▶</button>
       <button id="srcIn" class="tr" title="in point here (I with the mouse over this window)">[</button>
       <button id="srcOut" class="tr" title="out point here (O with the mouse over this window)">]</button>
+      <span id="srcDur" title="duration of the range — double-click to type one (the out point moves)"></span>
       <span class="tc" id="srcTc"></span>
       <button id="srcAjout" class="tr pousse"
         title="insert this range at the playhead">Add</button>
@@ -8267,6 +8278,9 @@ $('#lanes').addEventListener('contextmenu', e => {
     : (f.nom || 'shot');
   menu.innerHTML =
     '<div class="lbl">' + echapHtml(titre.slice(0, 26)) + '</div>' +
+    '<div class="it duree" data-duree="' + c.uid + '" title="double-click to type a new ' +
+      'duration — the out point moves (linked audio follows)">⏱ Duration ' +
+      '<span class="pousse">' + fmt(dur(c)) + '</span></div>' +
     (estSynth(c) ? ''
      : c.lien ? '<div class="it" data-act="delier">⛓ Unlink audio</div>'
               : '<div class="it" data-act="relier">⛓ Link audio</div>') +
@@ -8386,6 +8400,37 @@ $('#lanes').addEventListener('contextmenu', e => {
   menu.style.top = Math.min(e.clientY, innerHeight - r.height - 8) + 'px';
 });
 
+// Double-clic sur la duree du menu : on la tape (David, 05/11, 1.3.92).
+menu.addEventListener('dblclick', e => {
+  const it = e.target.closest('[data-duree]');
+  if (!it || e.target.tagName === 'INPUT') return;
+  const c = parUid(+it.dataset.duree);
+  if (!c) return;
+  const sp = it.querySelector('.pousse');
+  saisieDuree(sp, dur(c), d => { poserDureeBloc(c, d); fermerMenu(); });
+});
+// La duree d un bloc : c est toujours la sortie qui bouge (le bord droit sur
+// la timeline), pour lui et son son lie, bornee par la fin du rush. Un calque,
+// un texte ou une image fixe n ont pas de borne.
+function poserDureeBloc(c, d) {
+  if (verrouillee(c.piste)) { direVerrou(c.piste); return; }
+  memoriser();
+  const delta = d - dur(c);
+  groupeLie(c).forEach(x => {
+    const vit = vAbs(x), dx = Math.max(0.08, dur(x) + delta);
+    if (estSynth(x) || estImage(x)) {
+      x.o = x.e + Math.min(3600, dx) * vit;
+    } else if (x.rev) {
+      x.e = Math.min(Math.max(0, x.o - dx * vit), x.o - 0.08);
+    } else {
+      const f = PAR_ID[x.film], max = (f && f.s) || x.o;
+      x.o = Math.max(Math.min(max, x.e + dx * vit), x.e + 0.08);
+    }
+  });
+  rendreTimeline(); resynchroniser(true); rendreReglages();
+  dire('block duration ' + fmt(dur(c)) +
+    (dur(c) < d - 0.02 ? ' — the rush ends there' : '') + ' · Ctrl+Z to undo');
+}
 menu.addEventListener('click', async e => {
   // Flip H / Flip V : sur tous les rushes selectionnes, d apres l etat du bloc
   // clique (tous allumes ou tous eteints, jamais un melange inverse).
@@ -13657,7 +13702,7 @@ function srcMajBarre() {
   const v = srcVid();
   const ct = v ? v.currentTime : SRC.e;
   const larg = $('#srcBarre').clientWidth;
-  const cle = [SRC.film, SRC.e, SRC.o, SRC.v0, SRC.v1, ct.toFixed(3), larg].join('|');
+  const cle = [SRC.film, SRC.e, SRC.o, SRC.v0, SRC.v1, ct.toFixed(3), larg, unite].join('|');
   if (cle === SRC.cle) return;
   SRC.cle = cle;
   srcGraduer(larg);
@@ -13672,6 +13717,9 @@ function srcMajBarre() {
   g.classList.toggle('cache',
     (srcPc(SRC.o) - srcPc(SRC.e)) / 100 * $('#srcBarre').clientWidth < 34);
   $('#srcLect').style.left = Math.max(0, Math.min(100, srcPc(ct))) + '%';
+  const sd = $('#srcDur');
+  if (sd && !sd.querySelector('input'))
+    sd.textContent = !SRC.film || srcEstImage() ? '' : fmt(SRC.o - SRC.e);
   $('#srcTc').textContent = !SRC.film ? '' : srcEstImage() ? 'still image'
     : tc(ct) + '  ·  in ' + tc(SRC.e) + '  out ' + tc(SRC.o) + '  ·  ' +
       (SRC.o - SRC.e).toFixed(2) + 's  ·  rush ' + srcDuree().toFixed(2) + 's';
@@ -13977,6 +14025,66 @@ function srcPoser(cote) {
   srcCadrerVue(); srcMajBarre();
 }
 
+// La duree de la plage, tapee (David, 05/11, 1.3.92) : c est toujours la
+// sortie qui bouge, bornee par la fin du rush. Ouverte sur un bloc, le bloc
+// (et son son lie) suit, comme avec les poignees.
+function srcPoserDuree(d) {
+  if (!SRC.film || srcEstImage() || !(d > 0)) return;
+  const c = srcBloc();
+  if (c && verrouillee(c.piste)) { direVerrou(c.piste); return; }
+  const e0 = SRC.e, o0 = SRC.o;
+  SRC.o = Math.min(srcDuree(), Math.max(srcCale(SRC.e + d), SRC.e + SRC_MIN));
+  if (SRC.o === o0) { srcMajBarre(); dire('the rush ends at ' + tc(srcDuree())); return; }
+  if (c) {
+    memoriser();
+    srcAppliquerBloc(srcGroupe(c).map(s => ({c: s.c, e: s.e, o: s.o})), 0, SRC.o - o0);
+    srcFiniBloc();
+  } else SRC_MARQUES.set(SRC.film, {e: SRC.e, o: SRC.o});
+  dire('duration ' + fmt(SRC.o - SRC.e) +
+    (SRC.o - SRC.e < d - 0.02 ? ' — the rush ends there' : ''));
+  srcCadrerVue(); srcMajBarre();
+}
+// Un champ de duree dans un element : double-clic, Entree valide, Echap annule.
+function saisieDuree(hote, valeur, poser) {
+  if (hote.querySelector('input')) return;
+  const inp = document.createElement('input');
+  inp.value = unite === 'img' ? String(Math.round(valeur * (PROJET.fps || 25)))
+                              : valeur.toFixed(2);
+  inp.title = unite === 'img' ? 'frames (or 5.2s, 0:05)' : 'seconds (or 0:05, 120f)';
+  const avant = hote.innerHTML;
+  hote.innerHTML = '';
+  hote.appendChild(inp);
+  inp.focus(); inp.select();
+  let clos = false;
+  const fermer = ok => {
+    if (clos) return; clos = true;
+    const v = ok ? lireDureeUnite(inp.value) : null;
+    hote.innerHTML = avant;
+    if (ok && v === null) return;
+    if (ok && !(v > 0)) { dire('unreadable duration: ' + inp.value, true); return; }
+    if (ok) poser(v);
+  };
+  inp.addEventListener('keydown', ev => {
+    ev.stopPropagation();
+    if (ev.key === 'Enter') { ev.preventDefault(); fermer(true); }
+    if (ev.key === 'Escape') { ev.preventDefault(); fermer(false); }
+  });
+  inp.addEventListener('blur', () => fermer(false));
+  ['click', 'dblclick', 'pointerdown', 'mousedown'].forEach(t =>
+    inp.addEventListener(t, ev => ev.stopPropagation()));
+}
+// « 5.2s » reste des secondes meme en mode images, « 120 » suit l unite.
+function lireDureeUnite(x) {
+  const t = String(x || '').trim().toLowerCase().replace(',', '.');
+  if (!t) return null;
+  if (/^\d+(\.\d+)?\s*s$/.test(t)) return parseFloat(t);
+  return lireDuree(t);
+}
+$('#srcDur').addEventListener('dblclick', e => {
+  e.stopPropagation();
+  if (!SRC.film || srcEstImage()) return;
+  saisieDuree($('#srcDur'), SRC.o - SRC.e, srcPoserDuree);
+});
 $('#srcPlay').onclick = () => { SRC.lecture ? pauseSource() : lireSource(); };
 $('#srcIn').onclick = () => srcPoser('e');
 $('#srcOut').onclick = () => srcPoser('o');
