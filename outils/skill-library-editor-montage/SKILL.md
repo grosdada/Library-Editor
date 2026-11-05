@@ -132,7 +132,7 @@ Préférer ces fonctions aux clics simulés ; vérifier le résultat en relisant
 
 Raccourcis (si l'on pilote au clavier) : Espace lecture, V/C/A outils, I/O points, M marqueur, E éditeur de
 clés, Tab réglages, Ctrl+Z (pas de rétablir), Ctrl+C/V (collé à la tête), Ctrl+D ou Ctrl seul = dupliquer,
-Ctrl+glisser = dupliquer en glissant, Ctrl au lâcher = pousser derrière, Maj = aimant, Alt+clic = bloc sans
+Ctrl+glisser = dupliquer en glissant, Ctrl au lâcher = échanger deux blocs (pousser derrière si plusieurs blocs tenus), Maj = aimant, Alt+clic = bloc sans
 son lié, ↑/↓ coupes, ←/→ 1/24 s. Tableau complet : manuel §11.
 
 ## Pièges
