@@ -1207,7 +1207,7 @@ def _placement(entree, sortie, cadrage, duree, pre, alpha=False,
 #   noise  : c0s=S donne un ecart-type de 0,33 x S ;
 #   vignette (rgb24) : exactement cos^4(angle x distance/demi-diagonale).
 FX_CONNUS = ("flou", "etal", "nb", "vignette", "grain", "halation",
-             "aberration", "lumi", "courbes")
+             "aberration", "lumi", "courbes", "tsl")
 
 
 # ---- effets animes (1.3.25) -------------------------------------------------
@@ -1452,6 +1452,27 @@ def _etapes_couleur(x):
         tb = _tables_courbes(x)
         if tb:
             e.append(("table", tb))
+    elif x.get("t") == "tsl":
+        a = math.radians(_fx_num(x, "ton", 0))
+        satu = _fx_num(x, "satu", 0) / 100.0
+        L = max(-1.0, min(1.0, _fx_num(x, "clarte", 0) / 100.0))
+        if abs(a) > 1e-4:
+            co, si = math.cos(a), math.sin(a)
+            e.append(("m", [0.213 + co * 0.787 - si * 0.213, 0.715 - co * 0.715 - si * 0.715,
+                            0.072 - co * 0.072 + si * 0.928,
+                            0.213 - co * 0.213 + si * 0.143, 0.715 + co * 0.285 + si * 0.140,
+                            0.072 - co * 0.072 - si * 0.283,
+                            0.213 - co * 0.213 - si * 0.787, 0.715 - co * 0.715 + si * 0.715,
+                            0.072 + co * 0.928 + si * 0.072]))
+        if abs(satu) > 1e-4:
+            s = 1 + satu
+            e.append(("m", [0.213 + 0.787 * s, 0.715 - 0.715 * s, 0.072 - 0.072 * s,
+                            0.213 - 0.213 * s, 0.715 + 0.285 * s, 0.072 - 0.072 * s,
+                            0.213 - 0.213 * s, 0.715 - 0.715 * s, 0.072 + 0.928 * s]))
+        if L > 1e-4:
+            e.append(("pente", 1 - L, L))
+        elif L < -1e-4:
+            e.append(("pente", 1 + L, 0.0))
     return e
 
 
@@ -1587,7 +1608,7 @@ def _graphe_fx(fx, entree, sortie, duree, prefixe=""):
         n += 1
         nxt = "%sfx%d" % (prefixe, n)
         t = x.get("t")
-        if t in ("etal", "nb", "lumi", "courbes"):
+        if t in ("etal", "nb", "lumi", "courbes", "tsl"):
             etapes = _etapes_couleur(x)
             if not etapes:
                 continue

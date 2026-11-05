@@ -239,6 +239,8 @@ if projets:
                 "m": [[0, 0], [0.3, 0.2], [0.7, 0.85], [1, 1]],
                 "r": [[0, 0.05], [1, 1]], "g": [[0, 0], [1, 1]],
                 "b": [[0, 0], [0.5, 0.4], [1, 0.95]]}}]),
+            ("teinte, saturation", [{"t": "tsl", "ton": -90, "satu": 35,
+                                     "clarte": -20}]),
             ("vignette et grain", [{"t": "vignette", "force": 60},
                                    {"t": "grain", "force": 40}]),
             ("halation et aberration", [{"t": "halation", "force": 50},

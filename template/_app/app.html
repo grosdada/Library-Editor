@@ -8856,6 +8856,7 @@ const COUL_CLES = {
   gain: ['#e8b93a', 'Volume'],
   flou: ['#c77dff', 'Blur'], etal: ['#ff7a45', 'Colour'],
   lumi: ['#ffd84d', 'Brightness · contrast'], courbes: ['#ff9ad5', 'RGB curves'],
+  tsl: ['#4dd6a8', 'Hue · saturation'],
   nb: ['#b9b2a6', 'B&W'], vignette: ['#8c6dff', 'Vignette'],
   grain: ['#9fd36a', 'Grain'], halation: ['#ff4d6d', 'Halation'],
   aberration: ['#2ed3d3', 'Chromatic aberration']
@@ -10814,6 +10815,7 @@ const FX = {
   etal: {nom: 'Colour', neuf: () => ({expo: 0, contraste: 0, satu: 0, temp: 0})},
   lumi: {nom: 'Brightness · contrast', neuf: () => ({lum: 0, contraste: 0})},
   courbes: {nom: 'RGB curves', neuf: () => ({dose: 100, pts: courbesNeuves()})},
+  tsl: {nom: 'Hue · saturation', neuf: () => ({ton: 0, satu: 0, clarte: 0})},
   nb: {nom: 'B&W · sepia · tint', neuf: () => ({mode: 'nb', teinte: '#d9a066',
                                                 dose: 100})},
   vignette: {nom: 'Vignette', neuf: () => ({force: 40})},
@@ -10841,6 +10843,9 @@ const FX_REGLAGES = {
   lumi: [['lum', 'Brightness', -100, 100, 1, ''],
          ['contraste', 'Contrast', -100, 100, 1, '']],
   courbes: [['dose', 'Amount', 0, 100, 1, '%']],
+  tsl: [['ton', 'Hue', -180, 180, 1, '°'],
+        ['satu', 'Saturation', -100, 100, 1, ''],
+        ['clarte', 'Lightness', -100, 100, 1, '']],
   vignette: [['force', 'Strength', 0, 100, 1, '']],
   grain: [['force', 'Strength', 0, 100, 1, '']],
   halation: [['force', 'Strength', 0, 100, 1, ''],
@@ -10975,6 +10980,29 @@ function etapesCouleur(x) {
   } else if (x.t === 'courbes') {
     const tb = tablesCourbes(x);
     if (tb) e.push({table: tb});
+  } else if (x.t === 'tsl') {
+    // Teinte : la rotation de hue-rotate (SVG/CSS), qui garde la luminance.
+    // Saturation : la matrice du rack « Colour ». Lumiere : vers le blanc
+    // au-dessus de 0, vers le noir au-dessous — comme Photoshop.
+    const a = fxNum(x, 'ton', 0) * Math.PI / 180, satu = fxNum(x, 'satu', 0) / 100,
+          L = Math.max(-1, Math.min(1, fxNum(x, 'clarte', 0) / 100));
+    if (Math.abs(a) > 1e-4) {
+      const co = Math.cos(a), si = Math.sin(a);
+      e.push({m: [0.213 + co * 0.787 - si * 0.213, 0.715 - co * 0.715 - si * 0.715,
+                  0.072 - co * 0.072 + si * 0.928,
+                  0.213 - co * 0.213 + si * 0.143, 0.715 + co * 0.285 + si * 0.140,
+                  0.072 - co * 0.072 - si * 0.283,
+                  0.213 - co * 0.213 - si * 0.787, 0.715 - co * 0.715 + si * 0.715,
+                  0.072 + co * 0.928 + si * 0.072]});
+    }
+    if (Math.abs(satu) > 1e-4) {
+      const s = 1 + satu;
+      e.push({m: [0.213 + 0.787 * s, 0.715 - 0.715 * s, 0.072 - 0.072 * s,
+                  0.213 - 0.213 * s, 0.715 + 0.285 * s, 0.072 - 0.072 * s,
+                  0.213 - 0.213 * s, 0.715 - 0.715 * s, 0.072 + 0.928 * s]});
+    }
+    if (L > 1e-4) e.push({pente: 1 - L, origine: L});
+    else if (L < -1e-4) e.push({pente: 1 + L, origine: 0});
   }
   return e;
 }
@@ -11381,7 +11409,8 @@ function appliquerFx(t1, fx, w, h) {
   for (const x of fx) {
     g1.setTransform(1, 0, 0, 1, 0, 0);
     g1.globalAlpha = 1; g1.globalCompositeOperation = 'source-over'; g1.filter = 'none';
-    if (x.t === 'etal' || x.t === 'nb' || x.t === 'lumi' || x.t === 'courbes') {
+    if (x.t === 'etal' || x.t === 'nb' || x.t === 'lumi' || x.t === 'courbes' ||
+        x.t === 'tsl') {
       const etapes = etapesCouleur(x);
       if (!etapes.length) continue;
       const t2 = toileFx(2, w, h), g2 = t2.getContext('2d');
