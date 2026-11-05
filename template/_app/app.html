@@ -1947,7 +1947,10 @@ function rendreGrille() {
 }
 
 function rendre() { rendreDossiers(); rendreGrille(); }
-function indexer() { PAR_ID = {}; FILMS.forEach(f => PAR_ID[f.id] = f); }
+function indexer() {
+  PAR_ID = {}; FILMS.forEach(f => PAR_ID[f.id] = f);
+  if (typeof indexerImbriques === 'function') indexerImbriques();
+}
 
 // -- posters manquants ------------------------------------------------------
 const filePosters = [], posterTentes = new Set();
@@ -3420,7 +3423,9 @@ async function ajouterMontage(pj, nom) {
   p.clips.forEach(c => {
     const q = {};
     for (const k in c) if (k[0] !== '_') q[k] = c[k];
-    if (!q.genre) {
+    if (q.seq && q.seq.nom) {
+      q.film = idImbr(q.seq.pj, q.seq.nom);
+    } else if (!q.genre) {
       let film = q.film;
       if (!PAR_ID[film])
         film = parRel[(c.pj || p.hote || pj || '') + '|' + c.fichier] || null;
@@ -3450,6 +3455,7 @@ async function ajouterMontage(pj, nom) {
     n++;
   });
   modifie = true;
+  await chargerImbriquesDe(CLIPS);
   rendreTimeline(); resynchroniser(true);
   dire(n + ' block' + (n > 1 ? 's' : '') + ' of “' + nom + '” added' +
     (n > 1 ? 's' : '') + ' at ' + tc(depart) +
@@ -5123,10 +5129,13 @@ function blocClip(c) {
       vAbs(c).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') : '';
   return '<div class="clip ' + (clipsSel.has(c.uid) ? 'sel' : '') +
     (c.couleur === 6 ? ' fluo' : '') +
-    '" data-uid="' + c.uid + '"' + (aud || estSynth(c) ? '' : ' data-vmil="' +
+    '" data-uid="' + c.uid + '"' + (aud || estSynth(c) || estImbrique(c) ? '' : ' data-vmil="' +
     (cleMilieu(c) || '') + '"') + ' style="left:' + (c.t0 * PPS) + 'px;width:' +
     (dur(c) * PPS) + 'px;border-color:' + coul + '">' +
     (aud ? ''
+         : estImbrique(c)
+           ? '<div class="vign synth" style="background:repeating-linear-gradient(' +
+             '135deg,#173b3f 0 6px,#122f33 6px 12px)"></div>'
          : estSynth(c)
            ? '<div class="vign synth" style="background:' +
              (c.genre === 'couleur' ? echapHtml(c.fond || '#000')
@@ -5137,7 +5146,7 @@ function blocClip(c) {
            : '<div class="vign" style="background-image:url(' +
              imageBloc(c) + ')"></div>') +
     '<div class="teinte" style="background:' + coul + '"></div>' +
-    (aud && p.onde && !estSynth(c)
+    (aud && p.onde && !estSynth(c) && !estImbrique(c)
       ? '<canvas class="onde" data-onde="' + c.uid + '"></canvas>' : '') +
     (fonduIn(c) > 0.02 ? '<div class="fondu g" style="width:' +
       (fonduIn(c) * PPS) + 'px"></div>' : '') +
@@ -5168,6 +5177,8 @@ function blocClip(c) {
        : c.genre === 'texte'
          ? 'T ' + echapHtml(String(c.txt || '').split('\n')[0].slice(0, 24) ||
                             'text')
+         : estImbrique(c)
+           ? '▣ ' + echapHtml(c.seq.nom) + (imbrDe(c) && !imbrDe(c).charge ? ' (missing)' : '')
          : (estGel(c) ? '⏸ ' : '') + (f ? f.nom : '?')) + '</div>' +
     '<div class="info">' + dur(c).toFixed(1) + 's' + vit + '</div>' +
     mqBloc(c).filter(x => mqVisible(c, x)).map(x =>
@@ -6328,6 +6339,10 @@ $('#lanes').addEventListener('drop', e => {
   const r = $('#tlContenu').getBoundingClientRect();
   if (d.type === 'source') {
     ajouterSource(l.dataset.piste, Math.max(0, (e.clientX - r.left) / PPS));
+    return;
+  }
+  if (d.type === 'sequence') {
+    ajouterImbrique(d.pj, d.nom, l.dataset.piste, Math.max(0, (e.clientX - r.left) / PPS));
     return;
   }
   if (d.type !== 'films') return;
@@ -8305,12 +8320,12 @@ $('#lanes').addEventListener('contextmenu', e => {
       'the selection — what follows on the same tracks moves back">' +
       '⧉ Clone × <input type="number" data-clone-n min="1" max="50" step="1" ' +
       'value="' + CLONE_N + '"><button data-act="cloner">OK</button></div>' +
-    (estSynth(c) || estImage(c) || !PAR_ID[c.film] ||
+    (estSynth(c) || estImage(c) || estImbrique(c) || !PAR_ID[c.film] ||
      piste(c.piste).type !== 'v' ? ''
       : '<div class="it" data-act="figer">' + (estGel(c)
           ? '▶ Unfreeze — the shot moves again'
           : '⏸ Freeze frame') + '</div>') +
-    (estSynth(c) || estImage(c) || estGel(c) || !PAR_ID[c.film] ||
+    (estSynth(c) || estImage(c) || estGel(c) || estImbrique(c) || !PAR_ID[c.film] ||
      piste(c.piste).type !== 'v' ? ''
       : '<div class="it" data-act="plans" title="cut the block wherever the picture ' +
         'changes shot — its linked audio is cut too">✂ Auto cut at shot changes</div>') +
@@ -8320,7 +8335,7 @@ $('#lanes').addEventListener('contextmenu', e => {
       ? '<div class="it" data-act="separer" title="space the selected blocks apart by ' +
         'a gap in frames — what follows on their tracks moves with them">⇹ Separation Block…</div>'
       : '') +
-    (estSynth(c) ? ''
+    (estSynth(c) || estImbrique(c) ? ''
      : '<div class="it" data-act="usages">⌕ Used in which sequences…</div>' +
        '<div class="it" data-act="voirProjet">⌖ Show in project</div>' +
        (REVELER_OK
@@ -10051,7 +10066,246 @@ function majValeursAnim() {
 // ===========================================================================
 //  Lecture avec fondus
 // ===========================================================================
-const moni = $('#moni'), ctx = moni.getContext('2d');
+let moni = $('#moni'), ctx = moni.getContext('2d');
+
+// ===========================================================================
+//  Sequences imbriquees  (David, 05/11, 1.3.93)
+// ===========================================================================
+// Une sequence glissee dans une autre devient un bloc image et un bloc son
+// lies, comme un rush. Elle reste VIVANTE : ce qu ils montrent et font
+// entendre est relu dans la sequence d origine a chaque ouverture du montage.
+// Le bloc porte « seq: {pj, nom} » et une fiche virtuelle « seq:pj/nom » dans
+// PAR_ID (nom, duree), pour que rognage, duree et nom marchent comme pour un
+// rush. Au moniteur, le bloc image compose la sequence interieure dans une
+// toile, puis la pose avec ses propres reglages ; le bloc son fait jouer les
+// sons de l interieur, a son volume. Au rendu, le serveur fabrique d abord la
+// sequence interieure en MP4, puis s en sert comme d un rush.
+const IMBR = new Map();
+const clefImbr = (pj, nom) => pj + '\n' + nom;
+const idImbr = (pj, nom) => 'seq:' + pj + '/' + nom;
+const estImbrique = c => !!(c && c.seq && c.seq.nom);
+const imbrDe = c => estImbrique(c) ? IMBR.get(clefImbr(c.seq.pj, c.seq.nom)) : null;
+function ficheImbrique(d) {
+  PAR_ID[idImbr(d.pj, d.nom)] = {id: idImbr(d.pj, d.nom), nom: d.nom, pj: d.pj,
+    rel: '', ext: '', s: Math.max(0.04, d.duree || 0), a: d.son, seq: true,
+    w: PROJET.w, h: PROJET.h};
+}
+function indexerImbriques() { for (const d of IMBR.values()) if (d.charge) ficheImbrique(d); }
+// Une sequence et ce qu elle contient, relue sur le disque. « pile » : les
+// sequences en cours de lecture au-dessus d elle (une boucle est refusee).
+async function chargerImbrique(pj, nom, pile) {
+  const k = clefImbr(pj, nom);
+  pile = pile || new Set();
+  let d;
+  try {
+    d = await api('api/montage?projet=' + encodeURIComponent(pj) +
+      '&nom=' + encodeURIComponent(nom));
+  } catch (err) {
+    const e = {pj, nom, charge: false, err: err.message, clips: [], pistes: [], duree: 0};
+    IMBR.set(k, e);
+    return e;
+  }
+  const m = (d && d.montage) || {};
+  const besoins = [...new Set((m.projets || []).concat((m.clips || []).map(c => c.pj))
+    .concat([m.hote, pj]).filter(Boolean))];
+  for (const x of besoins) {
+    if (projetOuvert(x)) continue;
+    try { await ouvrirProjetDisque(x, true); } catch (err) {}
+  }
+  const parRel = {};
+  FILMS.forEach(f => parRel[f.pj + '|' + f.rel] = f.id);
+  const clips = (m.clips || []).map(c => {
+    const n = {};
+    for (const x in c) if (x[0] !== '_') n[x] = c[x];
+    if (n.seq) n.film = idImbr(n.seq.pj, n.seq.nom);
+    else if (!n.genre && !PAR_ID[n.film])
+      n.film = parRel[(c.pj || m.hote || pj) + '|' + c.fichier] || null;
+    n.vitesse = n.vitesse || 1;
+    if (n.vitesse < 0) { n.rev = !n.rev; n.vitesse = -n.vitesse; }
+    n.rev = !!n.rev;
+    n.opac = n.opac === undefined ? 1 : n.opac;
+    n.fi = n.fi || 0; n.fo = n.fo || 0;
+    n.gain = n.gain === undefined ? 1 : n.gain;
+    return n;
+  });
+  const pistes = (m.pistes && m.pistes.length ? m.pistes
+    : [{id: 'V1', type: 'v'}, {id: 'A1', type: 'a'}]).map(x => Object.assign({}, x));
+  const e = {pj, nom, charge: true, clips, pistes, duree: 0, son: false};
+  IMBR.set(k, e);
+  avecSequence(e, () => { recalculerFondus(); e.duree = dureeTotale(); });
+  const typeDe = {};
+  pistes.forEach(x => typeDe[x.id] = x.type);
+  e.son = clips.some(c => typeDe[c.piste] === 'a' || typeDe[c.piste] === 'm');
+  ficheImbrique(e);
+  const ici = new Set(pile); ici.add(k);
+  for (const c of clips) {
+    if (!estImbrique(c)) continue;
+    const k2 = clefImbr(c.seq.pj, c.seq.nom);
+    if (ici.has(k2)) { c._boucle = true; continue; }
+    if (!IMBR.has(k2)) await chargerImbrique(c.seq.pj, c.seq.nom, ici);
+  }
+  return e;
+}
+// Toutes les sequences dont le montage ouvert a besoin, relues a neuf.
+async function chargerImbriquesDe(liste) {
+  const l = liste.filter(estImbrique);
+  if (!l.length) return;
+  IMBR.clear();
+  const pile = new Set([clefImbr(PROJET.pj, projetNom)]);
+  for (const c of l) {
+    const k = clefImbr(c.seq.pj, c.seq.nom);
+    if (pile.has(k)) { c._boucle = true; continue; }
+    if (!IMBR.has(k)) await chargerImbrique(c.seq.pj, c.seq.nom, pile);
+  }
+}
+// La sequence « d » contient-elle (a n importe quelle profondeur) « cle » ?
+function imbrContient(d, cle, vus) {
+  vus = vus || new Set();
+  for (const c of (d && d.clips) || []) {
+    if (!estImbrique(c)) continue;
+    const k = clefImbr(c.seq.pj, c.seq.nom);
+    if (k === cle) return true;
+    if (vus.has(k)) continue;
+    vus.add(k);
+    if (imbrContient(IMBR.get(k), cle, vus)) return true;
+  }
+  return false;
+}
+// Faire tourner une fonction du montage (duree, fondus, export) sur une
+// sequence interieure : ses blocs et ses pistes prennent un instant la place
+// de ceux du montage ouvert.
+function avecSequence(d, fn) {
+  const c0 = CLIPS, p0 = PISTES, i0 = tIn, o0 = tOut;
+  CLIPS = d.clips; PISTES = d.pistes; tIn = null; tOut = null;
+  try { return fn(); } finally { CLIPS = c0; PISTES = p0; tIn = i0; tOut = o0; }
+}
+// Les blocs de la sequence interieure d un bloc imbrique, ramenes au temps du
+// montage : rognes a la fenetre [e, o] du bloc, decales a sa place, a sa
+// vitesse. « genre » : 'v' pour l image, 'son' pour le son.
+function deplier(c, genre, prof) {
+  const d = imbrDe(c);
+  if (!d || !d.charge || c._boucle || (prof || 0) > 6) return [];
+  const typeDe = {};
+  d.pistes.forEach(x => typeDe[x.id] = x);
+  const vit = vAbs(c);
+  const a = c.e, b = Math.min(c.o, d.duree);
+  const out = [];
+  for (const x of d.clips) {
+    const p = typeDe[x.piste];
+    if (!p) continue;
+    const son = p.type === 'a' || p.type === 'm';
+    if ((genre === 'son') !== son) continue;
+    const x0 = x.t0, x1 = fin(x);
+    if (x1 <= a + 1e-4 || x0 >= b - 1e-4) continue;
+    const v = Object.assign({}, x);
+    v.uid = 'n' + c.uid + '.' + x.uid;
+    v._p = p; v._mere = c;
+    const vx = vAbs(x);
+    const cA = Math.max(0, a - x0), cB = Math.max(0, x1 - b);
+    if (estSynth(x) || estImage(x)) v.o = x.o - (cA + cB) * vx;
+    else if (x.rev) { v.o = x.o - cA * vx; v.e = x.e + cB * vx; }
+    else { v.e = x.e + cA * vx; v.o = x.o - cB * vx; }
+    v.vitesse = vx * vit;
+    v.t0 = c.t0 + (Math.max(x0, a) - a) / vit;
+    if (cA > 0) { v._fIn = 0; v._xIn = 0; }
+    if (cB > 0) { v._fOut = 0; v._xOut = 0; }
+    out.push(v);
+  }
+  return out;
+}
+const actifA = (c, t) => t >= c.t0 - 0.001 && t < fin(c) - 0.001;
+// Les feuilles (de vrais rushes) sous un bloc imbrique, a toute profondeur.
+function feuilles(c, genre, prof) {
+  const out = [];
+  deplier(c, genre, prof).forEach(v => {
+    if (estImbrique(v)) out.push(...feuilles(v, genre, (prof || 0) + 1));
+    else out.push(v);
+  });
+  return out;
+}
+// La liste dont se sert le moteur (lecteurs, son, cache) : les blocs du
+// montage, ou chaque bloc imbrique est remplace par ses feuilles.
+function clipsMoteur() {
+  if (!CLIPS.some(estImbrique)) return CLIPS;
+  const out = [];
+  for (const c of CLIPS) {
+    if (!estImbrique(c)) { out.push(c); continue; }
+    const p = piste(c.piste);
+    if (!p) continue;
+    out.push(...feuilles(c, p.type === 'v' ? 'v' : 'son', 0));
+  }
+  return out;
+}
+const actifsMoteur = t => clipsMoteur().filter(c => actifA(c, t));
+// Le volume que les blocs imbriques au-dessus d un son lui imposent.
+function facteurMere(c, t) {
+  let k = 1, m = c._mere;
+  while (m) {
+    const pm = m._p || piste(m.piste);
+    if (!pm || (m._p ? pm.mute : !audible(pm))) return 0;
+    k *= valAnim(m, 'gain', t) * volPiste(pm) * alpha(m, t);
+    m = m._mere;
+  }
+  return k;
+}
+// L image d un bloc imbrique a l instant tLect : sa sequence composee dans une
+// toile de la taille du moniteur (fond noir, comme son rendu en MP4).
+let PROF_COMP = 0;
+function composerImbrique(c, cw, ch) {
+  if (PROF_COMP > 5) return null;
+  const tl = toileFx(30 + PROF_COMP, cw, ch), g = tl.getContext('2d');
+  const sCtx = ctx, sMoni = moni;
+  PROF_COMP++;
+  ctx = g; moni = tl;
+  try {
+    g.fillStyle = '#000';
+    g.fillRect(0, 0, cw, ch);
+    deplier(c, 'v', PROF_COMP).filter(x => actifA(x, tLect) && !x._p.mute)
+      .sort((x, y) => numPiste(x.piste) - numPiste(y.piste) || x.t0 - y.t0)
+      .forEach(x => dessinerBloc(x, cw, ch));
+  } finally { ctx = sCtx; moni = sMoni; PROF_COMP--; }
+  return tl;
+}
+// Poser une sequence sur la timeline : un bloc image, et un bloc son lie sur
+// une piste audio libre si elle a du son.
+async function ajouterImbrique(pj, nom, pisteId, t0) {
+  if (pj === PROJET.pj && nom === projetNom) {
+    dire('a sequence cannot contain itself', true); return;
+  }
+  const ici = clefImbr(PROJET.pj, projetNom);
+  const d = await chargerImbrique(pj, nom, new Set([ici]));
+  if (!d || !d.charge) { dire('could not read “' + nom + '”', true); return; }
+  if (imbrContient(d, ici)) {
+    dire('“' + nom + '” already contains this sequence — that would loop', true); return;
+  }
+  if (!(d.duree > 0.04)) { dire('“' + nom + '” is empty', true); return; }
+  const visee = pisteId && piste(pisteId);
+  if (visee && visee.lock) { direVerrou(visee.id); return; }
+  const pv = (visee && visee.type === 'v') ? visee
+    : ((piste('V1') && !piste('V1').lock ? piste('V1') : null) ||
+       PISTES.find(x => x.type === 'v' && !x.lock));
+  if (!pv) { dire('every video track is locked', true); return; }
+  memoriser();
+  const t = Math.max(0, t0 || 0);
+  const bloc = pid => ({uid: uidSuivant++, piste: pid, film: idImbr(pj, nom),
+    seq: {pj: pj, nom: nom}, t0: t, e: 0, o: d.duree, ech: 1, dx: 0, dy: 0,
+    mode: 'contain', gain: 1, opac: 1, vitesse: 1, couleur: 0, fi: 0, fo: 0,
+    lien: null});
+  const v = bloc(pv.id);
+  CLIPS.push(v);
+  if (d.son) {
+    const a = bloc('');
+    a.piste = pisteLibre('a', t, t + d.duree,
+      visee && visee.type === 'a' ? visee : null).id;
+    v.lien = a.lien = lienLibre();
+    CLIPS.push(a);
+  }
+  rendreTimeline(); resynchroniser(true);
+  dire('sequence “' + nom + '” nested — ' + fmt(d.duree) +
+    (d.son ? ', picture and sound' : ', picture only') +
+    ' · double-click the block to open it');
+}
+
 const POOL = new Map();
 let horloge0 = 0, t0Lect = 0;
 
@@ -10078,7 +10332,7 @@ function imageDe(c) {
 function media(c) {
   // Un calque, un texte ou une image fixe n a rien a lire : ils sont
   // dessines a chaque image, sans lecteur ni synchronisation.
-  if (estSynth(c) || estImage(c)) return null;
+  if (estSynth(c) || estImage(c) || estImbrique(c)) return null;
   const f = PAR_ID[c.film];
   if (!f) return null;
   let v = POOL.get(c.uid);
@@ -10128,7 +10382,7 @@ const MAX_POOL = 16;
 // Les plans dont l intervalle croise la fenetre autour de la tete de lecture.
 function prochesDuCurseur(avant, apres) {
   const a = tLect - avant, b = tLect + apres;
-  return CLIPS.filter(c => !estSynth(c) && fin(c) > a && c.t0 < b);
+  return clipsMoteur().filter(c => !estSynth(c) && fin(c) > a && c.t0 < b);
 }
 
 function menage() {
@@ -10151,8 +10405,8 @@ function menage() {
 
 function resynchroniser(force) {
   const vivants = new Set();
-  for (const c of actifs(tLect)) {
-    const p = piste(c.piste);
+  for (const c of actifsMoteur(tLect)) {
+    const p = c._p || piste(c.piste);
     if (!p) continue;
     // Quand l image vient du cache, les lecteurs des pistes video n ont plus
     // rien a fournir — ils sont muets de toute facon. On les laisse en pause :
@@ -10177,12 +10431,13 @@ function resynchroniser(force) {
     if (p.type === 'v' || rev) {
       if (!v.muted) v.muted = true;
     } else {
-      const muet = !audible(p);
+      const km = c._mere ? facteurMere(c, tLect) : 1;
+      const muet = c._mere ? (!!p.mute || km <= 0) : !audible(p);
       if (v.muted !== muet) v.muted = muet;
       // Le navigateur plafonne volume a 1 : au-dela de 100 % le gain ne
       // s entend qu au rendu ffmpeg, qui lui sait amplifier.
       const vol = Math.max(0, Math.min(1,
-        valAnim(c, 'gain', tLect) * volPiste(p) * alpha(c, tLect)));
+        valAnim(c, 'gain', tLect) * volPiste(p) * alpha(c, tLect) * km));
       if (Math.abs(v.volume - vol) > 0.004) v.volume = vol;
     }
     // Un <video> refuse une vitesse negative : playbackRate doit rester
@@ -10231,7 +10486,7 @@ function resynchroniser(force) {
   // image.
   // On ne prepare que les quatre prochains : au-dela, quatre decodages
   // simultanes couteraient plus cher que la coupe qu ils evitent.
-  const aVenir = CLIPS
+  const aVenir = clipsMoteur()
     .filter(c => !vivants.has(c.uid) && !estSynth(c) &&
                  c.t0 > tLect && c.t0 - tLect <= HORIZON)
     .sort((a, b) => a.t0 - b.t0)
@@ -10338,7 +10593,7 @@ function majBoutonCache(part) {
 // leur position : sinon on graverait l image precedente dans le cache.
 function attendrePlaces() {
   const l = [];
-  for (const c of actifs(tLect)) {
+  for (const c of actifsMoteur(tLect)) {
     if (estSynth(c)) continue;
     const v = POOL.get(c.uid);
     if (!v) continue;
@@ -11216,7 +11471,8 @@ function dessiner() {
   // plein milieu de la coupe. Deux images gelees se voient mille fois moins.
   // Au-dela d un quart de seconde on repeint quand meme : un fichier
   // introuvable ne doit pas figer le moniteur pour toujours.
-  const pasPret = aDessiner.filter(c => {
+  const pasPret = aDessiner.flatMap(c => estImbrique(c)
+      ? feuilles(c, 'v', 0).filter(x => actifA(x, tLect)) : [c]).filter(c => {
     if (estSynth(c)) return false;
     if (estImage(c)) {
       const im = imageDe(c);
@@ -11234,7 +11490,14 @@ function dessiner() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, moni.width, moni.height);
   const cw = moni.width, ch = moni.height;
-  aDessiner.forEach(c => {
+  aDessiner.forEach(c => dessinerBloc(c, cw, ch));
+  ctx.globalAlpha = 1;
+  majContourMasque();
+}
+
+// Un bloc sur la toile courante (le moniteur, ou la toile d une sequence
+// imbriquee pendant qu on la compose).
+function dessinerBloc(c, cw, ch) {
     if (estReglage(c)) { reglageSur(c, cw, ch); return; }
     if (estSynth(c)) {
       // Un calque ou un texte masque : pose seul sur une toile, masque,
@@ -11249,12 +11512,13 @@ function dessiner() {
       } else dessinerSynth(c, cw, ch);
       return;
     }
-    const v = estImage(c) ? imageDe(c) : POOL.get(c.uid);
+    const v = estImbrique(c) ? composerImbrique(c, cw, ch)
+      : estImage(c) ? imageDe(c) : POOL.get(c.uid);
     if (!v) return;
-    // Une balise image donne « naturalWidth », un lecteur « videoWidth » :
-    // tout le reste du dessin est identique.
-    const vw = v.videoWidth || v.naturalWidth,
-          vh = v.videoHeight || v.naturalHeight;
+    // Une balise image donne « naturalWidth », un lecteur « videoWidth », une
+    // toile (sequence imbriquee) « width » : le reste du dessin est identique.
+    const vw = v.videoWidth || v.naturalWidth || v.width,
+          vh = v.videoHeight || v.naturalHeight || v.height;
     if (!vw || !vh) return;
     const a = alpha(c, tLect) * valAnim(c, 'opac', tLect);
     if (a <= 0.005) return;
@@ -11291,9 +11555,6 @@ function dessiner() {
       ctx.globalAlpha = a;
       ctx.drawImage(toile, 0, 0);
     }
-  });
-  ctx.globalAlpha = 1;
-  majContourMasque();
 }
 
 // Calque de couleur et texte : dessines directement sur la toile, avec les
@@ -11335,6 +11596,7 @@ function blocDoubleClic(c) {
   clipsSel = new Set(estSynth(c) ? [c.uid] : groupeLie(c).map(x => x.uid));
   rendreLanes(); rendreReglages();
   if (estSynth(c)) { modifierSynth(); return; }
+  if (estImbrique(c)) { ouvrirMontage(c.seq.pj, c.seq.nom); return; }
   // Un bloc de rush : il s ouvre dans la fenetre source, a la duree du bloc,
   // avec ses poignees d entree et de sortie. Depuis Rushes, on passe en
   // Sequence pour la montrer (David, 15/10).
@@ -12302,7 +12564,8 @@ async function chargerProjet(p, nom, hote) {
   let maxUid = 0;
   p.clips.forEach(c => {
     let film = c.film;
-    if (!PAR_ID[film]) {
+    if (c.seq && c.seq.nom) film = idImbr(c.seq.pj, c.seq.nom);
+    else if (!PAR_ID[film]) {
       // retrouve par chemin, dans son propre projet
       film = parRel[(c.pj || p.hote || hote || '') + '|' + c.fichier] || null;
     }
@@ -12344,6 +12607,7 @@ async function chargerProjet(p, nom, hote) {
   PROJET.nom = projetNom;
   clipsSel.clear(); tLect = 0;
   modifie = false;
+  await chargerImbriquesDe(CLIPS);
   rendreTimeline(); majIO(); resynchroniser(true);
   rafraichirProjets();
   dire('sequence “' + projetNom + '” loaded: ' + CLIPS.length + ' blocks' +
@@ -13007,10 +13271,42 @@ function clipsDansBornes() {
 
 // « avecMasques » : pour le rendu seulement, chaque masque part aussi en
 // image (PNG a la taille de sortie). Les exports n en ont pas besoin.
+// Une empreinte stable d une sequence a rendre : le serveur garde son MP4
+// tant qu elle ne change pas.
+function empreinte(o) {
+  const t = JSON.stringify(o);
+  let h = '';
+  [0x811c9dc5, 0x9747b28c, 0x2f6b1d3a, 0x51ed270b].forEach((s, j) => {
+    let a = s >>> 0;
+    for (let i = 0; i < t.length; i++)
+      a = Math.imul(a ^ (t.charCodeAt(i) + j), 16777619 + 2 * j) >>> 0;
+    h += a.toString(16).padStart(8, '0');
+  });
+  return h;
+}
+let PROF_EXPORT = 0;
 function objetMontage(avecMasques) {
   const {a, b} = bornes();
+  // Les sequences imbriquees : rendues au format du montage, chacune sous son
+  // empreinte (le serveur les fabrique avant le montage qui les contient).
+  const imbriques = {}, clefDe = {};
+  for (const c of clipsDansBornes()) {
+    if (!estImbrique(c) || c._boucle) continue;
+    const d = imbrDe(c);
+    if (!d || !d.charge) continue;
+    const k = clefImbr(c.seq.pj, c.seq.nom);
+    if (clefDe[k]) continue;
+    const o = avecSequence(d, () => {
+      PROF_EXPORT++;
+      try { return objetMontage(avecMasques); } finally { PROF_EXPORT--; }
+    });
+    clefDe[k] = empreinte(o);
+    imbriques[clefDe[k]] = o;
+  }
   return {
-    genere: new Date().toISOString(), racine: hoteMontage(), nom: PROJET.nom,
+    imbriques: imbriques,
+    genere: PROF_EXPORT ? undefined : new Date().toISOString(),
+    racine: hoteMontage(), nom: PROJET.nom,
     fps: PROJET.fps, format: {w: PROJET.w, h: PROJET.h},
     entree: +a.toFixed(3), sortie: +b.toFixed(3),
     duree: +(b - a).toFixed(3),
@@ -13018,8 +13314,10 @@ function objetMontage(avecMasques) {
                               solo: p.solo, vol: volPiste(p)})),
     plans: clipsDansBornes().sort((x, y) => x.t0 - y.t0).map(c => {
       const f = PAR_ID[c.film] || {};
-      return {piste: c.piste, projet: f.pj || c.pj || '',
-              fichier: f.rel || c.fichier || '', nom: f.nom,
+      return {piste: c.piste, projet: estImbrique(c) ? '' : (f.pj || c.pj || ''),
+              fichier: estImbrique(c) ? '' : (f.rel || c.fichier || ''), nom: f.nom,
+              imbrique: estImbrique(c)
+                ? clefDe[clefImbr(c.seq.pj, c.seq.nom)] || undefined : undefined,
               genre: c.genre || '', fond: c.fond || '',
               texte: c.genre === 'texte' ? String(c.txt || '') : '',
               police: c.police || '', ttf: c.genre === 'texte'
@@ -13424,7 +13722,8 @@ bRendre.onclick = () => {
 async function suivreRendu() {
   try {
     const e = await api('api/rendu');
-    if (e.etat === 'encours') {
+    // « imbrique » : une sequence imbriquee vient de sortir, le montage suit.
+    if (e.etat === 'encours' || e.etat === 'imbrique') {
       const t = e.total || 0, f = e.fait || 0;
       // Les segments faits ne comptent que pour les trois quarts : le dernier
       // quart, c est l assemblage, qui n a pas d avancement chiffré.

@@ -27,6 +27,7 @@ import os
 import posixpath
 import re
 import shutil
+import tempfile
 import subprocess
 import sys
 import threading
@@ -1607,12 +1608,24 @@ def _atempo(v):
     return ",".join(out)
 
 
+# Sequences imbriquees (1.3.93) : leur MP4, fabrique avant le montage qui les
+# contient, par empreinte. Un plan qui porte « imbrique » lit ce fichier-la.
+IMBR_FICHIERS = {}
+
+
+def _src_plan(plan, pr_defaut):
+    k = plan.get("imbrique")
+    if k:
+        return IMBR_FICHIERS.get(str(k))
+    return sur(plan.get("projet") or pr_defaut, plan.get("fichier") or "")
+
+
 def _segment(plan, dossier, i, avec_son, fi=0.0, fo=0.0, pr_defaut=""):
     """Fabrique un segment normalise. Renvoie (chemin, duree) ou (None, 0).
 
     Un plan peut venir d un autre projet que celui du montage : il porte alors
     sa propre cle « projet ». Sans cette cle, on prend celui du montage."""
-    src = sur(plan.get("projet") or pr_defaut, plan.get("fichier") or "")
+    src = _src_plan(plan, pr_defaut)
     if not src or not os.path.isfile(src):
         return None, 0
     e = float(plan.get("entree", 0))
@@ -1883,9 +1896,23 @@ def _coul_ff(v, defaut="#000000"):
 
 
 def _chemin_filtre(chemin):
-    """Un chemin utilisable dans une chaine de filtres ffmpeg."""
-    c = str(chemin).replace("\\", "/")
-    return c.replace(":", "\\:").replace("'", "\\'")
+    """Un chemin utilisable dans une chaine de filtres ffmpeg.
+
+    Entre apostrophes, deux-points echappes : la forme documentee, la seule
+    que ffmpeg 9 accepte encore dans -filter_complex (sans les apostrophes,
+    l analyse casse sur le lecteur « C: » et AUCUN texte ne sortait au
+    rendu, 05/11/2026). Une apostrophe dans le chemin ne s echappe pas de
+    facon sure a travers les deux niveaux d analyse : le fichier est alors
+    copie dans le dossier temporaire, sous un nom sans risque."""
+    c = str(chemin)
+    if "'" in c and os.path.isfile(c):
+        sauf = os.path.join(tempfile.gettempdir(), "le_ff_" +
+                            hashlib.sha1(c.encode("utf-8")).hexdigest()[:16] +
+                            os.path.splitext(c)[1])
+        shutil.copyfile(c, sauf)
+        c = sauf
+    c = c.replace("\\", "/").replace(":", "\\:")
+    return "'" + c + "'"
 
 
 def _police(plan):
@@ -2150,7 +2177,7 @@ def _incruster(base, sortie, calques, a0, b0, travail, pr_defaut=""):
             # sa vitesse et a sa taille, le pose sur un canevas transparent
             # plein cadre a sa place, puis effets, masque, transparence et
             # fondus — l ordre du moniteur.
-            src = sur(plan.get("projet") or pr_defaut, plan.get("fichier") or "")
+            src = _src_plan(plan, pr_defaut)
             if not src or not os.path.isfile(src):
                 n -= 1
                 continue
@@ -2360,7 +2387,7 @@ def _mixer(base, sortie, libres, a0, b0, pr_defaut):
     cmd = [FFMPEG, "-nostdin", "-v", "error", "-i", base]
     chaine, etiqs, n = [], [], 0
     for plan in libres:
-        src = sur(plan.get("projet") or pr_defaut, plan.get("fichier") or "")
+        src = _src_plan(plan, pr_defaut)
         if not src or not os.path.isfile(src):
             continue
         pos = float(plan.get("position", 0) or 0)
@@ -3024,8 +3051,46 @@ def _destination(pr, nom, demande, mode):
     return cible
 
 
+def _rendre_imbriques(montage, pr, pile=()):
+    """Fabrique le MP4 de chaque sequence imbriquee (et des siennes), une
+    fois par empreinte : tant qu elle ne change pas, le fichier resert."""
+    dossier = os.path.join(montages_de(pr), "_imbriques")
+    for k, m in (montage.get("imbriques") or {}).items():
+        k = str(k)
+        if not re.fullmatch(r"[0-9a-f]{16,64}", k) or not isinstance(m, dict):
+            continue
+        if k in pile:
+            raise RuntimeError("nested sequences loop")
+        f = os.path.join(dossier, k + ".mp4")
+        if not os.path.isfile(f):
+            _rendre_imbriques(m, pr, pile + (k,))
+            os.makedirs(dossier, exist_ok=True)
+            tmp = os.path.join(dossier, k + ".part.mp4")
+            _rendre_un(m, k, pr, tmp, "mp4", interne=True)
+            if RENDU.get("etat") != "imbrique" or not os.path.isfile(tmp):
+                raise RuntimeError("nested sequence “%s”: %s"
+                                   % (m.get("nom") or k, RENDU.get("message")))
+            os.replace(tmp, f)
+        IMBR_FICHIERS[k] = f
+
+
 def rendre(montage, nom, pr, cible=None, mode="mp4"):
-    """Tourne dans un thread. Met a jour RENDU au fur et a mesure."""
+    """Tourne dans un thread : les sequences imbriquees, puis le montage."""
+    try:
+        if montage.get("imbriques"):
+            RENDU.update({"etat": "encours", "fait": 0, "total": 0,
+                          "fichier": "", "message": "nested sequences",
+                          "type": mode, "vers": cible or ""})
+            _rendre_imbriques(montage, pr)
+    except Exception as e:
+        RENDU.update({"etat": "erreur",
+                      "message": "%s: %s" % (type(e).__name__, e)})
+        return
+    _rendre_un(montage, nom, pr, cible, mode)
+
+
+def _rendre_un(montage, nom, pr, cible=None, mode="mp4", interne=False):
+    """Met a jour RENDU au fur et a mesure."""
     global LARGE, HAUT, FPS_SORTIE, MODE
     try:
         MODE = mode if mode in EXT_MODE else "mp4"
@@ -3261,7 +3326,9 @@ def rendre(montage, nom, pr, cible=None, mode="mp4"):
                 raise RuntimeError("audio mix failed: " + RENDU["message"])
         RENDU["message"] = ""
         shutil.rmtree(travail, ignore_errors=True)
-        RENDU.update({"etat": "fini", "fichier": sortie})
+        # Une sequence imbriquee n est qu une etape : « fini » ferait croire a
+        # l application que le montage entier est sorti.
+        RENDU.update({"etat": "imbrique" if interne else "fini", "fichier": sortie})
     except Exception as e:
         RENDU.update({"etat": "erreur",
                       "message": "%s: %s" % (type(e).__name__, e)})
@@ -4429,7 +4496,7 @@ class Poste(BaseHTTPRequestHandler):
             return self._json({"ok": True, "nom": nom})
 
         if chemin == "/api/rendre":
-            if RENDU.get("etat") == "encours":
+            if RENDU.get("etat") in ("encours", "imbrique"):
                 return self._erreur("a render is already running", 409)
             m = d.get("montage") or {}
             nom = nom_propre(d.get("nom") or "sequence") or "sequence"
