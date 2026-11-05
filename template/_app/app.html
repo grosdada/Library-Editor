@@ -7080,20 +7080,29 @@ function mixerSon() {
         sons.add(x);
     });
   });
-  const parPiste = {};
-  sons.forEach(c => (parPiste[c.piste] = parPiste[c.piste] || []).push(c));
+  // Une paire = un son qui finit la ou le suivant commence, OU qui le
+  // chevauche deja (David, 05/11, 1.3.98) — sur la meme piste ou sur deux
+  // pistes differentes (le son d un rush pose par-dessus va sur une piste
+  // libre). Pour chaque son, le precedent est celui qui finit le plus tard
+  // sans l englober : c est la que se fait la coupe. Le fondu enchaine couvre
+  // tout le chevauchement, et au moins MIX_D.
+  const l = [...sons].sort((a, b) => a.t0 - b.t0);
   const paires = [];
-  Object.keys(parPiste).forEach(k => {
-    const l = parPiste[k].sort((a, b) => a.t0 - b.t0);
-    for (let i = 1; i < l.length; i++)
-      if (Math.abs(fin(l[i - 1]) - l[i].t0) <= MIX_COLLE) paires.push([l[i - 1], l[i]]);
+  l.forEach(b => {
+    let a = null;
+    l.forEach(x => {
+      if (x === b || x.t0 >= b.t0 - 0.001 || fin(x) >= fin(b) - 0.001) return;
+      if (fin(x) < b.t0 - MIX_COLLE) return;
+      if (!a || fin(x) > fin(a)) a = x;
+    });
+    if (a) paires.push([a, b]);
   });
   if (!paires.length) {
-    dire('no sound blocks butting against each other in the selection', true);
+    dire('no sound blocks touching or overlapping in the selection', true);
     return;
   }
   memoriser();
-  let croises = 0, creux = 0;
+  let croises = 0, creux = 0, dmin = Infinity, dmax = 0;
   paires.forEach(([a, b]) => {
     const va = vAbs(a), vb = vAbs(b);
     const la = (PAR_ID[a.film] || {}).s || 0, lb = (PAR_ID[b.film] || {}).s || 0;
@@ -7112,6 +7121,7 @@ function mixerSon() {
       a.fo = Math.max(a.fo || 0, recouv);
       b.fi = Math.max(b.fi || 0, recouv);
       croises++;
+      dmin = Math.min(dmin, recouv); dmax = Math.max(dmax, recouv);
     } else {
       a.fo = Math.max(a.fo || 0, MIX_D / 2);
       b.fi = Math.max(b.fi || 0, MIX_D / 2);
@@ -7119,8 +7129,11 @@ function mixerSon() {
     }
   });
   rendreTimeline(); resynchroniser(true);
-  dire(croises + (croises > 1 ? ' sound cuts' : ' sound cut') + ' mixed (' +
-    Math.round(MIX_D * 1000) + ' ms crossfades)' +
+  const duree = d => d < 1 ? Math.round(d * 1000) + ' ms' : d.toFixed(2) + ' s';
+  dire(croises + (croises > 1 ? ' sound cuts' : ' sound cut') + ' mixed' +
+    (croises ? ' (' + (dmax - dmin < 0.01 ? duree(dmax)
+                       : duree(dmin) + ' to ' + duree(dmax)) + ' crossfade' +
+       (croises > 1 ? 's' : '') + ')' : '') +
     (creux ? ' — ' + creux + ' without spare sound, given a short dip instead' : ''));
 }
 
