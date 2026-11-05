@@ -192,8 +192,12 @@ body.rangeable.lectureseule .dos .plus{display:block}
 .pjt.sequences .dosSeqB{background:none;border:0;color:var(--or);opacity:.75;
  cursor:pointer;padding:0 2px;flex:0 0 auto;display:flex;align-items:center}
 .pjt.sequences .dosSeqB:hover{opacity:1;color:var(--vert)}
-.dos.seqDos{color:var(--or)}
-.dos.seqDos b{color:#e9c983;cursor:text}
+.dos.seqDos{color:var(--or);justify-content:flex-start}
+.dos.seqDos b{color:#e9c983;flex:1}
+.dos.seqDos i{margin-left:auto}
+/* Selection de plusieurs sequences (Maj / Ctrl + clic, 1.3.94). */
+.dos.seq.selSeq{background:#4a3a1c;box-shadow:inset 3px 0 0 var(--or)}
+.dos.seq.selSeq.on{background:var(--orange)}
 .dos.seqDos .chev{cursor:pointer}
 .dos.seqDos svg{flex:0 0 auto;margin-right:4px;opacity:.85}
 .dos.seq.range{margin-left:26px}
@@ -1713,6 +1717,7 @@ function rendreDossiers() {
       '<button class="plusSeq" data-nouvelle-seq="1" title="create a new sequence">+</button>' +
       '<button class="dosSeqB" data-nouveau-dos-seq="1" title="new folder to file sequences"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M1.5 3.5h4.2l1.4 1.6h7.4v7.9H1.5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></button></div>';
     const ligneSeq = (x, range) => '<div class="dos mont seq' + (range ? ' range' : '') +
+          (SEQ_SEL.has(clefSel(x.projet, x.nom)) ? ' selSeq' : '') +
           (x.nom === projetNom && x.projet === PROJET.pj ? ' on' : '') +
           (couleurSeq(x.projet, x.nom) ? ' teinte' : '') + styleSeq(x.projet, x.nom) +
           '" draggable="true" data-mont="1" data-pj="' + ech(x.projet) + '" data-mnom="' +
@@ -1729,13 +1734,16 @@ function rendreDossiers() {
       h += '<div class="dos seqDos" data-seq-dos="' + ech(id) + '" title="click the name ' +
         'to rename — drag sequences here to file them — right-click for the menu">' +
         '<span class="chev" data-seq-dos-plier="' + ech(id) + '">' + (plieD ? '▶' : '▼') + '</span>' +
-        '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M1.5 3.5h4.2l1.4 1.6h7.4v7.9H1.5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>' +
+        '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"' +
+        (/^#[0-9a-f]{6}$/i.test(v.c || '') ? ' style="color:' + v.c + ';opacity:1"' : '') +
+        '><path d="M1.5 3.5h4.2l1.4 1.6h7.4v7.9H1.5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>' +
         '<b data-seq-dos-nom="' + ech(id) + '">' + ech(v.n) + '</b><i>' + dedans.length + '</i></div>';
       if (!plieD) h += dedans.map(x => ligneSeq(x, true)).join('');
     });
     const libres = toutes.filter(x => !dossierDeSeq(x.projet, x.nom));
     if (ouv) h += (toutes.length
       ? libres.map(x => '<div class="dos mont seq' +
+          (SEQ_SEL.has(clefSel(x.projet, x.nom)) ? ' selSeq' : '') +
           (x.nom === projetNom && x.projet === PROJET.pj ? ' on' : '') +
           (couleurSeq(x.projet, x.nom) ? ' teinte' : '') + styleSeq(x.projet, x.nom) +
           '" draggable="true" data-mont="1" data-pj="' + ech(x.projet) + '" data-mnom="' +
@@ -2420,6 +2428,41 @@ function styleSeq(pj, nom) {
 // (genre « dossiers-seq ») : un prereglage par dossier, {n: nom, s: [clefs
 // des sequences]}. Les fichiers des sequences ne bougent pas d un octet.
 let SEQ_DOS = {};
+// Sequences choisies dans la colonne (clefs « pj\nnom ») et la derniere
+// cliquee, d ou part une selection Maj.
+const SEQ_SEL = new Set();
+const clefSel = (pj, nom) => pj + '\n' + nom;
+let SEQ_ANCRE = '';
+// Les sequences visees par un geste sur « mo » : toute la selection si elle
+// en fait partie, sinon elle seule.
+function seqsVisees(pj, nom) {
+  const k = clefSel(pj, nom);
+  if (!SEQ_SEL.has(k) || SEQ_SEL.size < 2) return [{pj: pj, nom: nom}];
+  return [...SEQ_SEL].map(x => { const i = x.indexOf('\n');
+    return {pj: x.slice(0, i), nom: x.slice(i + 1)}; });
+}
+// Ranger plusieurs sequences d un coup : un seul enregistrement par dossier.
+async function rangerSeqs(liste, id) {
+  const touches = new Set();
+  for (const q of liste) {
+    const k = clefSeq(q.pj, q.nom);
+    for (const d in SEQ_DOS) {
+      const i = SEQ_DOS[d].s.indexOf(k);
+      if (i >= 0 && d !== id) { SEQ_DOS[d].s.splice(i, 1); touches.add(d); }
+    }
+    if (id && SEQ_DOS[id] && !SEQ_DOS[id].s.includes(k)) { SEQ_DOS[id].s.push(k); touches.add(id); }
+  }
+  if (id && SEQ_DOS[id]) {
+    MONT_OUVERTS.delete('*sdp:' + id);
+    pref.ecrire('montOuverts', [...MONT_OUVERTS].join('\t'));
+  }
+  rendreDossiers();
+  for (const d of touches) await ecrireDossierSeq(d);
+  const n = liste.length;
+  dire(id ? n + ' sequence' + (n > 1 ? 's' : '') + ' filed in “' + SEQ_DOS[id].n + '”'
+          : n + ' sequence' + (n > 1 ? 's' : '') + ' out of their folder');
+  return touches.size > 0;
+}
 async function chargerDossiersSeq() {
   try {
     const d = await api('api/presets?genre=dossiers-seq');
@@ -3258,8 +3301,8 @@ colDos.addEventListener('click', async e => {
   if (e.target.closest('[data-nouvelle-seq]')) { e.stopPropagation(); boiteProjet(true); return; }
   if (e.target.closest('[data-nouveau-dos-seq]')) { e.stopPropagation(); creerDossierSeq(); return; }
   if (e.target.tagName !== 'INPUT') {
-    const sdn = e.target.closest('[data-seq-dos-nom]');
-    if (sdn) { e.stopPropagation(); renommerDossierSeq(sdn.dataset.seqDosNom); return; }
+    // Un clic sur un dossier le replie ou le deplie ; on le renomme par le
+    // clic droit (David, 05/11 : le renommage au clic etait penible).
     const sdl = e.target.closest('[data-seq-dos]');
     if (sdl) {
       e.stopPropagation();
@@ -3310,6 +3353,32 @@ colDos.addEventListener('click', async e => {
   if (sp) { menuCouleurSeq(sp.closest('[data-mont]'), sp); return; }
   const mo = e.target.closest('[data-mont]');
   if (mo && e.target.tagName !== 'INPUT') {
+    // Maj + clic : toutes les sequences entre la derniere cliquee et celle-ci ;
+    // Ctrl (Cmd) + clic : en ajouter ou en retirer une. Pour les ranger d un
+    // coup dans un dossier (David, 05/11, 1.3.94).
+    const k = clefSel(mo.dataset.pj, mo.dataset.mnom);
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const lignes = $$('#dossiers [data-mont]');
+      if (e.shiftKey && SEQ_ANCRE) {
+        const i0 = lignes.findIndex(x => clefSel(x.dataset.pj, x.dataset.mnom) === SEQ_ANCRE);
+        const i1 = lignes.indexOf(mo);
+        if (i0 >= 0 && i1 >= 0) {
+          if (!(e.ctrlKey || e.metaKey)) SEQ_SEL.clear();
+          lignes.slice(Math.min(i0, i1), Math.max(i0, i1) + 1)
+            .forEach(x => SEQ_SEL.add(clefSel(x.dataset.pj, x.dataset.mnom)));
+        }
+      } else {
+        if (SEQ_SEL.has(k)) SEQ_SEL.delete(k); else SEQ_SEL.add(k);
+        SEQ_ANCRE = k;
+      }
+      if (e.shiftKey && !SEQ_ANCRE) { SEQ_SEL.add(k); SEQ_ANCRE = k; }
+      rendreDossiers();
+      dire(SEQ_SEL.size + ' sequence' + (SEQ_SEL.size > 1 ? 's' : '') +
+        ' selected — drag them onto a folder, or right-click');
+      return;
+    }
+    SEQ_SEL.clear(); SEQ_ANCRE = k;
     ouvrirMontage(mo.dataset.pj, mo.dataset.mnom);
     return;
   }
@@ -3321,8 +3390,7 @@ colDos.addEventListener('click', async e => {
 colDos.addEventListener('dblclick', e => {
   if (e.target.closest('[data-seq-coul]')) return;
   if (e.target.tagName === 'INPUT') return;
-  const sdd = e.target.closest('[data-seq-dos]');
-  if (sdd) { renommerDossierSeq(sdd.dataset.seqDos); return; }
+  if (e.target.closest('[data-seq-dos]')) return;
   const m = e.target.closest('[data-mont]');
   if (m) { editerMontage(m); return; }
   const d = e.target.closest('.dos');
@@ -3809,6 +3877,11 @@ colDos.addEventListener('contextmenu', e => {
     const v = SEQ_DOS[sdo.dataset.seqDos];
     colMenu.innerHTML = '<div class="lbl">' + echap(String(v.n).slice(0, 28)) + '</div>' +
       '<div class="it" data-sdos-act="renommer">✎ Rename…</div>' +
+      '<div class="lbl">Colour — every sequence inside takes it</div><div class="couls">' +
+      PALETTE_SEQ.map(c => '<span data-sdos-c="' + c + '" style="background:' + c +
+        (c === (v.c || '').toLowerCase() ? ';outline:2px solid var(--encre);outline-offset:1px' : '') +
+        '"></span>').join('') +
+      '<span class="aucune" data-sdos-c="" title="no colour"></span></div>' +
       '<div class="sep"></div>' +
       '<div class="it" data-sdos-act="effacer" title="the sequences stay, they only ' +
       'leave the folder">✕ Remove folder</div>';
@@ -3822,9 +3895,11 @@ colDos.addEventListener('contextmenu', e => {
   const mo = e.target.closest('[data-mont]');
   if (mo) {
     e.preventDefault();
-    const ici = dossierDeSeq(mo.dataset.pj, mo.dataset.mnom);
+    const visees = seqsVisees(mo.dataset.pj, mo.dataset.mnom);
+    const ici = visees.length > 1 ? '*' : dossierDeSeq(mo.dataset.pj, mo.dataset.mnom);
     const autres = dossiersSeqTries().filter(([id]) => id !== ici);
-    colMenu.innerHTML = '<div class="lbl">' + mo.dataset.mnom.slice(0, 28) +
+    colMenu.innerHTML = '<div class="lbl">' + (visees.length > 1
+        ? visees.length + ' sequences selected' : mo.dataset.mnom.slice(0, 28)) +
       '</div>' +
       '<div class="it" data-mont-act="ajouter">＋ Add to timeline</div>' +
       '<div class="it" data-mont-act="renommer">✎ Rename…</div>' +
@@ -3833,7 +3908,8 @@ colDos.addEventListener('contextmenu', e => {
       (autres.length || ici ? '<div class="sep"></div>' : '') +
       autres.map(([id, v]) => '<div class="it" data-mont-ranger="' + echap(id) +
         '">→ ' + echap(String(v.n).slice(0, 26)) + '</div>').join('') +
-      (ici ? '<div class="it" data-mont-ranger="">← Out of the folder</div>' : '') +
+      (ici ? '<div class="it" data-mont-ranger="">← Out of the folder' +
+        (visees.length > 1 ? 's' : '') + '</div>' : '') +
       '<div class="sep"></div>' +
       '<div class="it" data-mont-act="effacer">✕ Delete…</div>';
     colMenu.dataset.pj = mo.dataset.pj;
@@ -3877,6 +3953,25 @@ colDos.addEventListener('contextmenu', e => {
 });
 
 colMenu.addEventListener('click', async e => {
+  // Couleur d un dossier (David, 05/11, 1.3.94) : elle est posee sur toutes
+  // ses sequences ; chacune peut ensuite en prendre une autre, une a une.
+  const sdc = e.target.closest('[data-sdos-c]');
+  if (sdc) {
+    const id = colMenu.dataset.sdos, c = sdc.dataset.sdosC;
+    fermerColMenu();
+    const v = SEQ_DOS[id];
+    if (!v) return;
+    if (c) v.c = c; else delete v.c;
+    rendreDossiers();
+    await ecrireDossierSeq(id);
+    const dedans = (typeof MONTAGES !== 'undefined' ? MONTAGES : [])
+      .filter(m => dossierDeSeq(m.projet, m.nom) === id);
+    for (const m of dedans) await poserCouleurSeq(m.projet, m.nom, c, true);
+    rendreDossiers(); teinterOnglets();
+    dire('folder “' + v.n + '” ' + (c ? 'coloured' : 'colour removed') + ' — ' +
+      dedans.length + ' sequence' + (dedans.length > 1 ? 's' : ''));
+    return;
+  }
   const sda = e.target.closest('[data-sdos-act]');
   if (sda) {
     const id = colMenu.dataset.sdos;
@@ -3889,8 +3984,8 @@ colMenu.addEventListener('click', async e => {
   if (mr) {
     const pj = colMenu.dataset.pj, nom = colMenu.dataset.mnom, id = mr.dataset.montRanger;
     fermerColMenu();
-    await rangerSeq(pj, nom, id);
-    dire(id ? '“' + nom + '” filed in “' + SEQ_DOS[id].n + '”' : '“' + nom + '” out of its folder');
+    await rangerSeqs(seqsVisees(pj, nom), id);
+    SEQ_SEL.clear(); rendreDossiers();
     return;
   }
   const sc = e.target.closest('[data-seq-c]');
@@ -3997,7 +4092,8 @@ let SEQ_TIREE = null;
 colDos.addEventListener('dragstart', e => {
   const sq = e.target.closest && !e.target.closest('.poignee') && e.target.closest('[data-mont]');
   if (sq) {
-    SEQ_TIREE = {pj: sq.dataset.pj, nom: sq.dataset.mnom};
+    SEQ_TIREE = {pj: sq.dataset.pj, nom: sq.dataset.mnom,
+                 liste: seqsVisees(sq.dataset.pj, sq.dataset.mnom)};
     e.dataTransfer.setData('text/plain', JSON.stringify(
       {type: 'sequence', pj: sq.dataset.pj, nom: sq.dataset.mnom}));
     e.dataTransfer.effectAllowed = 'copyMove';
@@ -4085,8 +4181,8 @@ colDos.addEventListener('drop', async e => {
     e.preventDefault();
     const id = c.dataset.seqDos || '';
     if (id && !SEQ_DOS[id]) return;
-    if (await rangerSeq(sq.pj, sq.nom, id))
-      dire(id ? '“' + sq.nom + '” filed in “' + SEQ_DOS[id].n + '”' : '“' + sq.nom + '” out of its folder');
+    await rangerSeqs(sq.liste || [{pj: sq.pj, nom: sq.nom}], id);
+    SEQ_SEL.clear(); rendreDossiers();
     return;
   }
   if (GLISSE) { e.preventDefault(); deposerOrdre(cibleOrdre(e)); return; }
