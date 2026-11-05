@@ -4676,9 +4676,20 @@ let pisteActive = null;
 
 let PISTES = [
   {id: 'V1', type: 'v', mute: false, solo: false},
+  {id: 'V2', type: 'v', mute: false, solo: false},
   {id: 'A1', type: 'a', mute: false, solo: false},
+  {id: 'A2', type: 'a', mute: false, solo: false},
   {id: 'M1', type: 'm', mute: false, solo: false}
 ];
+// L etat par defaut d une sequence (David, 05/11, 1.3.95) : deux pistes
+// video, deux pistes audio et la piste musique. Une sequence qui en a moins
+// recoit a l ouverture les pistes vides qui manquent ; on peut toujours en
+// effacer une ensuite (seule la derniere de chaque famille revient).
+const PISTES_DEFAUT = {v: 2, a: 2, m: 1};
+function pistesParDefaut() {
+  for (const t in PISTES_DEFAUT)
+    while (PISTES.filter(p => p.type === t).length < PISTES_DEFAUT[t]) ajouterPiste(t);
+}
 
 // Image, son et musique : une de chaque, toujours. Un montage enregistre
 // avant l arrivee de la piste musique en recoit une a l ouverture, sinon
@@ -12655,7 +12666,7 @@ async function chargerProjet(p, nom, hote) {
     : [{id: 'V1', type: 'v', mute: false, solo: false},
        {id: 'A1', type: 'a', mute: false, solo: false},
        {id: 'M1', type: 'm', mute: false, solo: false}];
-  assurerPistes();
+  pistesParDefaut();
   CLIPS = [];
   let maxUid = 0;
   p.clips.forEach(c => {
@@ -12917,7 +12928,7 @@ function boiteProjet(neuf) {
       MARQUEURS = [];
       PISTES = [{id: 'V1', type: 'v', mute: false, solo: false},
                 {id: 'A1', type: 'a', mute: false, solo: false}];
-      assurerPistes();          // la piste musique revient avec les autres
+      pistesParDefaut();        // V1 V2, A1 A2 et la musique (1.3.95)
       const hote = $('#pHote').value || hoteMontage() || PROJET.pj;
       // Jamais le nom d une sequence deja presente dans ce projet : « creer »
       // ne doit pas pouvoir ecraser un montage existant.
