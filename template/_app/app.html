@@ -459,8 +459,9 @@ body.edit .moniteur canvas{width:auto;max-width:100%;max-height:100%;
    jaune : debut et fin de la sequence (David, 07/11, 1.3.103). Les trois
    restent ensemble quand la barre passe a la ligne. */
 .transport .chemin{flex:1 1 220px;display:flex;align-items:center;gap:6px;min-width:160px}
-.transport .tr.bout{min-width:0;padding:4px 7px;line-height:0}
-.transport .tr.bout svg{width:15px;height:10px;fill:var(--or)}
+/* Meme boite que les autres boutons (.tr) : un espace sans largeur garde la
+   hauteur d une ligne de texte, la fleche se centre dedans. */
+.transport .tr.bout svg{width:15px;height:10px;fill:var(--or);vertical-align:-1px}
 .transport .tr.bout:hover svg{fill:#f3d264}
 /* Points I et O de la timeline dans la minimap (1.3.103) : deux crochets. */
 .minimap .mio{position:absolute;top:0;bottom:0;width:4px;border:2px solid var(--or);
@@ -1172,9 +1173,9 @@ here and change nothing to the files">My folders</button>
       <button id="bBoucle" class="tr" title="loop between I and O (L)">⟳</button>
       <button id="bPlein" class="tr" title="fullscreen (F)">⛶</button>
       <div class="chemin">
-      <button id="bDebutSeq" class="tr bout" title="start of the sequence (Home)"><svg viewBox="0 0 15 10"><path d="M7.5 0 L0 5 L7.5 10 Z"/><path d="M15 0 L7.5 5 L15 10 Z"/></svg></button>
+      <button id="bDebutSeq" class="tr bout" title="start of the sequence (Home)"><svg viewBox="0 0 15 10"><path d="M7.5 0 L0 5 L7.5 10 Z"/><path d="M15 0 L7.5 5 L15 10 Z"/></svg>&#8203;</button>
       <input type="range" id="curseur" min="0" max="1000" value="0" step="1">
-      <button id="bFinSeq" class="tr bout" title="end of the sequence"><svg viewBox="0 0 15 10"><path d="M0 0 L7.5 5 L0 10 Z"/><path d="M7.5 0 L15 5 L7.5 10 Z"/></svg></button>
+      <button id="bFinSeq" class="tr bout" title="end of the sequence"><svg viewBox="0 0 15 10"><path d="M0 0 L7.5 5 L0 10 Z"/><path d="M7.5 0 L15 5 L7.5 10 Z"/></svg>&#8203;</button>
       </div>
       <span class="tc" id="tc">00:00:00 / 00:00:00</span>
     </div>
