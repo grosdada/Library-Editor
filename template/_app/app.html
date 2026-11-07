@@ -13456,7 +13456,7 @@ const ongletsFermes = () =>
 
 $('#barreProjets').addEventListener('contextmenu', e => {
   const nf = ongletsFermes().length;
-  // Sur un onglet : le dupliquer (1.3.90).
+  // Sur un onglet : le dupliquer (1.3.90), changer sa couleur (1.3.101).
   const og = e.target.closest('[data-p]');
   // Rien de fermé ni d onglet vise : on laisse le menu du navigateur.
   if (!nf && !og) return;
@@ -13464,8 +13464,18 @@ $('#barreProjets').addEventListener('contextmenu', e => {
   const m = $('#menu');
   m.dataset.pj = og ? og.dataset.pj : '';
   m.dataset.p = og ? og.dataset.p : '';
+  // La couleur de la sequence se change aussi depuis son onglet (David,
+  // 07/11, 1.3.101) : memes pastilles que dans la colonne, et c est le meme
+  // gestionnaire (data-seq-c, lu avec dataset.pj / dataset.mnom) qui la pose.
+  m.dataset.mnom = og ? og.dataset.p : '';
+  const ici = og ? couleurSeq(og.dataset.pj, og.dataset.p).toLowerCase() : '';
   m.innerHTML = (og ? '<div class="lbl">' + echap(og.dataset.p.slice(0, 28)) +
-    '</div><div class="it" data-bar="dupliquer">⧉ Duplicate</div>' : '') +
+    '</div><div class="it" data-bar="dupliquer">⧉ Duplicate</div>' +
+    '<div class="sep"></div><div class="lbl">Sequence colour</div><div class="couls">' +
+    PALETTE_SEQ.map(c => '<span data-seq-c="' + c + '" style="background:' + c +
+      (c === ici ? ';outline:2px solid var(--encre);outline-offset:1px' : '') +
+      '"></span>').join('') +
+    '<span class="aucune" data-seq-c="" title="no colour"></span></div>' : '') +
     (!nf ? '' : (og ? '<div class="sep"></div>' : '') +
   '<div class="lbl">Closed tabs</div>' +
     '<div class="it" data-bar="tout">⟲ ' + (nf > 1
