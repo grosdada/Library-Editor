@@ -2456,8 +2456,20 @@ def _incruster(base, sortie, calques, a0, b0, travail, pr_defaut=""):
             f += "[c%d]" % n
             chaine.append(f)
             suivante = "b%d" % n
-            chaine.append("[rb%d][c%d]overlay=x=0:y=0:eof_action=pass[%s]"
-                          % (n, n, suivante))
+            # « enable » borne le calque a ses images : sans lui, la copie
+            # traitee debordait de 3 a 4 images apres sa fin (double effet
+            # a la jonction de deux calques d effet). Tolerance d une demi-
+            # image pour que deux calques jointifs ne se chevauchent pas.
+            # Bornes arrondies a l image la plus proche (une egalite va a
+            # l image du dessous) : un calque qui finit ou commence a une
+            # fraction d image de la coupe ne laisse plus UNE image sans
+            # effet entre deux calques.
+            f0 = math.floor(pos * FPS_SORTIE + 0.4999)
+            f1 = math.floor((pos + d) * FPS_SORTIE + 0.4999)
+            chaine.append("[rb%d][c%d]overlay=x=0:y=0:eof_action=pass:"
+                          "enable='gte(t,%.4f)*lt(t,%.4f)'[%s]"
+                          % (n, n, (f0 - 0.5) / FPS_SORTIE,
+                             (f1 - 0.5) / FPS_SORTIE, suivante))
             etiq = suivante
             continue
         if genre == "couleur":

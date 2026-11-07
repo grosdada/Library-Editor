@@ -5404,9 +5404,17 @@ function basculerOnde(id) {
   dire(p.onde ? 'waveform shown on ' + id : 'waveform hidden on ' + id);
 }
 
-async function chargerOnde(film) {
+// Attendable (1.3.111) : « Mix sound » mesure le niveau des sons avec ces
+// pics et doit en attendre la fin. Meme promesse pour tous les demandeurs.
+const ONDES_P = {};
+function chargerOnde(film) {
+  if (ONDES_P[film]) return ONDES_P[film];
+  if (ONDES[film] !== undefined) return Promise.resolve(ONDES[film]);
+  return (ONDES_P[film] = _chargerOnde(film));
+}
+async function _chargerOnde(film) {
   const f = PAR_ID[film];
-  if (!f || ONDES[film] !== undefined) return;
+  if (!f) return false;
   ONDES[film] = null;
   try {
     const d = ENLIGNE ? await ondeNavigateur(f)
@@ -5417,6 +5425,7 @@ async function chargerOnde(film) {
     ONDES[film] = false;
   }
   if (ONDES[film]) dessinerOndes();
+  return ONDES[film];
 }
 
 // En ligne il n y a pas de ffmpeg : le navigateur decode lui-meme le son du
@@ -7296,7 +7305,41 @@ function couper(c, t, enLot) {
 // l autre cote prend le relais ; s il n y en a d aucun cote, deux fondus
 // courts (un creux) evitent au moins le claquement.
 const MIX_D = 0.12, MIX_COLLE = 0.04;
-function mixerSon() {
+
+// Egaliser (David, 08/11, 1.3.111) : un son beaucoup plus fort que les autres
+// est baisse « un peu ». Niveau d un bloc = energie moyenne des pics de la
+// forme d onde sur la partie utilisee (les quasi-silences ne comptent pas),
+// en dB, plus le volume du bloc et de sa piste. Reference = mediane des AUTRES
+// blocs, musique exclue. Au-dessus de REF + MIX_SEUIL dB, on ramene le bloc a
+// REF + MIX_CIBLE dB, jamais plus de MIX_MAX dB : une cible, pas un
+// pourcentage, donc un second clic ne change plus rien. On ne baisse que le
+// reglage « Block volume » (gain), que le rendu applique deja.
+const MIX_SEUIL = 5, MIX_CIBLE = 3, MIX_MAX = 9;
+function niveauBloc(c, d) {
+  if (!d || !d.pics || !d.pics.length) return null;
+  const pas = d.pas || 0.02;
+  const lo = Math.min(c.e, c.o), hi = Math.max(c.e, c.o);
+  const i0 = Math.max(0, Math.floor(lo / pas)), i1 = Math.min(d.pics.length, Math.ceil(hi / pas));
+  let somme = 0, n = 0;
+  for (let i = i0; i < i1; i++) {
+    if (d.pics[i] <= 3) continue;
+    const v = d.pics[i] / 255;
+    somme += v * v; n++;
+  }
+  if (n < 10) return null;
+  const g = (c.gain === undefined ? 1 : c.gain) * volPiste(piste(c.piste));
+  if (g <= 0.001) return null;
+  return 10 * Math.log10(somme / n) + 20 * Math.log10(g);
+}
+const mediane = l => { const t = l.slice().sort((a, b) => a - b), m = t.length >> 1;
+  return t.length % 2 ? t[m] : (t[m - 1] + t[m]) / 2; };
+async function niveauxDesSons(blocs) {
+  const films = [...new Set(blocs.map(c => c.film))];
+  await Promise.all(films.map(f => Promise.race([chargerOnde(f),
+    new Promise(r => setTimeout(() => r(false), 60000))])));
+}
+
+async function mixerSon() {
   const sons = new Set();
   CLIPS.forEach(c => {
     if (!clipsSel.has(c.uid)) return;
@@ -7322,11 +7365,39 @@ function mixerSon() {
     });
     if (a) paires.push([a, b]);
   });
-  if (!paires.length) {
-    dire('no sound blocks touching or overlapping in the selection', true);
+  // Les niveaux se mesurent AVANT de toucher aux blocs : les bouts rallonges
+  // par les fondus changeraient la partie mesuree.
+  const candidats = l.filter(c => estSon(piste(c.piste)) && piste(c.piste).type !== 'm' &&
+    PAR_ID[c.film] && PAR_ID[c.film].a !== false);
+  let aEgaliser = [], sansMesure = 0, cles = 0;
+  if (candidats.length >= 2) {
+    dire('measuring the sound levels…');
+    await niveauxDesSons(candidats);
+    const niv = new Map();
+    candidats.forEach(c => {
+      if (c.anim && c.anim.gain && c.anim.gain.length) { cles++; return; }
+      const v = niveauBloc(c, ONDES[c.film]);
+      if (v === null) sansMesure++; else niv.set(c, v);
+    });
+    // Le temps a pu passer : un bloc retire entre-temps n est plus touche.
+    const encore = [...niv.keys()].filter(c => CLIPS.includes(c));
+    encore.forEach(c => {
+      const autres = encore.filter(x => x !== c).map(x => niv.get(x));
+      if (!autres.length) return;
+      const ref = mediane(autres), exces = niv.get(c) - ref;
+      if (exces > MIX_SEUIL) aEgaliser.push([c, Math.min(MIX_MAX, exces - MIX_CIBLE)]);
+    });
+  }
+  if (!paires.length && !aEgaliser.length) {
+    dire(candidats.length >= 2
+      ? 'no sound blocks touching, and none much louder than the others'
+      : 'no sound blocks touching or overlapping in the selection', true);
     return;
   }
   memoriser();
+  aEgaliser.forEach(([c, db]) => {
+    c.gain = (c.gain === undefined ? 1 : c.gain) * Math.pow(10, -db / 20);
+  });
   let croises = 0, creux = 0, dmin = Infinity, dmax = 0;
   paires.forEach(([a, b]) => {
     const va = vAbs(a), vb = vAbs(b);
@@ -7355,11 +7426,20 @@ function mixerSon() {
   });
   rendreTimeline(); resynchroniser(true);
   const duree = d => d < 1 ? Math.round(d * 1000) + ' ms' : d.toFixed(2) + ' s';
-  dire(croises + (croises > 1 ? ' sound cuts' : ' sound cut') + ' mixed' +
-    (croises ? ' (' + (dmax - dmin < 0.01 ? duree(dmax)
-                       : duree(dmin) + ' to ' + duree(dmax)) + ' crossfade' +
-       (croises > 1 ? 's' : '') + ')' : '') +
-    (creux ? ' — ' + creux + ' without spare sound, given a short dip instead' : ''));
+  const dbs = aEgaliser.map(x => x[1]);
+  const txtDb = dbs.length ? (Math.abs(Math.max(...dbs) - Math.min(...dbs)) < 0.5
+    ? Math.max(...dbs).toFixed(1) : Math.min(...dbs).toFixed(1) + ' to ' + Math.max(...dbs).toFixed(1)) : '';
+  dire((paires.length
+      ? croises + (croises > 1 ? ' sound cuts' : ' sound cut') + ' mixed' +
+        (croises ? ' (' + (dmax - dmin < 0.01 ? duree(dmax)
+                           : duree(dmin) + ' to ' + duree(dmax)) + ' crossfade' +
+           (croises > 1 ? 's' : '') + ')' : '') +
+        (creux ? ' — ' + creux + ' without spare sound, given a short dip instead' : '')
+      : 'no sound cuts to mix') +
+    (aEgaliser.length ? ' · ' + aEgaliser.length + (aEgaliser.length > 1 ? ' loud blocks' : ' loud block') +
+      ' lowered by ' + txtDb + ' dB' : '') +
+    (cles ? ' · ' + cles + ' block' + (cles > 1 ? 's' : '') + ' with volume keyframes left alone' : '') +
+    (sansMesure ? ' · ' + sansMesure + ' not measured' : ''));
 }
 
 // Coupe aux plans (29/10) : chaque bloc video selectionne est coupe la ou
@@ -8660,7 +8740,8 @@ $('#lanes').addEventListener('contextmenu', e => {
     // au moins deux plans : une image et son son lie n en font qu un
     (new Set([...clipsSel].map(u => { const x = parUid(u); return x && (x.lien || 'u' + x.uid); })).size > 1
       ? '<div class="it" data-act="mixson" title="sound blocks that touch get a very short ' +
-        'crossfade at each cut, instead of a hard cut">♫ Mix sound — soften the cuts</div>' : '') +
+        'crossfade at each cut, and a sound much louder than the others is lowered a little">' +
+        '♫ Mix sound — soften the cuts, even out the levels</div>' : '') +
     '<div class="it" data-act="annoter">Ⓐ ' + (c.annot ? 'Edit annotation…' : 'Annotation…') +
       '</div>' +
     (c.annot ? '<div class="it" data-act="annot-suppr">✕ Delete annotation</div>' : '') +
