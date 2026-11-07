@@ -1634,9 +1634,12 @@ function format(f) {
 // un rush deja colore au clic droit tombe dans la categorie de sa couleur.
 // Un numero n est jamais redonne (« suivant ») : un rush d un projet ferme
 // qui portait une couleur effacee ne se retrouve pas dans une nouvelle.
+// Les quatre premieres portent d office le code de David (07/11, 1.3.100) :
+// ce qui reste a prendre dans un rush. Une palette deja enregistree dans la
+// bibliotheque (prereglages « categories ») passe avant et n est pas touchee.
 const CAT_DEPART = [
-  {id: 1, coul: '#a8302f', nom: ''}, {id: 2, coul: '#c98a2b', nom: ''},
-  {id: 3, coul: '#6a9b4a', nom: ''}, {id: 4, coul: '#4a7fa8', nom: ''},
+  {id: 1, coul: '#a8302f', nom: 'used'}, {id: 2, coul: '#c98a2b', nom: 'partial used'},
+  {id: 3, coul: '#6a9b4a', nom: 'almost free'}, {id: 4, coul: '#4a7fa8', nom: 'total free'},
   {id: 5, coul: '#7a5a9b', nom: ''}];
 // Les teintes proposees, et prises dans l ordre pour une couleur ajoutee.
 const CAT_TEINTES = ['#3f9a94', '#c2577f', '#8f8a3a', '#d06a3a', '#5a67b8',
