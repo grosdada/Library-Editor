@@ -10915,7 +10915,7 @@ const FX = {
   tsl: {nom: 'Hue · saturation', neuf: () => ({ton: 0, satu: 0, clarte: 0})},
   nb: {nom: 'B&W · sepia · tint', neuf: () => ({mode: 'nb', teinte: '#d9a066',
                                                 dose: 100})},
-  vignette: {nom: 'Vignette', neuf: () => ({force: 40})},
+  vignette: {nom: 'Vignette', neuf: () => ({force: 40, plume: 50})},
   grain: {nom: 'Grain', neuf: () => ({force: 25})},
   halation: {nom: 'Halation', neuf: () => ({force: 45, seuil: 72, taille: 1.1,
                                             teinte: '#ff5a1e'})},
@@ -10943,7 +10943,8 @@ const FX_REGLAGES = {
   tsl: [['ton', 'Hue', -180, 180, 1, '°'],
         ['satu', 'Saturation', -100, 100, 1, ''],
         ['clarte', 'Lightness', -100, 100, 1, '']],
-  vignette: [['force', 'Strength', 0, 100, 1, '']],
+  vignette: [['force', 'Strength', 0, 100, 1, ''],
+             ['plume', 'Feather', 0, 100, 1, '']],
   grain: [['force', 'Strength', 0, 100, 1, '']],
   halation: [['force', 'Strength', 0, 100, 1, ''],
              ['seuil', 'From brightness', 0, 95, 1, '%'],
@@ -11416,18 +11417,70 @@ function flouFx(t1, x, w, h) {
 
 // ffmpeg « vignette » en rgb24 : facteur cos^4(angle x distance/demi-diagonale)
 // — mesure au pixel (201 pour 200,8 attendus, 63 pour 63,8).
-function vignetteFx(g, w, h, force) {
+//
+// Feather (« plume », David 07/11, 1.3.102) : la pente autour du point ou le
+// facteur vaut 1/2 (rayon rm = 0,5718 / angle). La distance r devient
+// psi = rm + (r - rm) x k, bornee a [0, pi/2/angle] ; k = 1 a 50 (la vignette
+// d avant, a l identique), jusqu a 120 a 0 (un cercle presque net) et 0,25 a
+// 100 (tres diffus : la pente s etale vers le centre, qu on garde a 1 en
+// divisant par le facteur du centre). Meme calcul dans serveur.py.
+function vignettePente(plume) {
+  const p = Math.max(0, Math.min(100, plume));
+  return p <= 50 ? Math.pow(120, (50 - p) / 50) : Math.pow(0.25, (p - 50) / 50);
+}
+function vignetteFacteur(ang, k, r) {
+  const rm = 0.5718 / ang, pmax = Math.PI / 2 / ang;
+  const psi = v => Math.max(0, Math.min(pmax, rm + (v - rm) * k));
+  const c4 = v => { const c = Math.cos(ang * psi(v)); return c * c * c * c; };
+  return c4(r) / c4(0);
+}
+// Bord net (k > 12) : le masque se calcule au pixel, comme le geq du serveur
+// (memes coordonnees entieres) — un degrade du navigateur rendait le bord en
+// marche, faute de resolution. Il est garde tant que taille et reglages ne
+// changent pas (~45 ms a 1280x720 pour le refaire).
+let VIGN_MASQUE = null;
+function vignetteFx(g, w, h, force, plume) {
   const ang = Math.max(0, Math.min(100, force)) / 100 * Math.PI / 2;
   if (ang <= 1e-4) return;
-  const R = Math.hypot(w / 2, h / 2);
-  const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, R);
-  for (let i = 0; i <= 24; i++) {
-    const r = i / 24, c = Math.cos(ang * r);
-    gr.addColorStop(r, 'rgba(0,0,0,' + (1 - c * c * c * c).toFixed(4) + ')');
+  const k = vignettePente(plume === undefined ? 50 : plume);
+  if (k <= 12) {
+    // Pente douce : un degrade suffit (ecart <= 1,3 niveau mesure) et ne
+    // coute rien, meme anime image par image. Arrets serres sur la pente.
+    const R = Math.hypot(w / 2, h / 2);
+    const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, R);
+    const rm = 0.5718 / ang, pmax = Math.PI / 2 / ang;
+    const lo = Math.max(0, Math.min(1, rm - rm / k)),
+          hi = Math.max(0, Math.min(1, rm + (pmax - rm) / k));
+    const rs = [0, 1];
+    for (let i = 0; i <= 64; i++) rs.push(lo + (hi - lo) * i / 64);
+    rs.sort((x, y) => x - y).forEach(r => gr.addColorStop(r,
+      'rgba(0,0,0,' + (1 - vignetteFacteur(ang, k, r)).toFixed(4) + ')'));
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = gr;
+    g.fillRect(0, 0, w, h);
+    g.globalCompositeOperation = 'source-over';
+    return;
+  }
+  const clef = w + 'x' + h + ':' + force + ':' + k;
+  if (!VIGN_MASQUE || VIGN_MASQUE.clef !== clef) {
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const gm = cv.getContext('2d'), im = gm.createImageData(w, h), d = im.data;
+    const R = Math.hypot(w / 2, h / 2), N = 4096, tab = new Float32Array(N + 2);
+    for (let i = 0; i <= N + 1; i++) tab[i] = 1 - vignetteFacteur(ang, k, Math.min(1, i / N));
+    for (let y = 0; y < h; y++) {
+      const dy = y - h / 2;
+      for (let x = 0; x < w; x++) {
+        const t = Math.hypot(x - w / 2, dy) / R * N, i = t | 0, f = t - i;
+        const a = tab[i] + (tab[i + 1] - tab[i]) * f;
+        d[(y * w + x) * 4 + 3] = Math.round(a * 255);
+      }
+    }
+    gm.putImageData(im, 0, 0);
+    VIGN_MASQUE = {clef: clef, cv: cv};
   }
   g.globalCompositeOperation = 'source-atop';
-  g.fillStyle = gr;
-  g.fillRect(0, 0, w, h);
+  g.drawImage(VIGN_MASQUE.cv, 0, 0);
   g.globalCompositeOperation = 'source-over';
 }
 
@@ -11518,7 +11571,8 @@ function appliquerFx(t1, fx, w, h) {
       g1.clearRect(0, 0, w, h);
       g1.drawImage(t2, 0, 0);
     } else if (x.t === 'flou') flouFx(t1, x, w, h);
-    else if (x.t === 'vignette') vignetteFx(g1, w, h, fxNum(x, 'force', 40));
+    else if (x.t === 'vignette') vignetteFx(g1, w, h, fxNum(x, 'force', 40),
+                                            fxNum(x, 'plume', 50));
     else if (x.t === 'grain') grainFx(g1, w, h, fxNum(x, 'force', 25));
     else if (x.t === 'halation') halationFx(t1, x, w, h);
     else if (x.t === 'aberration') aberrationFx(t1, x, w, h);

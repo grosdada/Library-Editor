@@ -1599,6 +1599,13 @@ def _ff_etape(e):
         "%s=%.6f" % (n, max(-2.0, min(2.0, v))) for n, v in zip(noms, e[1]))
 
 
+def _vignette_pente(plume):
+    """Feather de la vignette (1.3.102) -> pente k, comme vignettePente
+    (app.html) : 1 a 50, 120 a 0 (net), 0,25 a 100 (diffus)."""
+    p = max(0.0, min(100.0, float(plume)))
+    return 120 ** ((50 - p) / 50.0) if p <= 50 else 0.25 ** ((p - 50) / 50.0)
+
+
 def _graphe_fx(fx, entree, sortie, duree, prefixe=""):
     """La pile d effets d un plan en graphe ffmpeg, de [entree] a [sortie].
     None si aucun effet n a rien a faire. « prefixe » rend les etiquettes
@@ -1618,8 +1625,28 @@ def _graphe_fx(fx, entree, sortie, duree, prefixe=""):
             f = max(0.0, min(100.0, _fx_num(x, "force", 40)))
             if f <= 0:
                 continue
-            morceaux.append("[%s]format=rgb24,vignette=angle=%.6f:eval=init[%s]"
-                            % (cur, f / 100.0 * math.pi / 2, nxt))
+            ang = f / 100.0 * math.pi / 2
+            k = _vignette_pente(_fx_num(x, "plume", 50))
+            if abs(k - 1) < 1e-6:
+                # Feather a 50 : le filtre d avant, au pixel pres.
+                morceaux.append("[%s]format=rgb24,vignette=angle=%.6f:eval=init[%s]"
+                                % (cur, ang, nxt))
+            else:
+                # Un masque calcule une seule fois (une image), multiplie a
+                # chaque image du plan : « blend » repete la derniere image du
+                # masque. Meme courbe que vignetteFacteur (app.html).
+                rm, pmax = 0.5718 / ang, math.pi / 2 / ang
+                c0 = math.cos(ang * max(0.0, min(pmax, rm - rm * k))) ** 4
+                masque = ("255*pow(cos(%.6f*clip(%.6f+(hypot(X-W/2,Y-H/2)"
+                          "/hypot(W/2,H/2)-%.6f)*%.6f,0,%.6f)),4)/%.6f"
+                          % (ang, rm, rm, k, pmax, c0))
+                morceaux.append(
+                    "color=c=black:s={w}x{h}:r={r}:d={d:.4f},format=gray,"
+                    "geq=lum='{m}',format=gbrp[{p}vm{n}];"
+                    "[{c}]format=gbrp[{p}va{n}];"
+                    "[{p}va{n}][{p}vm{n}]blend=all_mode=multiply[{x}]".format(
+                        w=LARGE, h=HAUT, r=FPS_SORTIE, d=1.0 / FPS_SORTIE,
+                        m=masque, p=prefixe, n=n, c=cur, x=nxt))
         elif t == "grain":
             s = int(round(max(0.0, min(100.0, _fx_num(x, "force", 25))) * 0.6))
             if s <= 0:
