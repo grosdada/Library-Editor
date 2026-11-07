@@ -1149,6 +1149,12 @@ def _placement(entree, sortie, cadrage, duree, pre, alpha=False,
     et = []
     if gel is not None:
         et.append(_prefixe_gel(duree).rstrip(","))
+    else:
+        # Apres un « -ss » sur une image qui n est pas sur la grille, la
+        # premiere image decodee arrive a PTS > 0 : l overlay sur la base
+        # noire sort alors UNE image noire avant elle (flash noir a la
+        # coupe). On recale la premiere image a 0.
+        et.append("setpts=PTS-STARTPTS")
     et.append("scale=%d:%d:force_original_aspect_ratio=%s"
               % (LARGE, HAUT, "increase" if cad.get("mode") == "cover"
                  else "decrease"))
