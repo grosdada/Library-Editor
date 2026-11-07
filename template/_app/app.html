@@ -72,7 +72,8 @@ body.edit .rushOnly{display:none}
 #tailleVign{min-width:74px;width:74px}
 #selEpisode{max-width:240px;border-color:var(--or)}
 #selRatio{width:auto;padding:4px 6px}
-#selRatio.actif{border-color:var(--orange);color:var(--orange)}
+#selRatio.actif,#selType.actif{border-color:var(--orange);color:var(--orange)}
+#selType{width:auto;padding:4px 6px}
 /* Les couleurs de rangement : une pastille et son nom. Un clic filtre, un
    double-clic ou un clic droit l edite. */
 #cats{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
@@ -1107,6 +1108,11 @@ body.enligne #qui { display: flex; }
     <option value="1:1">1:1</option>
     <option value="autre">other</option>
   </select>
+  <select id="selType" title="show pictures, videos, or both">
+    <option value="">pictures + videos</option>
+    <option value="image">pictures only</option>
+    <option value="video">videos only</option>
+  </select>
   <input type="range" id="tailleVign" min="64" max="300" step="2" value="206"
     title="thumbnail size">
   <span class="pousse"></span>
@@ -1688,6 +1694,11 @@ function plierDossier(clef) {
 // 1098x840 (1,31) un 4:3. Un son seul n a pas d image : il sort du filtre.
 const RATIOS = {'16:9': 16 / 9, '9:16': 9 / 16, '4:3': 4 / 3, '3:4': 3 / 4, '1:1': 1};
 let FILTRE_RATIO = '';
+// Filtre image / video (David, 07/11, 1.3.110) : '' = les deux, 'image' =
+// les images fixes, 'video' = les videos. Un son seul n est ni l un ni l autre :
+// il disparait des deux filtres, et reste dans « les deux ».
+let FILTRE_TYPE = '';
+const typeDe = f => f.image ? 'image' : (f.son_seul ? 'son' : 'video');
 function ratioDe(f) {
   if (!f || !f.w || !f.h) return '';
   const r = f.w / f.h;
@@ -1708,6 +1719,7 @@ function correspond(f) {
   // -1 : le filtre « sans couleur » (une couleur effacee ne compte plus).
   if (FILTRE_CAT === -1 ? catDe(f.coul) : FILTRE_CAT && +f.coul !== FILTRE_CAT) return false;
   if (FILTRE_RATIO && ratioDe(f) !== FILTRE_RATIO) return false;
+  if (FILTRE_TYPE && typeDe(f) !== FILTRE_TYPE) return false;
   if (q && !f.nom.toLowerCase().includes(q)) return false;
   return true;
 }
@@ -2878,6 +2890,7 @@ async function montrerDansLeProjet(id, pj) {
     if (favSeul) { favSeul = false; $('#bFav').classList.remove('on'); }
     if (FILTRE_CAT) { FILTRE_CAT = 0; rendreCats(); }
     if (FILTRE_RATIO) { FILTRE_RATIO = ''; majRatio(); }
+    if (FILTRE_TYPE) { FILTRE_TYPE = ''; majType(); }
     dossierActif = clefDossier(f);
     appliquerProfil();
     rendreDossiers();
@@ -4360,6 +4373,19 @@ $('#selRatio').onchange = e => {
 FILTRE_RATIO = RATIOS[pref.lire('ratio', '')] || pref.lire('ratio', '') === 'autre'
   ? pref.lire('ratio', '') : '';
 majRatio();
+function majType() {
+  const s = $('#selType');
+  s.value = FILTRE_TYPE;
+  s.classList.toggle('actif', !!FILTRE_TYPE);
+}
+$('#selType').onchange = e => {
+  FILTRE_TYPE = e.target.value;
+  majType();
+  pref.ecrire('typeRush', FILTRE_TYPE);
+  rendreGrille();
+};
+FILTRE_TYPE = ['image', 'video'].includes(pref.lire('typeRush', '')) ? pref.lire('typeRush', '') : '';
+majType();
 // Double-clic sur le grand titre : on le renomme sur place. Entree garde,
 // Echap annule, vide revient a la liste des projets. Il est enregistre dans la
 // bibliotheque, pas dans le navigateur : tout le monde voit le meme.
