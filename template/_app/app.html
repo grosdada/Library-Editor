@@ -455,6 +455,20 @@ body.edit .moniteur canvas{width:auto;max-width:100%;max-height:100%;
 .transport .tc{font:12px/1 ui-monospace,monospace;color:var(--sourd);
  white-space:nowrap}
 #curseur{flex:1 1 auto;min-width:50px;padding:0;background:none;border:0}
+/* Le chemin de lecture et, a chacun de ses bouts, un bouton a double fleche
+   jaune : debut et fin de la sequence (David, 07/11, 1.3.103). Les trois
+   restent ensemble quand la barre passe a la ligne. */
+.transport .chemin{flex:1 1 220px;display:flex;align-items:center;gap:6px;min-width:160px}
+.transport .tr.bout{min-width:0;padding:4px 7px;line-height:0}
+.transport .tr.bout svg{width:15px;height:10px;fill:var(--or)}
+.transport .tr.bout:hover svg{fill:#f3d264}
+/* Points I et O de la timeline dans la minimap (1.3.103) : deux crochets. */
+.minimap .mio{position:absolute;top:0;bottom:0;width:4px;border:2px solid var(--or);
+ pointer-events:none;z-index:7;box-shadow:0 0 3px #e8b93a66}
+.minimap .mio.in{border-right:0}
+.minimap .mio.out{border-left:0;margin-left:-4px}
+.minimap .mioZone{position:absolute;top:0;bottom:0;background:#e8b93a14;
+ pointer-events:none;z-index:1}
 
 footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151412;
  display:flex;flex-direction:column;min-height:150px}
@@ -1157,7 +1171,11 @@ here and change nothing to the files">My folders</button>
       <button id="bSuiv" class="tr" title="next range (↓)">⏭</button>
       <button id="bBoucle" class="tr" title="loop between I and O (L)">⟳</button>
       <button id="bPlein" class="tr" title="fullscreen (F)">⛶</button>
+      <div class="chemin">
+      <button id="bDebutSeq" class="tr bout" title="start of the sequence (Home)"><svg viewBox="0 0 15 10"><path d="M7.5 0 L0 5 L7.5 10 Z"/><path d="M15 0 L7.5 5 L15 10 Z"/></svg></button>
       <input type="range" id="curseur" min="0" max="1000" value="0" step="1">
+      <button id="bFinSeq" class="tr bout" title="end of the sequence"><svg viewBox="0 0 15 10"><path d="M0 0 L7.5 5 L0 10 Z"/><path d="M7.5 0 L15 5 L7.5 10 Z"/></svg></button>
+      </div>
       <span class="tc" id="tc">00:00:00 / 00:00:00</span>
     </div>
   </div>
@@ -5469,6 +5487,7 @@ function majMinimap() {
   });
   mm.innerHTML = h + '<div class="vue" id="vue"></div><div class="mt" id="mt"></div>' +
     '<div class="bulle" id="bulleMt"></div>';
+  ioMinimap();
   majVue();
   $('#mt').style.left = (tLect / total * w) + 'px';
   $('#minimap').title = 'drag the yellow line to move through the sequence';
@@ -5669,6 +5688,8 @@ $('#regle').addEventListener('pointerdown', e => {
   window.addEventListener('pointermove', bouger);
   window.addEventListener('pointerup', lacher);
 });
+$('#bDebutSeq').addEventListener('click', () => { pause(); allerAuTemps(0); });
+$('#bFinSeq').addEventListener('click', () => { pause(); allerAuTemps(dureeTotale()); });
 $('#curseur').addEventListener('input', e => {
   tLect = etendue() * (+e.target.value / 1000);
   majTete(); resynchroniser(true);
@@ -12331,8 +12352,33 @@ function suivreTete(force) {
 // ===========================================================================
 let tIn = null, tOut = null;
 
+// Les points I et O dans la minimap : un crochet jaune chacun, et la plage
+// entre eux a peine teintee. Rien quand aucun n est pose.
+function ioMinimap() {
+  const mm = $('#minimap');
+  if (!mm) return;
+  mm.querySelectorAll('.mio,.mioZone').forEach(e => e.remove());
+  if (tIn === null && tOut === null) return;
+  const total = etendue(), w = mm.clientWidth || 130;
+  const x = t => Math.max(0, Math.min(w, t / total * w));
+  const a = tIn === null ? 0 : tIn, b = tOut === null ? dureeTotale() : tOut;
+  const z = document.createElement('div');
+  z.className = 'mioZone';
+  z.style.left = x(a) + 'px'; z.style.width = Math.max(0, x(b) - x(a)) + 'px';
+  mm.appendChild(z);
+  [['in', tIn], ['out', tOut]].forEach(([q, t]) => {
+    if (t === null) return;
+    const m = document.createElement('div');
+    m.className = 'mio ' + q;
+    m.title = (q === 'in' ? 'in point ' : 'out point ') + fmt(t);
+    m.style.left = x(t) + 'px';
+    mm.appendChild(m);
+  });
+}
+
 function majIO() {
   $$('.zoneIO,.horsIO,.marqueIO').forEach(e => e.remove());
+  ioMinimap();
   const cont = $('#tlContenu');
   if (tIn === null && tOut === null) return;
   const a = tIn === null ? 0 : tIn;
