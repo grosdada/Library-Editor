@@ -1,5 +1,5 @@
 {
- "version": "1.3.101",
+ "version": "1.3.102",
  "date": "2026-11-07",
  "notes": "",
  "genres": {
@@ -7,7 +7,7 @@
    "fichiers": {
     "_app/serveur.py": {
      "depot": "template/_app/serveur.py",
-     "sha256": "cbef6d6e0f3cabceced607186efb31d04bc86a3cbef1d3c226b315a40e04ab5e",
+     "sha256": "cc4c4483ff886c7462a5d6a69d572769d67e45dd9804e47a6139367313d3c711",
      "historique": [
       "e1cdd0258910b7986a6c26f6b7164d7b8a2610f66f69ef292806e8115ba3a49d",
       "85d2a6014b37143750673fcc5da50dc4dd63dd837627cf2d002be0e1f08a9a03",
@@ -35,12 +35,13 @@
       "6fdba4c268c8e9a47b1cff31162faf4a720a0cd4acdc2630dc4f935bc67295af",
       "f00905c4d4cfd9549ee3f00ea8697722dd4b48f792cde36da085c1ec5aefdb50",
       "0e88398105ac96049d6bd5a0fbc4bd08bd8b988201b381d570934085033bb91c",
-      "f72c83adc94d4b82cb68d1977d398e813d13ba6247904080a5fb4cf0cdfc6475"
+      "f72c83adc94d4b82cb68d1977d398e813d13ba6247904080a5fb4cf0cdfc6475",
+      "cbef6d6e0f3cabceced607186efb31d04bc86a3cbef1d3c226b315a40e04ab5e"
      ]
     },
     "_app/app.html": {
      "depot": "template/_app/app.html",
-     "sha256": "5d96788137a7f790dfcbea646856176943336eb086d596b2d95248df6e2fc7e3",
+     "sha256": "998aff6bace72263464d04a4623eb37e12bf7f60f6942f5460e116031e7ad44d",
      "historique": [
       "bcaee501fc23d322034fee64afde7dff827884ddb7139dd4c370ed07d4fc2410",
       "5fdf04c279c4c900a3a202b2b3c5310bee53684a032f7c965e8f466684eae5d9",
@@ -146,7 +147,8 @@
       "921cb2266241e1228c291d666142bc170b100da89793fbab7996c9fdb6193d4e",
       "25b40b0f55df8f886f1f744766a9ce4ca85115b87bbf32eb8d79559ffcfdaf85",
       "962f287a9e747b2f696aac135aeca74e0ac3f778d184d1d521b1c535b2a7e5e6",
-      "7507805ccad41923925658f20675def291ce13fc04429f2fc1e2defe67c48dd0"
+      "7507805ccad41923925658f20675def291ce13fc04429f2fc1e2defe67c48dd0",
+      "5d96788137a7f790dfcbea646856176943336eb086d596b2d95248df6e2fc7e3"
      ]
     },
     "_app/_maj.py": {
@@ -386,11 +388,11 @@
    }
   }
  },
- "commit": "f0dc1fbda00c58c79174d2e6f6c276d1a1b4c7d7",
+ "commit": "aa1b0dc08ec6cd6e9ce5ede5f2d63d06ec318554",
  "installeur": {
-  "version": "1.3.101",
-  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.3.101/Library-Editor-1.3.101.zip",
-  "octets": 38602253,
-  "sha256": "4ee59300685de9a0ddf1fc0c9ccc710e0aeeab9a81cff2e0f9f02aacba07f19f"
+  "version": "1.3.102",
+  "url": "https://github.com/grosdada/Library-Editor/releases/download/v1.3.102/Library-Editor-1.3.102.zip",
+  "octets": 38599953,
+  "sha256": "fafe9fe926b3c5a0481b6f5f908622d421e6c15fde4cf01c21be1379398d46c7"
  }
 }
