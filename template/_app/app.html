@@ -788,13 +788,15 @@ body.regPop .colReg{border-left:1px dashed var(--trait)}
 .rackVide{font-size:11px;color:var(--sourd)}
 .fxCarte{border:1px solid var(--trait);border-radius:5px;padding:6px 7px;
  display:flex;flex-direction:column;gap:5px;background:#1f1e1c}
-.fxCarte.eteint{opacity:.5}
+.fxCarte.eteint>*:not(.fxTete),.fxCarte.eteint .fxTete b{opacity:.45}
 .fxTete{display:flex;align-items:center;gap:4px;font-size:12px}
 .fxTete b{font-weight:600}
-.fxOn{background:none;border:0;padding:0 2px;color:var(--sourd);font-size:13px;
- line-height:1;cursor:pointer}
-.fxOn.on{color:var(--vert);background:none;border-color:transparent}
-.fxOn.on:hover{background:none}
+/* Couper un effet sans l effacer : un bouton « mute » (1.3.108, David : plus
+   clair pour les nouveaux venus que le rond vert d avant). Rouge quand
+   l effet est coupe, comme le M des pistes. */
+.fxOn{padding:1px 6px;font:10px/1.4 ui-monospace,monospace;border-radius:3px;
+ cursor:pointer;letter-spacing:.02em}
+.fxOn.coupe{background:var(--rouge);border-color:var(--rouge);color:#fff}
 .rackPresets{display:flex;gap:5px}
 .rackPresets select{flex:1 1 auto;min-width:0;font-size:11px;padding:2px 4px}
 /* Un plan qui porte des effets le montre sur la timeline. */
@@ -11790,9 +11792,10 @@ function rackFx(c, sel) {
     if (!FX[x.t]) return;
     const on = x.on !== false;
     h += '<div class="fxCarte' + (on ? '' : ' eteint') + '">' +
-      '<div class="fxTete"><button class="fxOn' + (on ? ' on' : '') +
-      '" data-fx-on="' + i + '" title="switch on / off">' + (on ? '●' : '○') +
-      '</button><b>' + FX[x.t].nom + '</b><span class="pousse"></span>' +
+      '<div class="fxTete"><button class="fxOn' + (on ? '' : ' coupe') +
+      '" data-fx-on="' + i + '" title="' + (on ? 'mute this effect (it stays on the block)'
+        : 'muted — click to switch it back on') + '">mute</button><b>' +
+      FX[x.t].nom + '</b><span class="pousse"></span>' +
       (i > 0 ? '<button class="fxPetit" data-fx-monte="' + i +
         '" title="apply earlier">↑</button>' : '') +
       (i < l.length - 1 ? '<button class="fxPetit" data-fx-descend="' + i +
