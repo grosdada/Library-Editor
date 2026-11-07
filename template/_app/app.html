@@ -525,7 +525,10 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
 .tl{flex:1 1 auto;display:flex;min-width:0;min-height:0}
 .tl-entetes{flex:0 0 var(--wEntetes);border-right:1px solid var(--trait);overflow:hidden;
  background:#191816}
-.tl-defile{flex:1 1 auto;overflow:auto;position:relative}
+/* La barre de defilement du bas reste toujours la (1.3.107) : quand tout le
+   montage tient dans la vue, le navigateur la retirait, et Ctrl + glisser
+   n avait plus rien a saisir pour zoomer. */
+.tl-defile{flex:1 1 auto;overflow-x:scroll;overflow-y:auto;position:relative}
 .tl-contenu{position:relative;min-width:100%}
 .regle{height:21px;position:sticky;top:0;z-index:3;background:#1c1b19;
  border-bottom:1px solid var(--trait);cursor:pointer}
