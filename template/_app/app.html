@@ -15046,7 +15046,7 @@ function pauseSource() {
 // et la sortie ; eteint, elle lit tout le rush, d ou elle est, et s arrete au
 // bout. Un seul lecteur a la fois : le montage s arrete quand la source part,
 // et inversement.
-const srcEnBoucle = () => pref.lire('srcBoucle', '1') !== '0';
+const srcEnBoucle = () => pref.lire('srcBoucle', '0') === '1';
 function majBoutonBoucleSource() {
   $('#srcBoucle').classList.toggle('on', srcEnBoucle());
   $('#srcBarre').classList.toggle('horsBoucle', !srcEnBoucle());
