@@ -281,6 +281,9 @@ body.edit.srcOuvert .rz[data-rz=source]{display:block}
 #srcBarre.sans{display:none}
 #srcZone{position:absolute;top:0;bottom:0;background:#d9532b55;border-left:2px solid var(--orange);
  border-right:2px solid var(--orange);pointer-events:none}
+/* Loop eteint : la plage n est plus celle qu on joue, la zone passe au gris
+   de la barre (1.3.114). */
+#srcBarre.horsBoucle #srcZone{background:#8a8a8a24;border-left-color:#6b6a66;border-right-color:#6b6a66}
 #srcBarre .poi{position:absolute;top:-3px;bottom:-3px;width:12px;margin-left:-6px;cursor:ew-resize;z-index:2}
 #srcBarre .poi::after{content:"";position:absolute;top:0;bottom:0;width:6px;
  border:3px solid var(--or);background:transparent}
@@ -444,7 +447,7 @@ body.edit .moniteur canvas{width:auto;max-width:100%;max-height:100%;
 .transport{display:flex;gap:4px;align-items:center;width:100%;flex-wrap:wrap}
 .transport .tr{padding:4px 8px;font-size:12px;min-width:30px;text-align:center}
 .transport .tr.on{background:var(--vert);border-color:var(--vert);color:#fff}
-.transport #bBoucle.on{background:var(--or);border-color:var(--or);color:#1a1917}
+.transport #bBoucle.on,.transport #srcBoucle.on{background:var(--or);border-color:var(--or);color:#1a1917}
 /* plein ecran : le moniteur prend tout, le reste s efface */
 .moniteur:fullscreen{background:#000;padding:0;justify-content:center}
 .moniteur:fullscreen .cadreMoni{flex:1 1 auto;width:100%}
@@ -1172,6 +1175,7 @@ here and change nothing to the files">My folders</button>
       <button id="srcPlay" class="tr" title="play the range (Space with the mouse over this window)">▶</button>
       <button id="srcIn" class="tr" title="in point here (I with the mouse over this window)">[</button>
       <button id="srcOut" class="tr" title="out point here (O with the mouse over this window)">]</button>
+      <button id="srcBoucle" class="tr" title="loop between the in and out points — off: plays the whole rush">⟳</button>
       <span id="srcDur" title="duration of the range — double-click to type one (the out point moves)"></span>
       <span class="tc" id="srcTc"></span>
       <button id="srcAjout" class="tr pousse"
@@ -14954,7 +14958,7 @@ function srcMajTete() {
   $('#srcNom').title = f ? f.nom : '';
   $('#srcAjout').style.display = f && !c ? '' : 'none';
   const sans = !f || !!f.image;
-  ['#srcPlay', '#srcIn', '#srcOut'].forEach(s => { $(s).disabled = sans; });
+  ['#srcPlay', '#srcIn', '#srcOut', '#srcBoucle'].forEach(s => { $(s).disabled = sans; });
   $('#bAjouter').disabled = !selection.size && !sourcePourAjout();
 }
 
@@ -15011,6 +15015,7 @@ function ouvrirSource(q) {
       // l ait vue.
       v.addEventListener('ended', () => {
         if (!SRC.lecture) return;
+        if (!srcEnBoucle()) { pauseSource(); return; }
         v.currentTime = SRC.e; v.play().catch(() => {});
       });
       v.addEventListener('seeked', srcMajBarre);
@@ -15037,14 +15042,30 @@ function pauseSource() {
   SRC.lecture = false;
   $('#srcPlay').textContent = '▶';
 }
-// La lecture tourne en boucle entre l entree et la sortie. Un seul lecteur a
-// la fois : le montage s arrete quand la source part, et inversement.
+// Le bouton loop (1.3.114) : allume, la lecture tourne en boucle entre l entree
+// et la sortie ; eteint, elle lit tout le rush, d ou elle est, et s arrete au
+// bout. Un seul lecteur a la fois : le montage s arrete quand la source part,
+// et inversement.
+const srcEnBoucle = () => pref.lire('srcBoucle', '1') !== '0';
+function majBoutonBoucleSource() {
+  $('#srcBoucle').classList.toggle('on', srcEnBoucle());
+  $('#srcBarre').classList.toggle('horsBoucle', !srcEnBoucle());
+}
+$('#srcBoucle').onclick = () => {
+  pref.ecrire('srcBoucle', srcEnBoucle() ? '0' : '1');
+  majBoutonBoucleSource();
+  dire(srcEnBoucle() ? 'source loop on — between the in and out points'
+                     : 'source loop off — plays the whole rush');
+};
+majBoutonBoucleSource();
 function lireSource() {
   const v = srcVid();
   if (!v || !SRC.film) return;
   if (enLecture) pause();
-  if (v.currentTime < SRC.e - 0.01 ||
-      v.currentTime >= SRC.o - 1.5 / (PROJET.fps || 24)) v.currentTime = SRC.e;
+  if (srcEnBoucle()) {
+    if (v.currentTime < SRC.e - 0.01 ||
+        v.currentTime >= SRC.o - 1.5 / (PROJET.fps || 24)) v.currentTime = SRC.e;
+  } else if (v.currentTime >= srcDuree() - 1.5 / (PROJET.fps || 24)) v.currentTime = 0;
   // Un refus du navigateur (lecture sans geste) remet le bouton au repos.
   v.play().catch(() => { if (v.paused) pauseSource(); });
   SRC.lecture = true;
@@ -15060,7 +15081,7 @@ function srcBoucle() {
     if (!SRC.ouvert) return;
     const v = srcVid();
     if (SRC.lecture && enLecture) pauseSource();
-    if (v && SRC.lecture && !v.paused && v.currentTime >= SRC.o) v.currentTime = SRC.e;
+    if (v && SRC.lecture && !v.paused && srcEnBoucle() && v.currentTime >= SRC.o) v.currentTime = SRC.e;
     // Le bloc a pu changer ailleurs : rognage sur la timeline, annulation,
     // suppression. La fenetre suit ; un bloc disparu y reste comme rush.
     if (SRC.uid && !SRC.tire) {
