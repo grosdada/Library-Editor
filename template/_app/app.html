@@ -889,6 +889,25 @@ body.mqDessin #mqCalque{pointer-events:auto;cursor:crosshair}
 body.mqEdit #mqCalque{pointer-events:auto;cursor:default}
 #mqCalque circle.pt{fill:#101414;stroke:#2fb5a5;stroke-width:1.6;cursor:move}
 #mqCalque circle.pt.sel{fill:#2fb5a5}
+/* La petite timeline du masque anime : sur le moniteur, en bas, la duree du bloc. */
+#mqTl{display:none;position:absolute;left:8px;right:8px;bottom:8px;z-index:6;
+ background:#0c1816ee;border:1px solid #2fb5a5;border-radius:6px;padding:4px 8px 6px;
+ font:11px/1.2 system-ui,sans-serif;color:#bfeee7;user-select:none}
+#mqTl.on{display:block}
+#mqTl .mqTlT{display:flex;gap:5px;align-items:center;margin-bottom:4px}
+#mqTl .mqTlInfo{flex:1 1 auto;color:#8fe0d4;font:10px ui-monospace,monospace;opacity:.85}
+#mqTl button{background:#16302c;border:1px solid #2fb5a5;color:#bfeee7;border-radius:4px;
+ padding:1px 7px;font-size:10px;cursor:pointer}
+#mqTl button:hover{background:#24544d}
+#mqTl .mqTlPiste{position:relative;height:20px;background:#13201e;border-radius:4px;
+ cursor:pointer;touch-action:none}
+#mqTl .mqTlCles{position:absolute;inset:0}
+#mqTl .mqTlCles i{position:absolute;top:50%;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;
+ background:#2fb5a5;transform:rotate(45deg);border:1px solid #08201c;cursor:ew-resize;z-index:2}
+#mqTl .mqTlCles i.ici{background:#f2c94c}
+#mqTl .mqTlTete{position:absolute;top:-2px;bottom:-2px;width:2px;margin-left:-1px;
+ background:#e8742a;pointer-events:none;z-index:3}
+#mqCalque rect.cadreSel{fill:#2fb5a533;stroke:#2fb5a5;stroke-width:1;stroke-dasharray:4 3;pointer-events:none}
 #mqCalque circle.an{fill:#e8b93a;stroke:#101414;stroke-width:1;cursor:pointer}
 #mqCalque line.an{stroke:#e8b93a;stroke-width:1;opacity:.85}
 #mqCalque path.edit{stroke-width:2;cursor:copy;pointer-events:stroke}
@@ -1185,7 +1204,15 @@ here and change nothing to the files">My folders</button>
   <div class="rz vert" data-rz="source"></div>
   <div class="moniteur" id="moniteur">
     <div class="cadreMoni"><canvas id="moni" width="1280" height="720"></canvas>
-      <svg id="mqCalque" xmlns="http://www.w3.org/2000/svg"></svg></div>
+      <svg id="mqCalque" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="mqTl"><div class="mqTlT"><b>◐ Mask animation</b>
+        <span class="mqTlInfo"></span>
+        <button data-a="prev" title="previous key">◀</button>
+        <button data-a="add" title="add a key at the playhead (the current shape)">◆ +</button>
+        <button data-a="del" title="delete the key at the playhead">◆ ✕</button>
+        <button data-a="next" title="next key">▶</button>
+        <button data-a="x" title="hide this strip (the animation stays)">✕</button></div>
+        <div class="mqTlPiste" title="click or drag: move the playhead inside the block · drag a diamond: retime it · double-click a diamond: delete it"><div class="mqTlCles"></div><b class="mqTlTete"></b></div></div></div>
     <div class="transport">
       <button id="bPrec" class="tr" title="previous range (↑)">⏮</button>
       <button id="bPlay" class="tr" title="play (Space)">▶</button>
@@ -7292,6 +7319,16 @@ function couper(c, t, enLot) {
     };
     if (x.anim) for (const k in x.anim)
       [x.anim[k], droite.anim[k]] = couperListe(x.anim[k], droite.anim[k]);
+    // Un masque anime se coupe de meme : une cle a la coupe de chaque cote.
+    if (x.masque && masqueAnime(x.masque)) {
+      const e = masqueA(x, t);
+      const cle = tt => ({t: tt, pts: clonerMq(e.pts), anses: clonerMq(e.anses)});
+      const lc = x.masque.cles;
+      x.masque.cles = lc.filter(q => q.t < decoupe - 0.008)
+        .concat([cle(+decoupe.toFixed(3))]);
+      droite.masque.cles = [cle(0)].concat(lc.filter(q => q.t > decoupe + 0.008)
+        .map(q => Object.assign({}, q, {t: +(q.t - decoupe).toFixed(3)})));
+    }
     (x.fx || []).forEach((f, n) => {
       if (!f || !f.anim) return;
       for (const k in f.anim)
@@ -8289,13 +8326,55 @@ function tracerMasque(g, mq, w, h) {
   g.restore();
 }
 
+// ---- masque anime (1.3.116) --------------------------------------------------
+// c.masque.cles = [{t, pts, anses}] : la FORME du masque a des instants du bloc
+// (t en secondes depuis le debut du bloc, comme c.anim). Toutes les formes ont
+// les memes points ; entre deux cles on interpole point par point, et avant la
+// premiere / apres la derniere on garde la forme de la cle la plus proche.
+// masqueA() rend un masque ordinaire pour un instant : tout le reste (moniteur,
+// contour, rendu) ne voit que lui. c.masque.pts / anses restent la copie de
+// travail, celle qu on edite a la tete de lecture.
+const clonerMq = o => JSON.parse(JSON.stringify(o));
+function masqueAnime(mq) {
+  return !!(mq && mq.anim && Array.isArray(mq.cles) && mq.cles.length);
+}
+function masqueA(c, t) {
+  const mq = c && c.masque;
+  if (!masqueAnime(mq)) return mq;
+  const l = mq.cles, tb = t - c.t0;
+  let a = l[0], b = l[0], u = 0;
+  if (tb >= l[l.length - 1].t) a = b = l[l.length - 1];
+  else if (tb > l[0].t) {
+    let i = 1;
+    while (l[i].t < tb) i++;
+    a = l[i - 1]; b = l[i];
+    u = (tb - a.t) / Math.max(1e-6, b.t - a.t);
+  }
+  let pts, anses;
+  if (a === b || u <= 0 || b.pts.length !== a.pts.length) {
+    pts = clonerMq(a.pts); anses = clonerMq(a.anses);
+  } else {
+    const L = (p, q) => [p[0] + (q[0] - p[0]) * u, p[1] + (q[1] - p[1]) * u];
+    pts = a.pts.map((p, i) => L(p, b.pts[i]));
+    anses = a.pts.map((p, i) => {
+      const x = a.anses[i], y = b.anses[i];
+      if (!x && !y) return null;
+      const X = x || [p, p], Y = y || [b.pts[i], b.pts[i]];
+      return [L(X[0], Y[0]), L(X[1], Y[1])];
+    });
+  }
+  const r = Object.assign({}, mq, {forme: 'libre', pts: pts, anses: anses});
+  delete r.cles; delete r.anim;
+  return r;
+}
 function toileMasque(c, w, h) {
-  const cle = JSON.stringify(c.masque) + '|' + w + 'x' + h;
+  const mq = masqueA(c, tLect);
+  const cle = JSON.stringify(mq) + '|' + w + 'x' + h;
   const e = MQ_TOILES.get(c.uid);
   if (e && e.cle === cle) return e.tl;
   const tl = (e && e.tl) || document.createElement('canvas');
   tl.width = w; tl.height = h;
-  tracerMasque(tl.getContext('2d'), c.masque, w, h);
+  tracerMasque(tl.getContext('2d'), mq, w, h);
   MQ_TOILES.set(c.uid, {cle: cle, tl: tl});
   return tl;
 }
@@ -8328,6 +8407,28 @@ function pngMasque(c) {
   g.fillRect(0, 0, w, h);
   g.drawImage(a, 0, 0);
   return b.toDataURL('image/png');
+}
+
+// Masque anime, pour le rendu : une image par image de sortie, a MOITIE de
+// resolution (la plume est proportionnelle a la largeur, le serveur remet a
+// l echelle), du debut a la fin du bloc.
+function seqMasque(c) {
+  const fps = PROJET.fps || 24, d = dur(c);
+  const n = Math.max(2, Math.min(3000, Math.ceil(d * fps) + 1));
+  const w = Math.max(2, Math.round(PROJET.w / 2)), h = Math.max(2, Math.round(PROJET.h / 2));
+  const a = document.createElement('canvas'), b = document.createElement('canvas');
+  a.width = b.width = w; a.height = b.height = h;
+  const ga = a.getContext('2d'), gb = b.getContext('2d');
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const mq = masqueA(c, c.t0 + Math.min(d, i / fps));
+    tracerMasque(ga, mq, w, h);
+    gb.globalCompositeOperation = 'source-over';
+    gb.fillStyle = '#000'; gb.fillRect(0, 0, w, h);
+    gb.drawImage(a, 0, 0);
+    out.push(b.toDataURL('image/png'));
+  }
+  return out;
 }
 
 // ---- le bouton -------------------------------------------------------------
@@ -8366,14 +8467,22 @@ function dMasque(mq, w, h) {
 function majContourMasque() {
   const sv = $('#mqCalque'), cv = $('#moni');
   if (!sv || !cv) return;
+  majMqTl();
   const r = cv.getBoundingClientRect(), pr = cv.parentElement.getBoundingClientRect();
   const w = Math.round(r.width), h = Math.round(r.height);
   const c = MQ_DESSIN ? null : (MQ_EDIT ? parUid(MQ_EDIT.uid)
     : blocsMasquables().find(x => x.masque && x.masque.pts));
-  const mq = MQ_DESSIN ? MQ_DESSIN.mq : (c ? c.masque : null);
+  // Masque anime en edition : la copie de travail suit la tete de lecture,
+  // sauf pendant un geste.
+  if (MQ_EDIT && c && c.masque && masqueAnime(c.masque) && !MQ_EDIT.geste) {
+    const e = masqueA(c, tLect);
+    c.masque.pts = clonerMq(e.pts); c.masque.anses = clonerMq(e.anses);
+  }
+  const mq = MQ_DESSIN ? MQ_DESSIN.mq
+    : (c ? (MQ_EDIT ? c.masque : masqueA(c, tLect)) : null);
   const cle = [w, h, Math.round(r.left - pr.left), Math.round(r.top - pr.top),
                mq ? JSON.stringify(mq) : '', MQ_DESSIN ? 1 : 0,
-               MQ_EDIT ? 'e' + MQ_EDIT.sel : ''].join('|');
+               MQ_EDIT ? 'e' + Array.from(MQ_EDIT.sel).join(',') + (MQ_EDIT.rect ? 'r' + MQ_EDIT.rect.join(',') : '') : ''].join('|');
   if (cle === mqCle) return;
   mqCle = cle;
   sv.style.left = Math.round(r.left - pr.left) + 'px';
@@ -8394,9 +8503,16 @@ function majContourMasque() {
       });
     });
     mq.pts.forEach((q, i) => {
-      s += '<circle class="pt' + (MQ_EDIT.sel === i ? ' sel' : '') + '" r="5" cx="' +
+      s += '<circle class="pt' + (MQ_EDIT.sel.has(i) ? ' sel' : '') + '" r="5" cx="' +
         X(q) + '" cy="' + Y(q) + '" data-i="' + i + '"/>';
     });
+    if (MQ_EDIT.rect) {
+      const R = MQ_EDIT.rect;
+      s += '<rect class="cadreSel" x="' + (Math.min(R[0], R[2]) * w).toFixed(1) +
+        '" y="' + (Math.min(R[1], R[3]) * h).toFixed(1) + '" width="' +
+        (Math.abs(R[2] - R[0]) * w).toFixed(1) + '" height="' +
+        (Math.abs(R[3] - R[1]) * h).toFixed(1) + '"/>';
+    }
     sv.innerHTML = s;
     return;
   }
@@ -8570,10 +8686,10 @@ function editerMasque() {
       x.masque = n;
     });
   }
-  MQ_EDIT = {uid: c.uid, sel: -1, geste: null};
+  MQ_EDIT = {uid: c.uid, sel: new Set(), geste: null, rect: null};
   document.body.classList.add('mqEdit');
   mqCle = ''; majContourMasque(); dessiner();
-  dire('edit the mask: drag points · Alt+drag a point for curves · double-click ' +
+  dire('edit the mask: drag points · drag in the empty to select several (Shift adds, Ctrl+A all) · Alt+drag a point for curves · double-click ' +
        'a point: smooth/corner · double-click the line: add · Del · Enter or Esc: done');
 }
 function finirEdition() {
@@ -8591,6 +8707,7 @@ function propagerMasque() {
     if (x === c || !x.masque) return;
     const n = JSON.parse(JSON.stringify(c.masque));
     n.plume = x.masque.plume; n.inv = !!x.masque.inv; n.on = x.masque.on;
+    if (n.cles) n.cles.forEach(q => { q.t = Math.min(q.t, dur(x)); });
     x.masque = n;
   });
   modifie = true;
@@ -8606,19 +8723,29 @@ $('#mqCalque').addEventListener('pointerdown', e => {
   if (cible.classList.contains('pt')) {
     e.preventDefault(); e.stopPropagation();
     memoriser();
-    MQ_EDIT.sel = i;
+    // Maj : ajoute ou retire ce point de la selection. Sans Maj, tirer un
+    // point deja choisi emmene toute la selection ; sinon il devient seul.
+    if (e.shiftKey) { if (MQ_EDIT.sel.has(i)) MQ_EDIT.sel.delete(i); else MQ_EDIT.sel.add(i); }
+    else if (!MQ_EDIT.sel.has(i)) MQ_EDIT.sel = new Set([i]);
     // Alt : on sort les poignees de ce point, en symetrie, a la souris.
-    MQ_EDIT.geste = e.altKey ? {mode: 'tire', i: i} : {mode: 'pt', i: i,
-      dep: pointMoniteur(e), p0: mq.pts[i].slice(),
-      a0: mq.anses[i] ? JSON.parse(JSON.stringify(mq.anses[i])) : null};
+    if (e.altKey) MQ_EDIT.geste = {mode: 'tire', i: i};
+    else {
+      const orig = new Map();
+      MQ_EDIT.sel.forEach(k => orig.set(k, {p: mq.pts[k].slice(),
+        a: mq.anses[k] ? JSON.parse(JSON.stringify(mq.anses[k])) : null}));
+      MQ_EDIT.geste = {mode: 'pt', i: i, dep: pointMoniteur(e), orig: orig};
+    }
   } else if (cible.classList.contains('an')) {
     e.preventDefault(); e.stopPropagation();
     memoriser();
     MQ_EDIT.geste = {mode: 'an', i: i, k: +cible.dataset.k, casse: e.altKey};
   } else {
-    MQ_EDIT.sel = -1;
-    mqApres();
-    return;
+    // Le vide (ou le trait) : un cadre de selection. Maj ajoute a la selection.
+    e.preventDefault();
+    const q = pointMoniteur(e);
+    MQ_EDIT.geste = {mode: 'cadre', a: q, base: e.shiftKey ? new Set(MQ_EDIT.sel) : new Set()};
+    MQ_EDIT.sel = new Set(MQ_EDIT.geste.base);
+    MQ_EDIT.rect = [q[0], q[1], q[0], q[1]];
   }
   try { $('#mqCalque').setPointerCapture(e.pointerId); } catch (err) {}
   mqApres();
@@ -8629,8 +8756,17 @@ $('#mqCalque').addEventListener('pointermove', e => {
   const c = parUid(MQ_EDIT.uid), mq = c.masque, p = pointMoniteur(e);
   if (g.mode === 'pt') {
     const dx = p[0] - g.dep[0], dy = p[1] - g.dep[1];
-    mq.pts[g.i] = [g.p0[0] + dx, g.p0[1] + dy];
-    if (g.a0) mq.anses[g.i] = g.a0.map(q => [q[0] + dx, q[1] + dy]);
+    g.orig.forEach((o, k) => {
+      mq.pts[k] = [o.p[0] + dx, o.p[1] + dy];
+      if (o.a) mq.anses[k] = o.a.map(q => [q[0] + dx, q[1] + dy]);
+    });
+  } else if (g.mode === 'cadre') {
+    MQ_EDIT.rect = [g.a[0], g.a[1], p[0], p[1]];
+    const x0 = Math.min(g.a[0], p[0]), x1 = Math.max(g.a[0], p[0]);
+    const y0 = Math.min(g.a[1], p[1]), y1 = Math.max(g.a[1], p[1]);
+    const s2 = new Set(g.base);
+    mq.pts.forEach((q, k) => { if (q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1) s2.add(k); });
+    MQ_EDIT.sel = s2;
   } else if (g.mode === 'tire') {
     const q = mq.pts[g.i];
     mq.anses[g.i] = [[2 * q[0] - p[0], 2 * q[1] - p[1]], p];
@@ -8649,7 +8785,15 @@ $('#mqCalque').addEventListener('pointermove', e => {
 }, true);
 $('#mqCalque').addEventListener('pointerup', () => {
   if (!MQ_EDIT || !MQ_EDIT.geste) return;
-  MQ_EDIT.geste = null;
+  const etaitCadre = MQ_EDIT.geste.mode === 'cadre';
+  MQ_EDIT.geste = null; MQ_EDIT.rect = null;
+  if (!etaitCadre) commitMq(parUid(MQ_EDIT.uid));
+  if (etaitCadre) {
+    mqApres();
+    dire(MQ_EDIT.sel.size ? MQ_EDIT.sel.size + ' point' + (MQ_EDIT.sel.size > 1 ? 's' : '') +
+         ' selected — drag one to move them all, Del removes them' : 'no point selected');
+    return;
+  }
   propagerMasque();
   rendreLanes(); mqApres();
 }, true);
@@ -8680,10 +8824,12 @@ $('#mqCalque').addEventListener('dblclick', e => {
       const d = Math.hypot(a[0] + u * vx - p[0], a[1] + u * vy - p[1]);
       if (d < dmin) { dmin = d; best = i; }
     }
+    topoMq(c, 'add', best + 1, n);
     mq.pts.splice(best + 1, 0, p);
     mq.anses.splice(best + 1, 0, null);
-    MQ_EDIT.sel = best + 1;
+    MQ_EDIT.sel = new Set([best + 1]);
   }
+  commitMq(c);
   propagerMasque(); rendreLanes(); mqApres();
 }, true);
 document.addEventListener('keydown', e => {
@@ -8691,16 +8837,184 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' || e.key === 'Enter') {
     e.preventDefault(); e.stopPropagation();
     finirEdition(); dire('mask edited');
-  } else if ((e.key === 'Delete' || e.key === 'Backspace') && MQ_EDIT.sel >= 0) {
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
     e.preventDefault(); e.stopPropagation();
     const c = parUid(MQ_EDIT.uid), mq = c && c.masque;
-    if (!mq || mq.pts.length <= 3) { dire('a mask needs at least 3 points'); return; }
+    if (!mq) return;
+    MQ_EDIT.sel = new Set(mq.pts.map((q, k) => k)); mqApres();
+  } else if ((e.key === 'Delete' || e.key === 'Backspace') && MQ_EDIT.sel.size) {
+    e.preventDefault(); e.stopPropagation();
+    const c = parUid(MQ_EDIT.uid), mq = c && c.masque;
+    if (!mq || mq.pts.length - MQ_EDIT.sel.size < 3) { dire('a mask needs at least 3 points'); return; }
     memoriser();
-    mq.pts.splice(MQ_EDIT.sel, 1); mq.anses.splice(MQ_EDIT.sel, 1);
-    MQ_EDIT.sel = -1;
+    topoMq(c, 'del', MQ_EDIT.sel);
+    for (let k = mq.pts.length - 1; k >= 0; k--)
+      if (MQ_EDIT.sel.has(k)) { mq.pts.splice(k, 1); mq.anses.splice(k, 1); }
+    MQ_EDIT.sel = new Set();
+    commitMq(c);
     propagerMasque(); rendreLanes(); mqApres();
   }
 }, true);
+
+// ---- masque anime : cles, petite timeline (1.3.116) ------------------------------
+const MQ_TOL = 0.02, MQ_TL_FERME = new Set();
+let mqTlSig = '', MQ_TL_G = null;
+// La cle a l instant de la tete de lecture : on l ecrase si elle existe, on la
+// cree sinon (c est ce qui fait qu editer un point cree l image cle).
+function commitMq(c) {
+  const mq = c && c.masque;
+  if (!masqueAnime(mq)) return;
+  const tb = Math.max(0, Math.min(dur(c), tLect - c.t0));
+  let k = mq.cles.find(q => Math.abs(q.t - tb) < MQ_TOL);
+  if (!k) { k = {t: +tb.toFixed(3)}; mq.cles.push(k); mq.cles.sort((a, b) => a.t - b.t); }
+  k.pts = clonerMq(mq.pts); k.anses = clonerMq(mq.anses);
+}
+// Un point de plus / de moins : dans TOUTES les cles, sinon elles n auraient
+// plus les memes points et on ne pourrait plus passer de l une a l autre.
+function topoMq(c, op, arg, nAvant) {
+  const mq = c && c.masque;
+  if (!masqueAnime(mq)) return;
+  mq.cles.forEach(k => {
+    if (op === 'add') {
+      const a = k.pts[arg - 1], b = k.pts[arg % nAvant];
+      k.pts.splice(arg, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
+      k.anses.splice(arg, 0, null);
+    } else {
+      for (let i = k.pts.length - 1; i >= 0; i--)
+        if (arg.has(i)) { k.pts.splice(i, 1); k.anses.splice(i, 1); }
+    }
+  });
+}
+function blocTl() {
+  const c = blocsMasquables().find(x => masqueAnime(x.masque));
+  return c && !MQ_TL_FERME.has(c.uid) ? c : null;
+}
+function majMqTl() {
+  const el = $('#mqTl');
+  if (!el) return;
+  const c = blocTl();
+  if (!c || !document.body.classList.contains('edit')) {
+    el.classList.remove('on'); mqTlSig = ''; return;
+  }
+  el.classList.add('on');
+  const d = dur(c), mq = c.masque;
+  const tb = tLect - c.t0;
+  const sig = c.uid + '|' + d.toFixed(3) + '|' + mq.cles.map(k => k.t).join(',');
+  const cles = el.querySelector('.mqTlCles');
+  if (sig !== mqTlSig) {
+    mqTlSig = sig;
+    cles.innerHTML = mq.cles.map((k, i) => '<i data-i="' + i + '" style="left:' +
+      (k.t / d * 100).toFixed(3) + '%" title="' + k.t.toFixed(2) + ' s"></i>').join('');
+  }
+  const ici = mq.cles.findIndex(k => Math.abs(k.t - tb) < MQ_TOL);
+  cles.querySelectorAll('i').forEach((n, i) => n.classList.toggle('ici', i === ici));
+  el.querySelector('.mqTlTete').style.left =
+    (Math.max(0, Math.min(1, tb / d)) * 100).toFixed(3) + '%';
+  el.querySelector('.mqTlInfo').textContent = mq.cles.length + ' key' +
+    (mq.cles.length > 1 ? 's' : '') + ' · ' + Math.max(0, Math.min(d, tb)).toFixed(2) + ' / ' +
+    d.toFixed(2) + ' s' + (ici >= 0 ? ' · on a key' : '');
+}
+(function () {
+  const el = $('#mqTl');
+  if (!el) return;
+  const apres = () => { modifie = true; mqCle = ''; mqTlSig = ''; dessiner(); rendreLanes(); majMqTl(); };
+  const tDe = (e, c) => {
+    const r = el.querySelector('.mqTlPiste').getBoundingClientRect();
+    return Math.max(0, Math.min(1, (e.clientX - r.left) / Math.max(1, r.width))) * dur(c);
+  };
+  ['click', 'contextmenu'].forEach(n =>
+    el.addEventListener(n, e => e.stopPropagation()));
+  el.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    const c = blocTl();
+    if (!c || e.button !== 0) return;
+    const b = e.target.closest('button');
+    if (b) {
+      const a = b.dataset.a, l = c.masque.cles, tb = tLect - c.t0;
+      if (a === 'x') { MQ_TL_FERME.add(c.uid); majMqTl(); dire('strip hidden — Animate mask off then on brings it back'); }
+      else if (a === 'prev' || a === 'next') {
+        const k = a === 'prev' ? l.filter(q => q.t < tb - MQ_TOL).pop()
+                               : l.find(q => q.t > tb + MQ_TOL);
+        if (k) allerAuTemps(c.t0 + k.t); else dire('no ' + (a === 'prev' ? 'previous' : 'next') + ' key');
+      } else if (a === 'add') {
+        if (tb < -0.001 || tb > dur(c) + 0.001) { dire('move the playhead inside the block first'); return; }
+        if (l.some(q => Math.abs(q.t - tb) < MQ_TOL)) { dire('there is already a key here'); return; }
+        memoriser();
+        const m = masqueA(c, tLect);
+        c.masque.pts = clonerMq(m.pts); c.masque.anses = clonerMq(m.anses);
+        commitMq(c); apres(); dire('key added');
+      } else if (a === 'del') {
+        const i = l.findIndex(q => Math.abs(q.t - tb) < MQ_TOL);
+        if (i < 0) { dire('no key at the playhead'); return; }
+        if (l.length <= 1) { dire('at least one key — untick Animate mask to freeze the shape'); return; }
+        memoriser(); l.splice(i, 1); apres(); dire('key deleted');
+      }
+      return;
+    }
+    e.preventDefault();
+    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    const n = e.target.closest('.mqTlCles i');
+    if (n) {
+      const k = c.masque.cles[+n.dataset.i];
+      allerAuTemps(c.t0 + k.t);
+      MQ_TL_G = {mode: 'cle', k: k, c: c, fait: false};
+    } else {
+      MQ_TL_G = {mode: 'tete', c: c};
+      allerAuTemps(c.t0 + tDe(e, c));
+    }
+  });
+  el.addEventListener('pointermove', e => {
+    const g = MQ_TL_G;
+    if (!g) return;
+    const t = tDe(e, g.c);
+    if (g.mode === 'tete') { allerAuTemps(g.c.t0 + t); return; }
+    if (!g.fait) { memoriser(); g.fait = true; }
+    g.k.t = +t.toFixed(3);
+    g.c.masque.cles.sort((a, b) => a.t - b.t);
+    mqTlSig = ''; mqCle = ''; dessiner(); majMqTl();
+  });
+  const fin = () => { if (!MQ_TL_G) return; const f = MQ_TL_G.fait; MQ_TL_G = null; if (f) apres(); };
+  el.addEventListener('pointerup', fin);
+  el.addEventListener('pointercancel', fin);
+  el.addEventListener('dblclick', e => {
+    e.stopPropagation();
+    const n = e.target.closest('.mqTlCles i'), c = blocTl();
+    if (!n || !c) return;
+    const l = c.masque.cles;
+    if (l.length <= 1) { dire('at least one key — untick Animate mask to freeze the shape'); return; }
+    memoriser(); l.splice(+n.dataset.i, 1); apres(); dire('key deleted');
+  });
+})();
+
+function basculerAnimMasque(on) {
+  const l = blocsMasquables().filter(c => c.masque);
+  if (!l.length) return;
+  memoriser();
+  if (MQ_EDIT) finirEdition();
+  l.forEach(c => {
+    const mq = c.masque;
+    if (on) {
+      if (masqueAnime(mq)) return;
+      const m = versChemin(mq);
+      mq.forme = 'libre'; mq.pts = m.pts; mq.anses = m.anses;
+      const tb = (tLect >= c.t0 && tLect <= fin(c)) ? tLect - c.t0 : 0;
+      mq.anim = true;
+      mq.cles = [{t: +tb.toFixed(3), pts: clonerMq(mq.pts), anses: clonerMq(mq.anses)}];
+      MQ_TL_FERME.delete(c.uid);
+    } else {
+      if (masqueAnime(mq)) {
+        const e = masqueA(c, tLect);
+        mq.pts = clonerMq(e.pts); mq.anses = clonerMq(e.anses);
+      }
+      delete mq.anim; delete mq.cles;
+    }
+  });
+  mqTlSig = '';
+  apresMasque();
+  dire(on ? 'mask animation on — the strip under the monitor: move the playhead, then ✥ Edit points ' +
+            '(or ◆ +) to make a new key; the shape moves between keys'
+          : 'mask animation off — the shape is frozen as it is at the playhead (Ctrl+Z brings the keys back)');
+}
 
 // ---- le menu du bouton ----------------------------------------------------------
 function menuMasque() {
@@ -8717,6 +9031,8 @@ function menuMasque() {
       (mq.on !== false ? ' checked' : '') + '> Mask on</label>' +
       '<div class="sep"></div>' : '') +
     (mq ? '<div class="it" data-mq-edit>✥ Edit points — drag, Alt for curves</div>' +
+      '<label class="it"><input type="checkbox" data-mq-anim' +
+      (masqueAnime(mq) ? ' checked' : '') + '> Animate mask — shape keys on the block</label>' +
       '<div class="sep"></div>' : '') +
     '<div class="it" data-mq-outil="libre">✎ Freehand</div>' +
     '<div class="it" data-mq-outil="rect">▭ Rectangle</div>' +
@@ -8768,6 +9084,8 @@ $('#menu').addEventListener('change', e => {
     dire(on.checked ? 'mask on' : 'mask off — kept, not applied');
     return;
   }
+  const an = e.target.closest('[data-mq-anim]');
+  if (an) { $('#menu').className = ''; basculerAnimMasque(an.checked); return; }
   const iv = e.target.closest('[data-mq-inv]');
   if (iv) {
     MQ_INV = iv.checked;
@@ -14235,8 +14553,11 @@ function objetMontage(avecMasques) {
               lien: c.lien, anim: c.anim || null, fx: fxRendu(c),
               masque: masqueActif(c) ? c.masque : null,
               gel: estGel(c) ? c.gel : undefined,
-              masque_png: avecMasques && masqueActif(c) ? pngMasque(c)
-                                                        : undefined,
+              masque_png: avecMasques && masqueActif(c) && !masqueAnime(c.masque)
+                ? pngMasque(c) : undefined,
+              masque_seq: avecMasques && masqueActif(c) && masqueAnime(c.masque)
+                ? seqMasque(c) : undefined,
+              masque_fps: PROJET.fps || 24,
               fondu_entree: +(c._fIn || 0).toFixed(3),
               fondu_sortie: +(c._fOut || 0).toFixed(3),
               cadrage: {mode: c.mode, echelle: c.ech, dx: c.dx, dy: c.dy,

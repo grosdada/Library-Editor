@@ -1869,7 +1869,7 @@ def _segment(plan, dossier, i, avec_son, fi=0.0, fo=0.0, pr_defaut=""):
     idx_mq = None
     if mq:
         idx_mq = (idx_nul if idx_nul is not None else iv) + 1
-        cmd += _masque_entree(mq)
+        cmd += _masque_entree(mq, plan)
     cmd += ["-filter_complex"]
     fx = _fx_actifs(plan)
     opac = float(plan.get("opacite", 1) or 1)
@@ -2167,15 +2167,53 @@ def _ecrire_masque(donnee, dossier, k):
     return chemin
 
 
-def _masque_entree(chemin):
-    """L entree ffmpeg d un masque : l image, bouclee a la cadence de sortie."""
+def _ecrire_masque_seq(images, dossier, k):
+    """Un masque anime : une suite de PNG (une par image de sortie, demi
+    resolution), recue en data URL. Renvoie le motif « masqueKKK_%05d.png »
+    ou None si quelque chose ne va pas."""
+    if not isinstance(images, list) or not (1 <= len(images) <= 3000):
+        return None
+    pre = "data:image/png;base64,"
+    total = 0
+    for i, donnee in enumerate(images):
+        if (not isinstance(donnee, str) or not donnee.startswith(pre)):
+            return None
+        total += len(donnee)
+        if total > 12 * MAX_MASQUE:
+            return None
+        try:
+            brut = base64.b64decode(donnee[len(pre):], validate=True)
+        except Exception:
+            return None
+        if not brut.startswith(b"\x89PNG"):
+            return None
+        with open(os.path.join(dossier, "masque%03d_%05d.png" % (k, i)), "wb") as fh:
+            fh.write(brut)
+    return os.path.join(dossier, "masque%03d_%%05d.png" % k)
+
+
+def _masque_entree(chemin, plan=None, decoupe=0.0):
+    """L entree ffmpeg d un masque : l image, bouclee a la cadence de sortie —
+    ou, pour un masque anime, la suite d images lue a la cadence de sortie en
+    partant du bon instant du bloc (tranche d un bloc a effets animes,
+    bloc rogne par le point d entree)."""
+    if "%05d" in chemin:
+        ss = float(decoupe or 0)
+        if plan:
+            ss += float(plan.get("_decalage") or 0)
+            ss += float(plan.get("_coupe_debut") or 0)
+        mq = ["-framerate", str(FPS_SORTIE)]
+        if ss > 0.0005:
+            mq += ["-ss", "%.4f" % ss]
+        return mq + ["-i", chemin]
     return ["-framerate", str(FPS_SORTIE), "-loop", "1", "-i", chemin]
 
 
 def _masque_rvb(entree, sortie, idx, pre):
     """Piste principale : l image multipliee par le masque. Rien n est
     dessous, le dehors devient donc noir — comme au moniteur."""
-    return ("[{i}:v]format=gray,scale={w}:{h},format=gbrp[{p}mk];"
+    return ("[{i}:v]format=gray,scale={w}:{h},"
+            "tpad=stop_mode=clone:stop_duration=2,format=gbrp[{p}mk];"
             "[{e}]format=gbrp[{p}mx];"
             "[{p}mx][{p}mk]blend=all_mode=multiply:shortest=1,"
             "format=yuv420p[{s}]").format(i=idx, w=LARGE, h=HAUT, p=pre,
@@ -2184,7 +2222,8 @@ def _masque_rvb(entree, sortie, idx, pre):
 
 def _masque_alpha(entree, sortie, idx, pre):
     """Calque : son alpha multiplie par le masque."""
-    return ("[{i}:v]format=gray,scale={w}:{h}[{p}mk];"
+    return ("[{i}:v]format=gray,scale={w}:{h},"
+            "tpad=stop_mode=clone:stop_duration=2[{p}mk];"
             "[{e}]format=rgba,split[{p}ma][{p}mb];[{p}mb]alphaextract[{p}al];"
             "[{p}al][{p}mk]blend=all_mode=multiply:shortest=1[{p}am];"
             "[{p}ma][{p}am]alphamerge,format=rgba[{s}]").format(
@@ -2262,7 +2301,7 @@ def _segment_synth(plan, dossier, i, duree, fi=0.0, fo=0.0):
     if fo > 0.02:
         vf += ",fade=t=out:st=%.3f:d=%.3f" % (max(0, duree - fo), min(fo, duree))
     if plan.get("_masque"):
-        cmd += _masque_entree(plan["_masque"])
+        cmd += _masque_entree(plan["_masque"], plan)
         graphe = ("[0:v]" + vf + "[s0];" +
                   _masque_rvb("s0", "v", 2 if MODE != "video" else 1, "m"))
     else:
@@ -2333,7 +2372,7 @@ def _incruster(base, sortie, calques, a0, b0, travail, pr_defaut=""):
         sxl, syl = _secousse(cad, 0.0, d)
         srl = _rotation_secousse(cad, 0.0, d)
         mq = plan.get("_masque")
-        idx_mq = entree(_masque_entree(mq)) if mq else None
+        idx_mq = entree(_masque_entree(mq, plan, coupe_debut)) if mq else None
         if not genre:
             # Un rush pose sur une piste du dessus : on le decoupe, le met a
             # sa vitesse et a sa taille, le pose sur un canevas transparent
@@ -3394,8 +3433,13 @@ def _rendre_un(montage, nom, pr, cible=None, mode="mp4", interne=False):
         # par « _masque ».
         for k, p in enumerate(plans):
             png = p.pop("masque_png", None)
+            seq = p.pop("masque_seq", None)
             if png and MODE != "audio":
                 chemin = _ecrire_masque(png, travail, k)
+                if chemin:
+                    p["_masque"] = chemin
+            elif seq and MODE != "audio":
+                chemin = _ecrire_masque_seq(seq, travail, k)
                 if chemin:
                     p["_masque"] = chemin
 
@@ -3413,6 +3457,7 @@ def _rendre_un(montage, nom, pr, cible=None, mode="mp4", interne=False):
             if pos < a0:
                 e += (a0 - pos) * vit
                 duree -= (a0 - pos)
+                p["_coupe_debut"] = float(p.get("_coupe_debut") or 0) + (a0 - pos)
                 pos = a0
             if b0 and pos + duree > b0:
                 o -= (pos + duree - b0) * vit
