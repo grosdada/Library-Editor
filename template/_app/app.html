@@ -5811,11 +5811,31 @@ function poserTete(x, colle) {
 // La tete allumee tant qu elle est collee ; eteinte des qu on relache.
 function teteCollee(on) { $('#tete').classList.toggle('collee', !!on); }
 addEventListener('pointerup', () => teteCollee(false), true);
+// Quand on tire la tete de lecture contre le bord gauche ou droit de la
+// timeline (ou au-dela), la timeline l accompagne : elle defile, plus vite a
+// mesure qu on s en approche, et la tete continue d avancer sous la souris
+// (David, 09/11). Le rectangle du contenu est relu a chaque image, puisqu il
+// bouge avec le defilement.
 $('#regle').addEventListener('pointerdown', e => {
-  const r = $('#tlContenu').getBoundingClientRect();
-  poserTete(e.clientX - r.left, e.shiftKey);
-  const bouger = ev => poserTete(ev.clientX - r.left, ev.shiftKey);
+  const def = $('#tlDefile');
+  let ev = e, raf = 0;
+  const poser = () => poserTete(ev.clientX - $('#tlContenu').getBoundingClientRect().left, ev.shiftKey);
+  const pas = () => {
+    raf = 0;
+    const r = def.getBoundingClientRect(), Z = 56, MAX = 28;
+    let v = 0;
+    if (ev.clientX < r.left + Z) v = -Math.min(1, (r.left + Z - ev.clientX) / Z) * MAX;
+    else if (ev.clientX > r.right - Z) v = Math.min(1, (ev.clientX - (r.right - Z)) / Z) * MAX;
+    if (!v) return;
+    const avant = def.scrollLeft;
+    def.scrollLeft = Math.max(0, avant + v);
+    if (def.scrollLeft !== avant) { poser(); majVue(); }
+    raf = requestAnimationFrame(pas);
+  };
+  poser();
+  const bouger = e2 => { ev = e2; poser(); if (!raf) raf = requestAnimationFrame(pas); };
   const lacher = () => {
+    cancelAnimationFrame(raf); raf = 0;
     window.removeEventListener('pointermove', bouger);
     window.removeEventListener('pointerup', lacher);
   };
