@@ -16393,11 +16393,14 @@ function boiteRemplacer(uid) {
       '<input id="rpQ" placeholder="search a rush…" style="flex:1;min-width:140px;padding:5px 8px">' +
       '<select id="rpPj" style="padding:5px"><option value="">All projects</option>' +
         projets.map(p => '<option value="' + echap(p) + '">' + echap(typeof affNom === 'function' ? affNom(p) : p) + '</option>').join('') +
+      '</select><select id="rpCoul" style="padding:5px" title="the colour tags of the library">' +
+        '<option value="">All colours</option><option value="0">No colour</option>' +
+        ((typeof CATS !== 'undefined' && CATS.liste) || []).map(k => '<option value="' + k.id + '">● ' + echap(k.nom || 'colour') + '</option>').join('') +
       '</select></div>' +
-    '<div style="flex:1;display:flex;min-height:0">' +
-      '<div id="rpListe" style="flex:1;overflow:auto;padding:10px;display:grid;' +
+    '<div style="flex:1;display:flex;flex-wrap:wrap;min-height:0;overflow:auto">' +
+      '<div id="rpListe" style="flex:2 1 320px;min-height:240px;overflow:auto;padding:10px;display:grid;' +
         'grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;align-content:start"></div>' +
-      '<div style="width:340px;border-left:1px solid #444;padding:12px;display:flex;flex-direction:column;gap:8px">' +
+      '<div style="flex:1 1 300px;max-width:100%;border-left:1px solid #444;padding:12px;display:flex;flex-direction:column;gap:8px">' +
         '<div id="rpLecteur" style="background:#000;border-radius:6px;min-height:150px;display:flex;' +
           'align-items:center;justify-content:center;color:#777;overflow:hidden">pick a rush to play it</div>' +
         '<div id="rpInfo" style="color:#999;font-size:12px;min-height:34px"></div>' +
@@ -16415,8 +16418,8 @@ function boiteRemplacer(uid) {
 
   const fermer = () => { const m = $v('#rpLecteur video, #rpLecteur audio'); if (m) m.pause(); v.remove(); };
   const rendre = () => {
-    const q = ($v('#rpQ').value || '').toLowerCase().trim(), pj = $v('#rpPj').value;
-    const l = liste.filter(f => (!pj || f.pj === pj) && (!q || (f.nom + f.ext).toLowerCase().indexOf(q) >= 0))
+    const q = ($v('#rpQ').value || '').toLowerCase().trim(), pj = $v('#rpPj').value, co = $v('#rpCoul').value;
+    const l = liste.filter(f => (!pj || f.pj === pj) && (co === '' || (+f.coul || 0) === +co) && (!q || (f.nom + f.ext).toLowerCase().indexOf(q) >= 0))
       .sort((a, b) => a.nom.localeCompare(b.nom));
     const aff = l.slice(0, limite);
     $v('#rpListe').innerHTML = aff.map(f =>
@@ -16425,8 +16428,10 @@ function boiteRemplacer(uid) {
       (f.son_seul || sonore
         ? '<div style="height:74px;background:#2a2a30;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:22px">♪</div>'
         : '<img loading="lazy" src="' + urlPoster(f) + '" style="width:100%;height:74px;object-fit:cover;border-radius:4px;background:#000" alt="">') +
-      '<div style="font-size:11px;margin-top:3px;word-break:break-all;max-height:2.7em;overflow:hidden" title="' + echap(f.nom) + '">' +
-        echap(f.nom) + '</div><div style="font-size:10.5px;color:#999">' +
+      '<div style="height:4px;margin-top:2px;border-radius:2px;background:' + (couleurCat(f.coul) || 'transparent') + '"></div>' +
+      '<div style="display:flex;align-items:center;gap:4px;margin-top:3px"><div style="flex:1;font-size:11px;word-break:break-all;max-height:2.7em;overflow:hidden" title="' + echap(f.nom) + '">' +
+        echap(f.nom) + '</div><span title="' + echap((catDe(f.coul) || {nom: 'no colour'}).nom || 'colour') + '" style="flex:none;width:12px;height:12px;border-radius:50%;box-sizing:border-box;' +
+        (couleurCat(f.coul) ? 'background:' + couleurCat(f.coul) : 'border:1px solid #666') + '"></span></div><div style="font-size:10.5px;color:#999">' +
         (f.image ? 'image' : fmt(f.s || 0)) + (projets.length > 1 ? ' · ' + echap(f.pj) : '') + '</div></div>'
     ).join('') + (l.length > aff.length
       ? '<button class="outil" id="rpPlus" style="grid-column:1/-1">Show more (' + (l.length - aff.length) + ' left)</button>' : '') +
@@ -16465,6 +16470,7 @@ function boiteRemplacer(uid) {
   });
   $v('#rpQ').oninput = () => { limite = 120; rendre(); };
   $v('#rpPj').onchange = () => { limite = 120; rendre(); };
+  $v('#rpCoul').onchange = () => { limite = 120; rendre(); };
   $v('#rpNon').onclick = fermer;
   $v('#rpOui').onclick = valider;
   v.addEventListener('mousedown', e => { if (e.target === v) fermer(); });
@@ -16472,6 +16478,11 @@ function boiteRemplacer(uid) {
     if (e.key === 'Escape') { e.stopPropagation(); fermer(); }
     else if (e.key === 'Enter' && choisi && e.target.tagName !== 'VIDEO' && e.target.tagName !== 'AUDIO') { e.stopPropagation(); valider(); }
   });
+  // Par defaut, on cherche dans « Vids » (le dossier des rushes video) quand
+  // il existe ; sinon dans tous les projets.
+  const vids = projets.find(p => /^vids$/i.test(p)) || projets.find(p => /^vids\+/i.test(p)) ||
+    projets.find(p => /^vids/i.test(p)) || '';
+  $v('#rpPj').value = vids;
   rendre();
   $v('#rpQ').focus();
 }
