@@ -9189,6 +9189,14 @@ $('#lanes').addEventListener('contextmenu', e => {
       ? '<div class="it" data-act="mixson" title="sound blocks that touch get a very short ' +
         'crossfade at each cut, and a sound much louder than the others is lowered a little">' +
         '♫ Mix sound — soften the cuts, even out the levels</div>' : '') +
+    (typeof duckPossible === 'function' && estSon(piste(c.piste)) && piste(c.piste).type === 'm' && duckPossible()
+      ? '<div class="it" data-act="duck" title="select the music block(s) and the voice block(s), ' +
+        'then right-click the music: it goes down a little (' + DUCK_DB + ' dB) only while the voices ' +
+        'speak, as volume keyframes you can still edit">♫ Make room for the voice ' +
+        '<span class="pousse" style="color:var(--sourd);font-size:10px">music −' + DUCK_DB + ' dB</span></div>' : '') +
+    (typeof duckExiste === 'function' && duckExiste()
+      ? '<div class="it" data-act="duck-off">✕ Remove the voice ducking</div>' : '') +
+    (remplacerPossible(c) ? '<div class="it" data-act="remplacer" title="pick another rush in a list, play it first, and swap it into this block">⇄ Replace with Rush…</div>' : '') +
     '<div class="it" data-act="annoter">Ⓐ ' + (c.annot ? 'Edit annotation…' : 'Annotation…') +
       '</div>' +
     (c.annot ? '<div class="it" data-act="annot-suppr">✕ Delete annotation</div>' : '') +
@@ -9417,9 +9425,12 @@ menu.addEventListener('click', async e => {
   else if (a === 'plans') couperAuxPlans();
   else if (a === 'multicut') boiteMulticut(+menu.dataset.uid);
   else if (a === 'separer') boiteSeparation();
+  else if (a === 'remplacer') boiteRemplacer(+menu.dataset.uid);
   else if (a === 'annoter') boiteAnnotation(+menu.dataset.uid);
   else if (a === 'annot-suppr') poserAnnotation(+menu.dataset.uid, '');
   else if (a === 'mixson') mixerSon();
+  else if (a === 'duck') duckMusique();
+  else if (a === 'duck-off') duckAnnuler();
   else if (a === 'delier') delier();
   else if (a === 'relier') relier();
   else if (a === 'copier') copierBlocs();
@@ -15726,5 +15737,743 @@ fenSrc.addEventListener('contextmenu', e => {
   m.style.top = Math.min(e.clientY, innerHeight - r.height - 8) + 'px';
 });
 srcMajTete();
+</script>
+<script>
+// ===========================================================================
+//  Import XML Premiere (Final Cut Pro XML, xmeml 4/5) -> NOUVELLE sequence
+//  Tout se passe dans le navigateur : meme code au bureau et en ligne.
+//  Ne modifie ni le catalogue ni une sequence existante : il ecrit un
+//  nouveau fichier de sequence sous un nom libre.
+// ===========================================================================
+(function () {
+  const aff = n => (typeof affNom === 'function' ? affNom(n) : n);
+  const bouton = document.createElement('button');
+  bouton.id = 'bImportXml'; bouton.className = 'outil';
+  bouton.textContent = 'Import XML…';
+  bouton.title = 'Import a Premiere (Final Cut Pro XML) sequence as a NEW sequence';
+  const bExp = document.getElementById('bExport');
+  bExp.parentNode.insertBefore(bouton, bExp);
+  const choix = document.createElement('input');
+  choix.type = 'file'; choix.accept = '.xml,application/xml,text/xml';
+  choix.style.display = 'none'; document.body.appendChild(choix);
+  bouton.onclick = () => { choix.value = ''; choix.click(); };
+  choix.onchange = async () => {
+    const f = choix.files && choix.files[0];
+    if (!f) return;
+    try { await importerXml(await f.text(), f.name); }
+    catch (err) { dire('XML import failed — ' + err.message, true); }
+  };
+
+  const E = s => String(s === undefined || s === null ? '' : s).replace(/[&<>"]/g,
+    c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+  const enfants = (n, nom) => n ? [...n.children].filter(x => x.tagName === nom) : [];
+  const un = (n, nom) => enfants(n, nom)[0] || null;
+  const txt = (n, nom) => { const x = un(n, nom); return x ? x.textContent.trim() : ''; };
+  const num = (n, nom, def) => {
+    const t = txt(n, nom); if (t === '') return def;
+    const v = parseFloat(t); return isNaN(v) ? def : v;
+  };
+  const cadence = r => {
+    if (!r) return null;
+    const tb = num(r, 'timebase', 0); if (!tb) return null;
+    return /^true$/i.test(txt(r, 'ntsc')) ? tb * 1000 / 1001 : tb;
+  };
+  const decoder = u => {
+    let s = String(u || '').trim();
+    s = s.replace(/^file:\/\/localhost\//i, '').replace(/^file:\/\/\//i, '')
+         .replace(/^file:\/\//i, '//');
+    try { s = decodeURIComponent(s); } catch (e) { try { s = unescape(s); } catch (e2) {} }
+    s = s.replace(/\\/g, '/');
+    if (/^\/[A-Za-z]:\//.test(s)) s = s.slice(1);
+    return s;
+  };
+  const nomDe = ch => ch.split('/').filter(Boolean).pop() || ch;
+
+  // ---- Correspondance rush -> fiche du catalogue --------------------------
+  function indexFilms() {
+    const parNom = {}, liste = [];
+    FILMS.forEach(f => {
+      if (f.absent) return;
+      const rel = String(f.rel || '').replace(/\\/g, '/').toLowerCase();
+      const rac = (racineDe(f.pj) || '').replace(/\\/g, '/').replace(/\/$/, '').toLowerCase();
+      const e = {f: f, rel: rel, pj: String(f.pj || '').toLowerCase(), rac: rac,
+                 nom: (f.nom + (f.ext || '')).toLowerCase()};
+      liste.push(e); (parNom[e.nom] = parNom[e.nom] || []).push(e);
+    });
+    return {liste: liste, parNom: parNom};
+  }
+  function suffixeCommun(a, b) {
+    const x = a.split('/'), y = b.split('/'); let n = 0;
+    while (n < x.length && n < y.length && x[x.length - 1 - n] === y[y.length - 1 - n]) n++;
+    return n;
+  }
+  function trouver(chemin, idx, hote) {
+    const p = chemin.toLowerCase(), h = (hote || '').toLowerCase();
+    const prefere = (a, b) => ((b.pj === h) - (a.pj === h));
+    // 1. chemin complet identique, ou chemin relatif identique
+    const ex = idx.liste.filter(e => e.rel && (e.rac + '/' + e.rel === p || e.rel === p ||
+                                               e.pj + '/' + e.rel === p));
+    if (ex.length) return {f: ex.sort(prefere)[0].f, how: 'chemin'};
+    // 2. le chemin du rush finit par le chemin relatif de la fiche
+    const suf = idx.liste.filter(e => e.rel && e.rel.indexOf('/') >= 0 && p.endsWith('/' + e.rel));
+    if (suf.length) {
+      suf.sort((a, b) => b.rel.length - a.rel.length || prefere(a, b));
+      return {f: suf[0].f, how: 'chemin relatif'};
+    }
+    // 3. nom de fichier seul
+    const c = (idx.parNom[nomDe(p)] || []).slice();
+    if (c.length) {
+      c.sort((a, b) => suffixeCommun(p, b.rel) - suffixeCommun(p, a.rel) || prefere(a, b));
+      return {f: c[0].f, how: 'nom', amb: c.length};
+    }
+    return null;
+  }
+
+  // ---- Lecture des filtres -------------------------------------------------
+  function params(effet) {
+    const o = {};
+    enfants(effet, 'parameter').forEach(p => {
+      const id = txt(p, 'parameterid') || txt(p, 'name');
+      const cles = enfants(p, 'keyframe');
+      const lire = v => {
+        if (!v) return null;
+        if (v.children.length) return {h: num(v, 'horiz', 0), v: num(v, 'vert', 0)};
+        const t = v.textContent.trim();
+        return t !== '' && !isNaN(+t) ? +t : t;
+      };
+      let valeur = lire(un(p, 'value'));
+      if (valeur === null && cles.length) valeur = lire(un(cles[0], 'value'));
+      o[id] = {valeur: valeur, cles: cles.length,
+               kf: cles.map(k => ({w: num(k, 'when', 0), v: num(k, 'value', 0)}))};
+    });
+    return o;
+  }
+
+  function lireSequence(doc) {
+    const racine = doc.documentElement;
+    if (!racine || racine.tagName !== 'xmeml') throw new Error('not a Final Cut Pro XML (xmeml)');
+    const seqs = [...doc.getElementsByTagName('sequence')]
+      .filter(s => !s.parentNode || s.parentNode.tagName !== 'clipitem');
+    const seq = seqs.find(s => un(s, 'media')) || seqs[0];
+    if (!seq) throw new Error('no sequence in this XML');
+    return seq;
+  }
+
+  async function importerXml(texte, nomFichier) {
+    const doc = new DOMParser().parseFromString(texte, 'application/xml');
+    if (doc.getElementsByTagName('parsererror').length) throw new Error('unreadable XML');
+    const seq = lireSequence(doc);
+    const fpsSeq = cadence(un(seq, 'rate')) || PROJET.fps || 24;
+    const sc = seq.querySelector('media > video > format > samplecharacteristics');
+    const fmt = {w: sc ? num(sc, 'width', 0) : 0, h: sc ? num(sc, 'height', 0) : 0};
+    const nomSeq = txt(seq, 'name') || nomFichier.replace(/\.xml$/i, '') || 'premiere';
+
+    // Projet de destination : choisi au moment de l import.
+    const dest = await choisirDestination(nomSeq);
+    if (!dest) return;
+    await assurerSauvegarde();
+
+    // Les bibliotheques partagees (Music-score...) servent aussi a retrouver
+    // les rushes, surtout les sons : on ouvre celles qui ne le sont pas.
+    for (const x of (typeof BIBLIS !== 'undefined' ? BIBLIS : [])) {
+      if (projetOuvert(x)) continue;
+      try { await ouvrirProjetDisque(x, true); } catch (e) {}
+    }
+    const idx = indexFilms();
+    const rapport = {manquants: [], parNom: [], simplifies: [], ignores: [], notes: []};
+    const fichiers = {};
+    const clips = [], pistes = [], parIdXml = {};
+    let uid = 1;
+    const pisteId = (t, n) => (t === 'v' ? 'V' : 'A') + n;
+    const assurer = (t, n, mute) => {
+      const id = pisteId(t, n);
+      let p = pistes.find(x => x.id === id);
+      if (!p) {
+        p = {id: id, type: t, mute: false, solo: false};
+        if (t === 'a') p.vol = 1;
+        pistes.push(p);
+      }
+      if (mute) p.mute = true;
+      return p;
+    };
+
+    // Parcourt une sequence (eventuellement imbriquee). « decal » : seconde de
+    // la sequence MERE ou commence le temps 0 de celle-ci ; « fenetre » :
+    // [debut, fin] visibles dans la mere.
+    function parcourir(sq, fps, decal, fenetre, profondeur, etiquette) {
+      const media = un(sq, 'media'); if (!media) return;
+      [['video', 'v'], ['audio', 'a']].forEach(([genre, t]) => {
+        enfants(un(media, genre), 'track').forEach((piste, ip) => {
+          const n = ip + 1;
+          const coupee = /^false$/i.test(txt(piste, 'enabled'));
+          if (profondeur === 0) {
+            assurer(t, n, coupee);
+            if (coupee) rapport.simplifies.push('Track ' + pisteId(t, n) + ' disabled in Premiere: muted.');
+          } else if (coupee) return;
+          const items = [...piste.children];
+          items.forEach((it, k) => {
+            if (it.tagName === 'clipitem')
+              traiter(it, items, k, t, n, fps, decal, fenetre, profondeur, etiquette);
+          });
+        });
+      });
+    }
+
+    function traiter(it, items, k, t, n, fps, decal, fenetre, profondeur, etiquette) {
+      const r = cadence(un(it, 'rate')) || fps;
+      const nomItem = txt(it, 'name');
+      const pos = s => (Math.round(s * 100) / 100) + ' s';
+      const ctx = (etiquette ? etiquette + ' > ' : '') + pisteId(t, n);
+      let chemin = '', nomFic = nomItem;
+      const fil = un(it, 'file');
+      if (fil) {
+        const id = fil.getAttribute('id');
+        if (un(fil, 'pathurl')) {
+          chemin = decoder(txt(fil, 'pathurl')); nomFic = txt(fil, 'name') || nomDe(chemin);
+          fichiers[id] = {chemin: chemin, nom: nomFic};
+        } else if (id && fichiers[id]) { chemin = fichiers[id].chemin; nomFic = fichiers[id].nom; }
+      }
+      const imbr = un(it, 'sequence');
+      let ent = num(it, 'in', 0), sor = num(it, 'out', 0);
+      const deb = num(it, 'start', -1), fin2 = num(it, 'end', -1);
+      const voisin = a => { const x = items[k + a]; return x && x.tagName === 'transitionitem' ? x : null; };
+      const avant = voisin(-1), apres = voisin(1);
+      const coupe = tr => {
+        const s = num(tr, 'start', 0), e = num(tr, 'end', 0), al = txt(tr, 'alignment');
+        return /start/.test(al) ? s : /^end/.test(al) ? e : (s + e) / 2;
+      };
+      let retime = null;   // courbe de vitesse : {s0, s1} images SOURCE
+      let gain = 1, opac = 1, ech = 1, dx = 0, dy = 0, rev = false, vit = 1;
+      const autres = [];
+      enfants(it, 'filter').forEach(fl => {
+        const ef = un(fl, 'effect'); if (!ef) return;
+        const nom = txt(ef, 'name'), eid = txt(ef, 'effectid'), P = params(ef);
+        const lo = (nom + ' ' + eid).toLowerCase();
+        const cible = ctx + ' ' + nomFic;
+        if (/time ?remap|timeremap|speed/.test(lo)) {
+          const s = P.speed, gr = P.graphdict;
+          if (s && typeof s.valeur === 'number' && s.valeur !== 0) { vit = Math.abs(s.valeur) / 100; if (s.valeur < 0) rev = true; }
+          if (P.reverse && /true/i.test(String(P.reverse.valeur))) rev = true;
+          const variable = P.variablespeed && /^(1|true)$/i.test(String(P.variablespeed.valeur));
+          if (gr && gr.kf.length >= 2) {
+            // La courbe dit quelle image SOURCE est montree a chaque image de
+            // la timeline : in/out du plan sont dans le temps retouche.
+            const K = gr.kf.slice().sort((x, y) => x.w - y.w);
+            const at = w => {
+              if (w <= K[0].w) return K[0].v;
+              for (let q = 1; q < K.length; q++) if (w <= K[q].w) {
+                const a0 = K[q - 1], b0 = K[q];
+                return a0.v + (b0.v - a0.v) * (w - a0.w) / ((b0.w - a0.w) || 1);
+              }
+              return K[K.length - 1].v;
+            };
+            retime = {s0: at(ent), s1: at(sor)};
+            const pentes = [];
+            for (let q = 1; q < K.length; q++) if (K[q].w > Math.max(ent, K[q - 1].w) && K[q - 1].w < sor)
+              pentes.push((K[q].v - K[q - 1].v) / ((K[q].w - K[q - 1].w) || 1));
+            if (variable || pentes.some(x => Math.abs(x - pentes[0]) > 0.02 * Math.max(1, Math.abs(pentes[0]))))
+              rapport.simplifies.push(cible + ': speed ramp not supported, average speed kept.');
+            else if (Math.abs(Math.abs(pentes[0] || 1) - 1) > 0.005)
+              rapport.simplifies.push(cible + ': speed ×' + Math.abs(pentes[0]).toFixed(2) + ' applied.');
+          } else if ((s && s.cles > 1) || variable)
+            rapport.simplifies.push(cible + ': speed ramp not supported, constant speed ×' + vit.toFixed(2) + ' kept.');
+          else if (vit !== 1) rapport.simplifies.push(cible + ': speed ×' + vit.toFixed(2) + ' applied.');
+        } else if (/audio ?levels|audiolevels/.test(lo)) {
+          if (P.level && typeof P.level.valeur === 'number') gain = P.level.valeur;
+          if (P.level && P.level.cles > 1) rapport.simplifies.push(cible + ': audio level keyframes ignored (first value kept).');
+        } else if (/basic ?motion/.test(lo)) {
+          if (P.scale && typeof P.scale.valeur === 'number') ech = P.scale.valeur / 100;
+          const c = P.center && P.center.valeur;
+          if (c && typeof c === 'object') { dx = c.h * 100; dy = c.v * 100; }
+          if ((P.scale && P.scale.cles > 1) || (P.center && P.center.cles > 1))
+            rapport.simplifies.push(cible + ': scale/position keyframes ignored (first value kept).');
+          else if (ech !== 1 || dx || dy) rapport.simplifies.push(cible + ': scale/position taken from Basic Motion.');
+        } else if (/opacity/.test(lo)) {
+          if (P.opacity && typeof P.opacity.valeur === 'number') opac = Math.max(0, Math.min(1, P.opacity.valeur / 100));
+          if (P.opacity && P.opacity.cles > 1) rapport.simplifies.push(cible + ': opacity keyframes ignored (first value kept).');
+        } else autres.push(nom || eid);
+      });
+      // Plage source et duree sur la timeline.
+      let srcE = ent, srcO = sor, dureeSrc;
+      if (retime) {
+        srcE = Math.min(retime.s0, retime.s1); srcO = Math.max(retime.s0, retime.s1);
+        rev = retime.s1 < retime.s0;
+        const tl = Math.max(1e-9, sor - ent);
+        vit = Math.max(0.01, (srcO - srcE) / tl);
+        dureeSrc = srcO - srcE;
+      } else dureeSrc = Math.max(0, sor - ent);
+      // Vitesse deduite des durees quand aucun filtre ne la porte.
+      if (!retime && vit === 1 && deb >= 0 && fin2 > deb && dureeSrc > 0) {
+        const q = dureeSrc / (fin2 - deb);
+        if (Math.abs(q - 1) > 0.02 && Math.abs(r - fps) < 0.01) {
+          vit = q;
+          rapport.simplifies.push(ctx + ' ' + nomFic + ': speed ×' + q.toFixed(2) + ' deduced from the durations.');
+        }
+      }
+      // Position sur la timeline. start = -1 : le plan touche une transition.
+      const dureeTl = dureeSrc / vit / r;          // secondes, a la cadence du plan
+      let t0;
+      if (deb >= 0) t0 = decal + deb / fps;
+      else if (avant) t0 = decal + coupe(avant) / fps;
+      else if (fin2 >= 0) t0 = decal + fin2 / fps - dureeTl;
+      else t0 = decal;
+      if (deb < 0) rapport.notes.push(ctx + ' ' + nomFic + ': start position taken from the neighbouring transition.');
+      if (imbr) {
+        const fpsI = cadence(un(imbr, 'rate')) || fps;
+        const nomI = txt(imbr, 'name') || nomItem;
+        rapport.simplifies.push(ctx + ': nested sequence “' + nomI + '” flattened.');
+        parcourir(imbr, fpsI, t0 - (retime ? 0 : ent / r / vit), [t0, t0 + dureeTl], profondeur + 1,
+                  (etiquette ? etiquette + ' > ' : '') + nomI);
+        return;
+      }
+      if (autres.length)
+        rapport.ignores.push(ctx + ' ' + nomFic + ' @ ' + pos(t0) + ': effects ignored: ' + autres.join(', '));
+      if (!chemin) {
+        rapport.ignores.push(ctx + ' “' + (nomItem || 'untitled') + '” @ ' + pos(t0) +
+          ': title / graphic / generator (no media file), ignored.');
+        return;
+      }
+      let e0 = srcE / r, o0 = srcO / r;
+      if (fenetre) {                      // sequence imbriquee : on rogne
+        const fin0 = t0 + (o0 - e0) / vit;
+        if (fin0 <= fenetre[0] || t0 >= fenetre[1]) return;
+        if (t0 < fenetre[0]) { e0 += (fenetre[0] - t0) * vit; t0 = fenetre[0]; }
+        if (fin0 > fenetre[1]) o0 -= (fin0 - fenetre[1]) * vit;
+      }
+      // Son stereo : le 2e canal d une meme source n est pas un 2e son.
+      const st = un(it, 'sourcetrack');
+      if (t === 'a' && st && num(st, 'trackindex', 1) > 1) {
+        const jumeau = clips.find(c => c._t === 'a' && c._chemin === chemin &&
+          Math.abs(c.t0 - t0) < 1 / fps && Math.abs(c.e - e0) < 1 / fps);
+        if (jumeau) {
+          rapport.notes.push(ctx + ' ' + nomFic + ': stereo channel pair merged into one audio block.');
+          parIdXml[it.getAttribute('id')] = jumeau; return;
+        }
+      }
+      const c = {uid: uid++, piste: pisteId(t, n), t0: +t0.toFixed(4), e: +e0.toFixed(4), o: +o0.toFixed(4),
+                 vitesse: +vit.toFixed(4), fi: 0, fo: 0, gain: gain, opac: opac, ech: ech, dx: dx, dy: dy,
+                 mode: 'contain', couleur: 0, lien: null, _t: t, _chemin: chemin};
+      if (rev) { c.rev = true; rapport.simplifies.push(ctx + ' ' + nomFic + ': reversed.'); }
+      const m = trouver(chemin, idx, dest);
+      if (m) {
+        c.film = m.f.id; c.pj = m.f.pj; c.fichier = m.f.rel;
+        if (m.how === 'nom') rapport.parNom.push(chemin + '  →  ' + m.f.pj + (estBibli(m.f.pj) ? ' (shared library)' : '') + ' / ' + m.f.rel +
+          (m.amb > 1 ? '  (' + m.amb + ' files share this name, closest chosen)' : ''));
+      } else {
+        c.film = ''; c.pj = ''; c.fichier = nomDe(chemin);
+        c.annot = 'MISSING rush: ' + chemin;
+        rapport.manquants.push(ctx + ' @ ' + pos(t0) + '  ' + chemin);
+      }
+      const dt = tr => {
+        const nm = txt(tr, 'name') || txt(un(tr, 'effect'), 'name') || 'transition';
+        return {d: Math.abs(num(tr, 'end', 0) - num(tr, 'start', 0)) / fps, nm: nm,
+                noir: /dip|black|noir/i.test(nm) || /black/i.test(txt(tr, 'alignment'))};
+      };
+      if (avant) { const x = dt(avant); c.fi = +(x.noir ? x.d : x.d / 2).toFixed(3);
+        rapport.simplifies.push(ctx + ' ' + nomFic + ': “' + x.nm + '” → fade in ' + c.fi + ' s.'); }
+      if (apres) { const x = dt(apres); c.fo = +(x.noir ? x.d : x.d / 2).toFixed(3);
+        rapport.simplifies.push(ctx + ' ' + nomFic + ': “' + x.nm + '” → fade out ' + c.fo + ' s.'); }
+      if (/^false$/i.test(txt(it, 'enabled'))) {
+        if (t === 'v') c.opac = 0; else c.gain = 0;
+        c.annot = (c.annot ? c.annot + ' · ' : '') + 'disabled in Premiere';
+        rapport.simplifies.push(ctx + ' ' + nomFic + ' @ ' + pos(t0) + ': disabled clip (opacity/volume set to 0).');
+      }
+      c._liens = enfants(it, 'link').map(l => txt(l, 'linkclipref')).filter(Boolean);
+      c._id = it.getAttribute('id');
+      if (c._id) parIdXml[c._id] = c;
+      clips.push(c);
+    }
+
+    parcourir(seq, fpsSeq, 0, null, 0, '');
+    if (!clips.length) throw new Error('no clip found in this sequence');
+
+    // Liens video/son : composantes connexes des <link>.
+    const chef = new Map(clips.map(c => [c, c]));
+    const racineG = c => { let g = c; while (chef.get(g) !== g) g = chef.get(g); return g; };
+    clips.forEach(c => (c._liens || []).forEach(id => {
+      const b = parIdXml[id]; if (!b || !chef.has(b)) return;
+      chef.set(racineG(c), racineG(b));
+    }));
+    const numero = new Map(); let nl = 1;
+    clips.forEach(c => {
+      const g = racineG(c);
+      if (clips.filter(x => racineG(x) === g).length < 2) return;
+      if (!numero.has(g)) numero.set(g, 'L' + (nl++));
+      c.lien = numero.get(g);
+    });
+    clips.forEach(c => { delete c._t; delete c._chemin; delete c._liens; delete c._id; });
+
+    const marq = enfants(seq, 'marker').map(m => num(m, 'in', -1)).filter(v => v >= 0)
+      .map(v => +(v / fpsSeq).toFixed(3)).sort((a, b) => a - b);
+
+    pistes.sort((a, b) => a.type === b.type ? numPiste(a.id) - numPiste(b.id) : (a.type === 'v' ? -1 : 1));
+    if (!pistes.some(p => p.type === 'v')) pistes.unshift({id: 'V1', type: 'v', mute: false, solo: false});
+    if (!pistes.some(p => p.type === 'a')) pistes.push({id: 'A1', type: 'a', mute: false, solo: false, vol: 1});
+    if (!pistes.some(p => p.type === 'm')) pistes.push({id: 'M1', type: 'm', mute: false, solo: false, vol: 1});
+
+    // Nom libre : on n ecrase jamais une sequence existante.
+    let pris = [];
+    try { pris = ((await api('api/montages?projet=' + encodeURIComponent(dest))).montages || []).map(m => m.nom); }
+    catch (e) {}
+    const base = nomSeq.replace(/[\\\/:*?"<>|]+/g, ' ').trim() || 'premiere';
+    let nom = base, k = 1;
+    while (pris.indexOf(nom) >= 0 && k < 500) { k++; nom = base + '-' + k; }
+
+    const w = fmt.w || PROJET.w || 1280, h = fmt.h || PROJET.h || 720;
+    const fpsR = Math.round(fpsSeq * 1000) / 1000;
+    const projets = [...new Set(clips.map(c => c.pj).filter(Boolean).concat([dest]))];
+    const montage = {
+      version: 5, genere: new Date().toISOString(),
+      projet: {nom: nom, w: w, h: h, fps: fpsR},
+      hote: dest, projets: projets, fps: fpsR, format: {w: w, h: h},
+      tIn: null, tOut: null, PPS: PPS, marqueurs: marq, pistes: pistes, clips: clips,
+      source: 'Premiere XML : ' + nomFichier
+    };
+    await api('api/montage', {projet: dest, nom: nom, montage: montage});
+    try { noterDernier(dest, nom); } catch (e) {}
+    await chargerProjet(montage, nom, dest);
+    afficherRapport(nom, dest, clips.length, rapport, nomSeq !== nom);
+  }
+
+  // ---- Boites -------------------------------------------------------------
+  function boite(html) {
+    let v = document.getElementById('voileXml');
+    if (!v) {
+      v = document.createElement('div'); v.id = 'voileXml';
+      v.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;' +
+        'align-items:center;justify-content:center';
+      document.body.appendChild(v);
+    }
+    v.innerHTML = '<div style="background:#1b1b1f;color:#e8e8ea;border:1px solid #555;' +
+      'border-radius:8px;padding:18px 20px;max-width:760px;width:92vw;max-height:84vh;' +
+      'overflow:auto;font-size:13px;line-height:1.45">' + html + '</div>';
+    v.style.display = 'flex';
+    return v;
+  }
+  const fermer = () => { const v = document.getElementById('voileXml'); if (v) v.style.display = 'none'; };
+
+  function choisirDestination(nomSeq) {
+    return new Promise(res => {
+      const ok = OUVERTS.filter(p => !estBibli(p.nom) && !estCaptures(p.nom));
+      const defaut = hoteMontage() || (ok[0] || {}).nom;
+      if (!ok.length) { dire('open a project first', true); res(null); return; }
+      const v = boite('<h3 style="margin:0 0 10px">Import Premiere XML</h3>' +
+        '<div style="margin-bottom:8px">New sequence “' + E(nomSeq) + '” will be created in:</div>' +
+        '<select id="xmlDest" style="width:100%;padding:6px;margin-bottom:12px">' +
+        ok.map(p => '<option value="' + E(p.nom) + '"' + (p.nom === defaut ? ' selected' : '') + '>' +
+          E(aff(p.nom)) + '</option>').join('') + '</select>' +
+        '<div style="color:#999;font-size:12px;margin-bottom:12px">Each shot is linked to the file of its own project ' +
+        '(any folder of any open project). Nothing existing is overwritten.</div>' +
+        '<div style="text-align:right"><button class="outil" id="xmlNon">Cancel</button> ' +
+        '<button class="outil" id="xmlOui">Import</button></div>');
+      v.querySelector('#xmlNon').onclick = () => { fermer(); res(null); };
+      v.querySelector('#xmlOui').onclick = () => { const d = v.querySelector('#xmlDest').value; fermer(); res(d); };
+    });
+  }
+
+  function afficherRapport(nom, dest, n, r, renomme) {
+    const liste = (titre, l, couleur) => l.length
+      ? '<h4 style="margin:12px 0 4px;color:' + couleur + '">' + titre + ' (' + l.length + ')</h4>' +
+        '<ul style="margin:0;padding-left:18px;font-size:12px">' + l.map(x => '<li>' + E(x) + '</li>').join('') + '</ul>' : '';
+    boite('<h3 style="margin:0 0 6px">XML import: “' + E(nom) + '”</h3>' +
+      '<div>' + n + ' blocks created in <b>' + E(aff(dest)) + '</b>' +
+      (renomme ? ' (name already taken, numbered)' : '') + '. No existing sequence or catalogue was touched.</div>' +
+      liste('Missing rushes (not in the catalogue)', r.manquants, '#ff6b6b') +
+      liste('Matched by file name only', r.parNom, '#ffb347') +
+      liste('Simplified', r.simplifies, '#ffd866') +
+      liste('Ignored (titles, graphics, effects)', r.ignores, '#ffd866') +
+      liste('Notes', r.notes, '#9aa0a6') +
+      '<div style="text-align:right;margin-top:14px"><button class="outil" id="xmlFerme">Close</button></div>')
+      .querySelector('#xmlFerme').onclick = fermer;
+  }
+  window.importerXmlPremiere = importerXml;
+})();
+</script>
+<script>
+// ===========================================================================
+//  Laisser la place a la voix (ducking) : clic droit sur un bloc de la piste
+//  musique, quand des blocs de voix (pistes son A) sont aussi selectionnes.
+//  Seule la musique est touchee : elle baisse un peu (DUCK_DB) pendant les
+//  voix, avec une descente avant la voix et une remontee douce apres.
+//  Ce sont des images cles de volume (c.anim.gain), visibles et modifiables.
+// ===========================================================================
+const DUCK_DB = 4;        // baisse, en dB : legere
+const DUCK_AVANT = 0.35;  // la musique commence a baisser un peu avant la voix
+const DUCK_APRES = 0.9;   // et remonte doucement apres
+const DUCK_FUSION = DUCK_AVANT + DUCK_APRES + 0.05;  // voix proches : pas de « pompage »
+
+function duckSelection() {
+  const mus = [], voix = [];
+  CLIPS.forEach(c => {
+    if (!clipsSel.has(c.uid) || estSynth(c) || !c.film) return;
+    const p = piste(c.piste); if (!p) return;
+    if (p.type === 'm') mus.push(c);
+    else if (p.type === 'a' && !p.mute && !(c.gain === 0)) voix.push(c);
+  });
+  return {mus: mus, voix: voix};
+}
+function duckPossible() {
+  const s = duckSelection();
+  return s.mus.length > 0 && s.voix.length > 0;
+}
+function duckExiste() {
+  return CLIPS.some(c => clipsSel.has(c.uid) && c.duck);
+}
+
+// Plages de voix fusionnees : [[debut, fin], ...] en secondes de la timeline.
+function duckPlages(voix) {
+  const l = voix.map(c => [c.t0, fin(c)]).filter(p => p[1] - p[0] > 0.2)
+    .sort((a, b) => a[0] - b[0]);
+  const out = [];
+  l.forEach(p => {
+    const d = out[out.length - 1];
+    if (d && p[0] - d[1] < DUCK_FUSION) d[1] = Math.max(d[1], p[1]);
+    else out.push([p[0], p[1]]);
+  });
+  return out;
+}
+
+// Coefficient de volume de la musique a l instant t (1 = pas de baisse).
+function duckFacteur(plages, t, f) {
+  let k = 1;
+  plages.forEach(([a, b]) => {
+    let v = 1;
+    if (t >= a - DUCK_AVANT && t < a) v = 1 + (f - 1) * (t - (a - DUCK_AVANT)) / DUCK_AVANT;
+    else if (t >= a && t <= b) v = f;
+    else if (t > b && t < b + DUCK_APRES) v = f + (1 - f) * (t - b) / DUCK_APRES;
+    if (v < k) k = v;
+  });
+  return k;
+}
+
+// Nouvelles images cles de volume d un bloc de musique (sans le modifier).
+// Garde son volume de base et ses images cles existantes.
+function duckCles(c, plages, db) {
+  const f = Math.pow(10, -db / 20), d = dur(c);
+  const touche = plages.filter(([a, b]) => b + DUCK_APRES > c.t0 && a - DUCK_AVANT < c.t0 + d);
+  if (!touche.length) return null;
+  const T = new Set([0, +d.toFixed(3)]);
+  touche.forEach(([a, b]) => [a - DUCK_AVANT, a, b, b + DUCK_APRES].forEach(t => {
+    const r = t - c.t0; if (r > 0 && r < d) T.add(+r.toFixed(3));
+  }));
+  ((c.anim && c.anim.gain) || []).forEach(p => T.add(+p.t.toFixed(3)));
+  return [...T].sort((x, y) => x - y).map(t => ({
+    t: t, v: +(valAnim(c, 'gain', c.t0 + t) * duckFacteur(touche, c.t0 + t, f)).toFixed(4)
+  }));
+}
+
+function duckRetirerDe(c) {
+  if (!c.duck) return;
+  c.anim = c.anim || {};
+  if (c.duck.prev && c.duck.prev.length) c.anim.gain = c.duck.prev.map(p => Object.assign({}, p));
+  else delete c.anim.gain;
+  if (!Object.keys(c.anim).length) delete c.anim;
+  delete c.duck;
+}
+
+function duckMusique() {
+  const s = duckSelection();
+  if (!s.mus.length || !s.voix.length) {
+    dire('select the music block(s) and the voice block(s) first', true); return;
+  }
+  if (s.mus.some(c => verrouillee(c.piste))) { direVerrou(s.mus.find(c => verrouillee(c.piste)).piste); return; }
+  const plages = duckPlages(s.voix);
+  if (!plages.length) { dire('no voice found in the selection', true); return; }
+  memoriser();
+  let n = 0, sans = 0;
+  s.mus.forEach(c => {
+    duckRetirerDe(c);                       // relancer ne baisse pas deux fois
+    const cles = duckCles(c, plages, DUCK_DB);
+    if (!cles) { sans++; return; }
+    c.duck = {prev: ((c.anim && c.anim.gain) || []).map(p => Object.assign({}, p)), db: DUCK_DB};
+    c.anim = c.anim || {};
+    c.anim.gain = cles;
+    n++;
+  });
+  rendreTimeline(); resynchroniser(true); rendreReglages();
+  dire(n ? 'music lowered by ' + DUCK_DB + ' dB under ' + plages.length + ' voice passage' +
+         (plages.length > 1 ? 's' : '') + ' (' + n + ' music block' + (n > 1 ? 's' : '') + ')' +
+         (sans ? ', ' + sans + ' without any voice over it' : '')
+         : 'the voices do not overlap the music block(s)', !n);
+}
+
+function duckAnnuler() {
+  const l = CLIPS.filter(c => clipsSel.has(c.uid) && c.duck);
+  if (!l.length) return;
+  memoriser();
+  l.forEach(duckRetirerDe);
+  rendreTimeline(); resynchroniser(true); rendreReglages();
+  dire('ducking removed from ' + l.length + ' music block' + (l.length > 1 ? 's' : ''));
+}
+</script>
+<script>
+// ===========================================================================
+//  « Replace with Rush… » : clic droit sur un bloc. On choisit un rush dans une
+//  liste (qu on peut lire avant), et le bloc le remplace sur la timeline :
+//  meme place, meme piste, memes reglages (vitesse, fondus, cadrage, volume,
+//  images cles). Coche « same length » : le bloc garde sa duree.
+//  Le point d entree du nouveau rush est la position du lecteur (0 par defaut).
+// ===========================================================================
+function remplacerPossible(c) {
+  return !!c && !estSynth(c) && !!c.film && !!piste(c.piste);
+}
+
+function remplacerPar(c, f, debut, memeLongueur) {
+  if (verrouillee(c.piste)) { direVerrou(c.piste); return false; }
+  const p0 = piste(c.piste);
+  const groupe = (p0.type === 'v') ? groupeLie(c) : [c];
+  memoriser();
+  const vit = vAbs(c), dTl = dur(c);
+  const image = !!f.image, total = image ? 3600 : (f.s || 0);
+  let e = Math.max(0, Math.min(debut || 0, Math.max(0, total - 0.08)));
+  let o, note = '';
+  if (memeLongueur) {
+    const besoin = dTl * vit;
+    if (!image && total - e < besoin - 0.001) {
+      e = Math.max(0, total - besoin);                // on recule le point d entree
+      if (total < besoin - 0.001) note = ' (the rush is shorter: block shortened)';
+    }
+    o = image ? e + besoin : Math.min(total, e + besoin);
+  } else {
+    o = image ? e + Math.max(dTl, 3) * vit : total;
+  }
+  let perdus = 0;
+  groupe.slice().forEach(x => {
+    const pt = piste(x.piste);
+    const memeGenre = (pt.type === 'v') === (p0.type === 'v');
+    if (x !== c && !memeGenre) {
+      // le son lie : il suit le nouveau rush s il en a un, sinon il part
+      if (f.a === false || image) {
+        CLIPS.splice(CLIPS.indexOf(x), 1); clipsSel.delete(x.uid); perdus++; return;
+      }
+    }
+    x.film = f.id; x.pj = f.pj; x.fichier = f.rel;
+    x.e = +e.toFixed(3); x.o = +o.toFixed(3);
+    delete x.duck;
+  });
+  // un son remplace seul quitte son image : plus de lien
+  if (p0.type !== 'v' && c.lien) {
+    const l = c.lien; c.lien = null;
+    const reste = CLIPS.filter(x => x.lien === l);
+    if (reste.length < 2) reste.forEach(x => { x.lien = null; });
+  }
+  if (perdus) {
+    const l = c.lien, reste = l ? CLIPS.filter(x => x.lien === l) : [];
+    if (reste.length < 2) reste.forEach(x => { x.lien = null; });
+  }
+  rendreTimeline(); resynchroniser(true); rendreReglages();
+  dire('block replaced by “' + f.nom + '”, in ' + fmt(e) + (note || '') +
+       (perdus ? ' — its linked sound was removed (the rush has none)' : ''));
+  return true;
+}
+
+function boiteRemplacer(uid) {
+  const c = parUid(uid);
+  if (!remplacerPossible(c)) return;
+  const sonore = piste(c.piste).type !== 'v';
+  const echap = x => String(x === undefined || x === null ? '' : x)
+    .replace(/[&<>"]/g, k => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[k]));
+  let liste = FILMS.filter(f => !f.absent && (sonore ? (f.son_seul || f.a !== false) && !f.image
+                                                     : !f.son_seul));
+  const projets = [...new Set(liste.map(f => f.pj))].sort();
+  const actuel = PAR_ID[c.film] || {};
+  let choisi = null, limite = 120;
+
+  let v = document.getElementById('voileRemplacer');
+  if (v) v.remove();
+  v = document.createElement('div'); v.id = 'voileRemplacer';
+  v.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:99998;' +
+    'display:flex;align-items:center;justify-content:center';
+  v.innerHTML =
+    '<div style="background:var(--fond2,#1b1b1f);color:var(--texte,#e8e8ea);border:1px solid #555;' +
+    'border-radius:8px;width:min(1100px,96vw);height:min(720px,92vh);display:flex;flex-direction:column;font-size:13px">' +
+    '<div style="padding:12px 16px;border-bottom:1px solid #444;display:flex;gap:12px;align-items:center;flex-wrap:wrap">' +
+      '<b style="font-size:15px">Replace with Rush</b>' +
+      '<span style="color:#999;font-size:12px">now: ' + echap(actuel.nom || 'shot') + ' · ' + fmt(dur(c)) + '</span>' +
+      '<input id="rpQ" placeholder="search a rush…" style="flex:1;min-width:140px;padding:5px 8px">' +
+      '<select id="rpPj" style="padding:5px"><option value="">All projects</option>' +
+        projets.map(p => '<option value="' + echap(p) + '">' + echap(typeof affNom === 'function' ? affNom(p) : p) + '</option>').join('') +
+      '</select></div>' +
+    '<div style="flex:1;display:flex;min-height:0">' +
+      '<div id="rpListe" style="flex:1;overflow:auto;padding:10px;display:grid;' +
+        'grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;align-content:start"></div>' +
+      '<div style="width:340px;border-left:1px solid #444;padding:12px;display:flex;flex-direction:column;gap:8px">' +
+        '<div id="rpLecteur" style="background:#000;border-radius:6px;min-height:150px;display:flex;' +
+          'align-items:center;justify-content:center;color:#777;overflow:hidden">pick a rush to play it</div>' +
+        '<div id="rpInfo" style="color:#999;font-size:12px;min-height:34px"></div>' +
+        '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="rpMeme" checked> ' +
+          '<span>same length <span style="color:#999">(' + fmt(dur(c)) + ')</span></span></label>' +
+        '<div style="color:#999;font-size:11.5px">The new rush starts where the player is paused ' +
+          '(or at its beginning). Speed, fades, framing, volume and keyframes are kept.</div>' +
+        '<div style="flex:1"></div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button class="outil" id="rpNon">Cancel</button>' +
+          '<button class="outil" id="rpOui" disabled>Replace</button></div>' +
+      '</div></div></div>';
+  document.body.appendChild(v);
+  const $v = s => v.querySelector(s);
+
+  const fermer = () => { const m = $v('#rpLecteur video, #rpLecteur audio'); if (m) m.pause(); v.remove(); };
+  const rendre = () => {
+    const q = ($v('#rpQ').value || '').toLowerCase().trim(), pj = $v('#rpPj').value;
+    const l = liste.filter(f => (!pj || f.pj === pj) && (!q || (f.nom + f.ext).toLowerCase().indexOf(q) >= 0))
+      .sort((a, b) => a.nom.localeCompare(b.nom));
+    const aff = l.slice(0, limite);
+    $v('#rpListe').innerHTML = aff.map(f =>
+      '<div class="rpc" data-id="' + f.id + '" style="cursor:pointer;border:2px solid ' +
+        (choisi && choisi.id === f.id ? '#2f6fed' : 'transparent') + ';border-radius:6px;padding:3px;background:#0003">' +
+      (f.son_seul || sonore
+        ? '<div style="height:74px;background:#2a2a30;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:22px">♪</div>'
+        : '<img loading="lazy" src="' + urlPoster(f) + '" style="width:100%;height:74px;object-fit:cover;border-radius:4px;background:#000" alt="">') +
+      '<div style="font-size:11px;margin-top:3px;word-break:break-all;max-height:2.7em;overflow:hidden" title="' + echap(f.nom) + '">' +
+        echap(f.nom) + '</div><div style="font-size:10.5px;color:#999">' +
+        (f.image ? 'image' : fmt(f.s || 0)) + (projets.length > 1 ? ' · ' + echap(f.pj) : '') + '</div></div>'
+    ).join('') + (l.length > aff.length
+      ? '<button class="outil" id="rpPlus" style="grid-column:1/-1">Show more (' + (l.length - aff.length) + ' left)</button>' : '') +
+      (!l.length ? '<div style="grid-column:1/-1;color:#999">no rush matches</div>' : '');
+  };
+  const choisir = f => {
+    choisi = f;
+    $v('#rpOui').disabled = false;
+    const m = f.son_seul || sonore ? 'audio' : 'video';
+    $v('#rpLecteur').innerHTML = f.image
+      ? '<img src="' + urlMedia(f) + '" style="max-width:100%;max-height:220px">'
+      : '<' + m + ' controls playsinline preload="metadata" src="' + urlMedia(f) +
+        '" style="width:100%;max-height:260px"></' + m + '>';
+    $v('#rpInfo').textContent = f.nom + f.ext + ' · ' + (f.image ? 'image' : fmt(f.s || 0)) +
+      (f.a === false ? ' · no sound' : '');
+    rendre();
+  };
+  const debutVoulu = () => {
+    const m = $v('#rpLecteur video, #rpLecteur audio');
+    return m && m.currentTime > 0.05 ? m.currentTime : 0;
+  };
+  const valider = () => {
+    if (!choisi) return;
+    const debut = debutVoulu();
+    const ok = remplacerPar(c, choisi, debut, $v('#rpMeme').checked);
+    if (ok) fermer();
+  };
+  $v('#rpListe').addEventListener('click', e => {
+    if (e.target.id === 'rpPlus') { limite += 120; rendre(); return; }
+    const k = e.target.closest('.rpc'); if (!k) return;
+    const f = PAR_ID[k.dataset.id]; if (f) choisir(f);
+  });
+  $v('#rpListe').addEventListener('dblclick', e => {
+    const k = e.target.closest('.rpc'); if (!k) return;
+    const f = PAR_ID[k.dataset.id]; if (f) { choisir(f); valider(); }
+  });
+  $v('#rpQ').oninput = () => { limite = 120; rendre(); };
+  $v('#rpPj').onchange = () => { limite = 120; rendre(); };
+  $v('#rpNon').onclick = fermer;
+  $v('#rpOui').onclick = valider;
+  v.addEventListener('mousedown', e => { if (e.target === v) fermer(); });
+  v.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.stopPropagation(); fermer(); }
+    else if (e.key === 'Enter' && choisi && e.target.tagName !== 'VIDEO' && e.target.tagName !== 'AUDIO') { e.stopPropagation(); valider(); }
+  });
+  rendre();
+  $v('#rpQ').focus();
+}
 </script>
 </body></html>
