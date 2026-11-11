@@ -7802,6 +7802,20 @@ function poserAnnotation(uid, txt) {
   rendreLanes();
   dire(txt ? 'annotation saved · Ctrl+Z to undo' : 'annotation deleted · Ctrl+Z to undo');
 }
+// Delete annotation : si le bloc clique fait partie de la selection, on vide
+// l annotation de TOUS les blocs selectionnes (une seule annulation Ctrl+Z).
+function supprimerAnnotations(uid) {
+  const c = parUid(uid);
+  if (!c) return;
+  const l = clipsSel.has(c.uid) ? CLIPS.filter(x => clipsSel.has(x.uid) && x.annot) : (c.annot ? [c] : []);
+  if (!l.length) return;
+  HISTO.push(instantane());
+  if (HISTO.length > 80) HISTO.shift();
+  modifie = true;
+  l.forEach(x => { delete x.annot; });
+  rendreLanes();
+  dire(l.length + ' annotation' + (l.length > 1 ? 's' : '') + ' deleted · Ctrl+Z to undo');
+}
 function boiteAnnotation(uid) {
   const c = parUid(uid);
   if (!c) return;
@@ -9189,7 +9203,7 @@ $('#lanes').addEventListener('contextmenu', e => {
       ? '<div class="it" data-act="mixson" title="sound blocks that touch get a very short ' +
         'crossfade at each cut, and a sound much louder than the others is lowered a little">' +
         '♫ Mix sound — soften the cuts, even out the levels</div>' : '') +
-    (typeof duckPossible === 'function' && estSon(piste(c.piste)) && piste(c.piste).type === 'm' && duckPossible()
+    (typeof duckPossible === 'function' && estSon(piste(c.piste)) && duckPossible()
       ? '<div class="it" data-act="duck" title="select the music block(s) and the voice block(s), ' +
         'then right-click the music: it goes down a little (' + DUCK_DB + ' dB) only while the voices ' +
         'speak, as volume keyframes you can still edit">♫ Make room for the voice ' +
@@ -9199,7 +9213,10 @@ $('#lanes').addEventListener('contextmenu', e => {
     (remplacerPossible(c) ? '<div class="it" data-act="remplacer" title="pick another rush in a list, play it first, and swap it into this block">⇄ Replace with Rush…</div>' : '') +
     '<div class="it" data-act="annoter">Ⓐ ' + (c.annot ? 'Edit annotation…' : 'Annotation…') +
       '</div>' +
-    (c.annot ? '<div class="it" data-act="annot-suppr">✕ Delete annotation</div>' : '') +
+    ((c.annot || (clipsSel.has(c.uid) && CLIPS.some(x => clipsSel.has(x.uid) && x.annot)))
+      ? '<div class="it" data-act="annot-suppr">✕ Delete annotation' +
+        (clipsSel.has(c.uid) && CLIPS.filter(x => clipsSel.has(x.uid) && x.annot).length > 1
+          ? 's (' + CLIPS.filter(x => clipsSel.has(x.uid) && x.annot).length + ' selected blocks)' : '') + '</div>' : '') +
     '<div class="it" data-act="dupliquer">⧉ Duplicate ' +
       (clipsSel.size > 1 ? 'the ' + clipsSel.size + ' blocks' : 'the block') +
       ' <span class="pousse" style="color:var(--sourd);font-size:10px">Ctrl+D · Ctrl · Ctrl+drag</span>' +
@@ -9427,7 +9444,7 @@ menu.addEventListener('click', async e => {
   else if (a === 'separer') boiteSeparation();
   else if (a === 'remplacer') boiteRemplacer(+menu.dataset.uid);
   else if (a === 'annoter') boiteAnnotation(+menu.dataset.uid);
-  else if (a === 'annot-suppr') poserAnnotation(+menu.dataset.uid, '');
+  else if (a === 'annot-suppr') supprimerAnnotations(+menu.dataset.uid);
   else if (a === 'mixson') mixerSon();
   else if (a === 'duck') duckMusique();
   else if (a === 'duck-off') duckAnnuler();
@@ -15434,7 +15451,7 @@ function srcBoucle() {
 // bouge pas.
 function srcGroupe(c) {
   return groupeLie(c).filter(x => x.film === c.film && !estSynth(x))
-    .map(x => ({c: x, e: x.e, o: x.o}));
+    .map(x => ({c: x, e: x.e, o: x.o, t0: x.t0}));
 }
 function srcAppliquerBloc(dep, dE, dO) {
   dep.forEach(s => {
@@ -15442,8 +15459,10 @@ function srcAppliquerBloc(dep, dE, dO) {
     let ne = Math.max(0, s.e + dE), no = Math.min(max, s.o + dO);
     if (no - ne < SRC_MIN) { if (dE) ne = no - SRC_MIN; else no = ne + SRC_MIN; }
     s.c.e = ne; s.c.o = no;
+    // tirer l entree : le bord GAUCHE du bloc suit, la fin reste ; tirer la sortie : le debut reste
+    if (dE) { s.c.t0 = Math.max(0, +(s.t0 + (ne - s.e) / vAbs(s.c)).toFixed(4)); }
     const el = elClip(s.c.uid);
-    if (el) el.style.width = (dur(s.c) * PPS) + 'px';
+    if (el) { el.style.width = (dur(s.c) * PPS) + 'px'; if (dE) el.style.left = (s.c.t0 * PPS) + 'px'; }
   });
 }
 // Glisser (poignee du milieu) : tout le groupe du meme ecart, borne pour que
