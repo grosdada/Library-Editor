@@ -312,6 +312,78 @@ function rangement_commun($pr)
     return array('dossiers' => $dossiers, 'ou' => $ou);
 }
 
+// ---------------------------------------------------------------------------
+//  Vue personnelle (1.3.120) : un compte ordinaire range, colore et marque a
+//  SA facon, sans jamais toucher au commun. Le commun, c est ce que fait
+//  l administrateur : c est le classement par defaut, que chacun peut revoir
+//  a tout moment en ajoutant ?defaut=1 aux lectures. Les ecritures d un compte
+//  ordinaire vont toujours dans ses propres fichiers ; l administrateur,
+//  lui, ecrit le commun comme avant.
+// ---------------------------------------------------------------------------
+function perso()
+{
+    return moi() !== '' && !suis_admin();
+}
+
+function veut_defaut()
+{
+    return !empty($_GET['defaut']);
+}
+
+function fichier_rangement_perso($pr)
+{
+    return dossier_projet($pr) . '/_rangement/_perso/' . moi() . '.json';
+}
+
+function fichier_marques_perso($pr)
+{
+    return dossier_projet($pr) . '/_marques_perso/' . moi() . '.json';
+}
+
+function fichier_presets_perso($g)
+{
+    return DOSSIER_DATA . '/_presets/_perso/' . moi() . '/' . $g . '.json';
+}
+
+// Le rangement vu par ce compte : le sien s il en a un (et ne demande pas le
+// defaut), sinon le commun. Rend [rangement, a-t-il un rangement perso].
+function rangement_vu($pr)
+{
+    $f = fichier_rangement_perso($pr);
+    $a = perso() && is_file($f);
+    if ($a && !veut_defaut()) {
+        $r = lire_json($f, null);
+        if (is_array($r)) {
+            return array($r, true);
+        }
+    }
+    return array(rangement_commun($pr), $a);
+}
+
+function marques_vues($pr)
+{
+    $m = lire_json(fichier_marques($pr), array());
+    if (!is_array($m)) {
+        $m = array();
+    }
+    if (perso() && !veut_defaut()) {
+        $p = lire_json(fichier_marques_perso($pr), array());
+        if (is_array($p)) {
+            foreach ($p as $id => $x) {
+                if (!is_array($x)) {
+                    continue;
+                }
+                $b = isset($m[$id]) && is_array($m[$id]) ? $m[$id] : array();
+                foreach ($x as $k => $v) {
+                    $b[$k] = $v;
+                }
+                $m[$id] = $b;
+            }
+        }
+    }
+    return $m;
+}
+
 function chemin_dossier($p)
 {
     $p = trim(str_replace('\\', '/', (string) $p), '/');
@@ -556,12 +628,13 @@ if ($route === 'rangement' && !$poste) {
     if ($pr === null) {
         erreur('unknown project', 404);
     }
-    $qui = 'commun';
-    $r = rangement_commun($pr);
+    list($r, $a_perso) = rangement_vu($pr);
+    $qui = ($a_perso && !veut_defaut()) ? moi() : 'commun';
     if (!isset($r['ou']) || !is_array($r['ou'])) {
         $r['ou'] = array();
     }
     repondre(array('ok' => true, 'projet' => $pr, 'qui' => $qui,
+        'perso' => perso(), 'a_perso' => $a_perso,
         'dossiers' => isset($r['dossiers']) ? $r['dossiers'] : array(),
         'ou' => (object) $r['ou']));
 }
@@ -578,10 +651,12 @@ if ($route === 'rangement' && $poste) {
     if ($t !== false && strlen($t) > MAX_RANGEMENT) {
         erreur('arrangement too large', 413);
     }
-    if (!ecrire_json(fichier_rangement($pr), $r)) {
+    if (!ecrire_json(perso() ? fichier_rangement_perso($pr)
+                             : fichier_rangement($pr), $r)) {
         erreur('could not save the arrangement', 500);
     }
-    repondre(array('ok' => true, 'projet' => $pr, 'qui' => 'commun',
+    repondre(array('ok' => true, 'projet' => $pr,
+        'qui' => perso() ? moi() : 'commun',
         'dossiers' => $r['dossiers'], 'ou' => (object) $r['ou']));
 }
 
@@ -633,8 +708,8 @@ function fichier_marques($pr)
 
 function avec_marques($pr, $films)
 {
-    $m = lire_json(fichier_marques($pr), array());
-    if (!is_array($m) || !$m) {
+    $m = marques_vues($pr);
+    if (!$m) {
         return $films;
     }
     foreach ($films as $i => $f) {
@@ -669,7 +744,7 @@ if ($route === 'marquer' && $poste) {
     if ($film === null || !preg_match('/^[0-9a-f]{6,32}$/', $id)) {
         erreur('unknown entry', 404);
     }
-    $fm = fichier_marques($pr);
+    $fm = perso() ? fichier_marques_perso($pr) : fichier_marques($pr);
     $m = lire_json($fm, array());
     if (!is_array($m)) {
         $m = array();
@@ -975,7 +1050,19 @@ if ($route === 'presets') {
     if ($f === null) {
         erreur('invalid preset kind');
     }
-    $l = lire_json($f, array());
+    if ($g === 'categories' && perso()) {
+        // Palette personnelle : copie du commun a la premiere modification.
+        $fp = fichier_presets_perso($g);
+        if ($poste) {
+            $l = lire_json(is_file($fp) ? $fp : $f, array());
+            $f = $fp;
+        } else {
+            $l = lire_json((!veut_defaut() && is_file($fp)) ? $fp : $f,
+                array());
+        }
+    } else {
+        $l = lire_json($f, array());
+    }
     if (!$poste) {
         // Un tableau PHP vide s encoderait en [] : on force l objet, sinon
         // l application recevrait une liste la ou elle attend un

@@ -16506,4 +16506,134 @@ function boiteRemplacer(uid) {
   $v('#rpQ').focus();
 }
 </script>
+<script>
+// ===========================================================================
+//  Vue personnelle (en ligne, comptes ORDINAIRES seulement).
+//  Chacun a son classement en dossiers, ses couleurs, ses favoris et sa
+//  palette, sans jamais toucher a ceux de l administrateur : le serveur range
+//  les ecritures d un compte ordinaire dans ses fichiers a lui. Ce que fait
+//  l administrateur est le CLASSEMENT PAR DEFAUT. Un interrupteur « My view /
+//  Default » montre momentanement ce defaut, sans rien perdre : en revenant
+//  sur « My view », on retrouve ses preferences. En vue « Default », on
+//  regarde seulement : rien ne s ecrit. Sur le bureau et pour
+//  l administrateur, ce bloc ne fait rien.
+// ===========================================================================
+let VUE_DEFAUT = false;
+const persoActif = () => !!(typeof ENLIGNE !== 'undefined' && ENLIGNE && MOI &&
+                            MOI.identifiant && !MOI.admin);
+const enDefaut = () => persoActif() && VUE_DEFAUT;
+const MSG_DEFAUT = 'you are looking at the default view, which only the administrator ' +
+                   'changes — switch back to “My view” to make your own changes';
+
+// Toutes les lectures de la vue, et les ecritures refusees, passent ici.
+const _api0 = api;
+api = function (route, corps, delai) {
+  if (enDefaut()) {
+    if (!corps && /^api\/(rangement|catalogue)\?/.test(route) && route.indexOf('defaut=') < 0)
+      route += '&defaut=1';
+    else if (!corps && /^api\/presets\?genre=categories(&|$)/.test(route) && route.indexOf('defaut=') < 0)
+      route += '&defaut=1';
+    else if (corps && (route === 'api/rangement' || route === 'api/marquer' ||
+             (route === 'api/presets' && corps.genre === 'categories')))
+      return Promise.reject(new Error(MSG_DEFAUT));
+  }
+  return _api0.call(this, route, corps, delai);
+};
+
+// La palette : sans palette dans la reponse (le defaut n en a jamais ecrit),
+// on revient a la palette de depart plutot que de garder celle de la vue d avant.
+chargerCategories = async function () {
+  let v = null, lu = false;
+  try {
+    const d = await api('api/presets?genre=categories');
+    lu = true;
+    v = d && d.presets && d.presets.palette;
+  } catch (e) {}
+  if (v && Array.isArray(v.liste)) CATS = nettoyerCats(v);
+  else if (lu && persoActif())
+    CATS = {suivant: 6, liste: CAT_DEPART.map(c => Object.assign({}, c))};
+  rendreCats();
+};
+
+// En vue « Default » : on ne change rien, et on le dit tout de suite.
+const _er0 = enregistrerRangement;
+enregistrerRangement = async function (pj) {
+  if (enDefaut()) {
+    await chargerRangement(pj); refondre(); rendre(); dire(MSG_DEFAUT, true);
+    return;
+  }
+  return _er0.apply(this, arguments);
+};
+const _ec0 = enregistrerCats;
+enregistrerCats = async function () {
+  if (enDefaut()) { await chargerCategories(); rendreGrille(); dire(MSG_DEFAUT, true); return false; }
+  return _ec0.apply(this, arguments);
+};
+['couleurRush', 'favRush', 'ajouterCat', 'effacerCat'].forEach(nom => {
+  const f0 = window[nom];
+  if (typeof f0 !== 'function') return;
+  window[nom] = function () {
+    if (enDefaut()) { dire(MSG_DEFAUT, true); return; }
+    return f0.apply(this, arguments);
+  };
+});
+
+async function changerVue(defaut) {
+  if (VUE_DEFAUT === defaut || !persoActif()) return;
+  VUE_DEFAUT = defaut;
+  document.body.classList.toggle('vuedefaut', defaut);
+  let ok = true;
+  try {
+    await Promise.all(OUVERTS.map(p => chargerRangement(p.nom)));
+    await Promise.all(OUVERTS.map(async p => {
+      const c = await api('api/catalogue?projet=' + encodeURIComponent(p.nom));
+      const par = {};
+      (c.films || []).forEach(f => { par[f.id] = f; });
+      p.films.forEach(f => {
+        const n = par[f.id] || {};
+        f.coul = n.coul || 0; f.fav = !!n.fav;
+        if (n.note !== undefined) f.note = n.note; else delete f.note;
+      });
+    }));
+    await chargerCategories();
+  } catch (e) { ok = false; dire('could not switch view — ' + e.message, true); }
+  majQui(); refondre(); rendre();
+  if (ok) dire(defaut
+    ? 'default view (the administrator’s) — your own folders and colours are kept, switch back to “My view”'
+    : 'back to your own view');
+}
+
+const _mq0 = majQui;
+majQui = function () {
+  _mq0.apply(this, arguments);
+  const q = $('#qui');
+  if (!q || !persoActif() || q.querySelector('.vueSw')) return;
+  const s = document.createElement('div');
+  s.className = 'vueSw';
+  s.title = 'My view: your own folders, colours and favourites. Default: the arrangement set by the ' +
+            'administrator, for looking only. Switching never loses anything.';
+  s.innerHTML = '<button data-v="mine" class="' + (VUE_DEFAUT ? '' : 'on') + '">My view</button>' +
+                '<button data-v="def" class="' + (VUE_DEFAUT ? 'on' : '') + '">Default</button>';
+  s.onclick = e => {
+    const b = e.target.closest('button');
+    if (b) changerVue(b.dataset.v === 'def');
+  };
+  q.insertBefore(s, q.querySelector('#bSortir'));
+};
+(function () {
+  const st = document.createElement('style');
+  st.textContent =
+    '.vueSw{flex:1 1 100%;display:flex;margin:5px 0 2px;border:1px solid var(--or);border-radius:5px;overflow:hidden}' +
+    '.vueSw button{flex:1;border:0!important;border-radius:0!important;background:transparent;color:var(--or);padding:3px 6px!important;cursor:pointer}' +
+    '.vueSw button.on{background:var(--or);color:#000}' +
+    '#bandeauDefaut{display:none;position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:9000;' +
+    'background:var(--or);color:#000;font-size:11px;padding:2px 14px;border-radius:0 0 6px 6px;pointer-events:none}' +
+    'body.vuedefaut #bandeauDefaut{display:block}';
+  document.head.appendChild(st);
+  const b = document.createElement('div');
+  b.id = 'bandeauDefaut';
+  b.textContent = 'Default view · read only · your own folders and colours are kept';
+  document.body.appendChild(b);
+})();
+</script>
 </body></html>
