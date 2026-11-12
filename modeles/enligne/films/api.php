@@ -1050,7 +1050,7 @@ if ($route === 'presets') {
     if ($f === null) {
         erreur('invalid preset kind');
     }
-    if ($g === 'categories' && perso()) {
+    if (in_array($g, array('categories', 'couleurs-dos'), true) && perso()) {
         // Palette personnelle : copie du commun a la premiere modification.
         $fp = fichier_presets_perso($g);
         if ($poste) {

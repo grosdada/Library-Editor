@@ -1896,15 +1896,19 @@ function rendreDossiers() {
       // Replie : la ligne n est pas rendue, mais reste dans le menu deroulant.
       if (!plie && !cache)
         h += '<div class="dos ' + (dossierActif === d.clef ? 'on' : '') +
+          (vrai && typeof couleurDos === 'function' ? ' dcol' + (couleurDos(d.pj, d.d) ? ' teinte' : '') : '') +
           '" data-clef="' + ech(d.clef) + '" data-pj="' + ech(d.pj) +
           '" data-d="' + ech(d.d) + '" style="margin-left:' + (12 + 14 * (bouts.length - 1)) +
-          'px" title="' + ech(d.d) + ' — double-click to rename">' +
+          'px' + (vrai && typeof styleDos === 'function' ? styleDos(d.pj, d.d) : '') +
+          '" title="' + ech(d.d) + ' — double-click to rename">' +
           (d.d === NONRANGE || (VUE === 'rangement' && !RANGEABLE) ? ''
             : '<span class="poignee" draggable="true" data-ordre="dos" ' +
               'title="drag to move this folder">⋮⋮</span>') +
           (enfants ? '<span class="chev" data-plier-dos="' + ech(d.clef) + '" title="' +
             (replie ? 'show' : 'hide') + ' its subfolders">' + (replie ? '▶' : '▼') + '</span>' : '') +
           '<b>' + ech(bouts[bouts.length - 1]) + '</b><i>' + (n[d.clef] || 0) + '</i>' +
+          (vrai && typeof couleurDos === 'function' ? '<span class="sPast' + (couleurDos(d.pj, d.d) ? '' : ' aucune') +
+            '" data-dos-coul="1" title="colour of this folder"></span>' : '') +
           (vrai ? '<button class="plus" data-sous-de="' + ech(d.clef) +
             '" title="new subfolder in “' + ech(d.d) + '”">+</button>' : '') + '</div>';
       o += '<option value="' + ech(d.clef) + '"' +
@@ -4016,6 +4020,7 @@ colDos.addEventListener('contextmenu', e => {
     colMenu.innerHTML = '<div class="lbl">' + rel.slice(0, 30) + '</div>' +
       '<div class="it" data-dos="renommer">✎ Rename…</div>' +
       '<div class="it" data-dos="sous">+ New subfolder…</div>' +
+      '<div class="it" data-dos="couleur">● Folder colour…</div>' +
       '<div class="sep"></div>' +
       '<div class="it" data-dos="effacer">✕ Delete folder…</div>';
   } else {
@@ -15019,6 +15024,7 @@ async function suivreRendu() {
   await chargerCategories();
   await chargerCouleursSeq();
   await chargerDossiersSeq();
+  if (typeof chargerCouleursDos === 'function') await chargerCouleursDos();
 
   try {
     const l = await api('api/projets');
@@ -16519,8 +16525,7 @@ function boiteRemplacer(uid) {
 //  l administrateur, ce bloc ne fait rien.
 // ===========================================================================
 let VUE_DEFAUT = false;
-const persoActif = () => !!(typeof ENLIGNE !== 'undefined' && ENLIGNE && MOI &&
-                            MOI.identifiant && !MOI.admin);
+const persoActif = () => !!(MOI && MOI.identifiant && !MOI.admin);   // le bureau n a pas de comptes : MOI.identifiant y est vide
 const enDefaut = () => persoActif() && VUE_DEFAUT;
 const MSG_DEFAUT = 'you are looking at the default view, which only the administrator ' +
                    'changes — switch back to “My view” to make your own changes';
@@ -16531,10 +16536,10 @@ api = function (route, corps, delai) {
   if (enDefaut()) {
     if (!corps && /^api\/(rangement|catalogue)\?/.test(route) && route.indexOf('defaut=') < 0)
       route += '&defaut=1';
-    else if (!corps && /^api\/presets\?genre=categories(&|$)/.test(route) && route.indexOf('defaut=') < 0)
+    else if (!corps && /^api\/presets\?genre=(categories|couleurs-dos)(&|$)/.test(route) && route.indexOf('defaut=') < 0)
       route += '&defaut=1';
     else if (corps && (route === 'api/rangement' || route === 'api/marquer' ||
-             (route === 'api/presets' && corps.genre === 'categories')))
+             (route === 'api/presets' && (corps.genre === 'categories' || corps.genre === 'couleurs-dos'))))
       return Promise.reject(new Error(MSG_DEFAUT));
   }
   return _api0.call(this, route, corps, delai);
@@ -16596,6 +16601,7 @@ async function changerVue(defaut) {
       });
     }));
     await chargerCategories();
+    if (typeof chargerCouleursDos === 'function') await chargerCouleursDos();
   } catch (e) { ok = false; dire('could not switch view — ' + e.message, true); }
   majQui(); refondre(); rendre();
   if (ok) dire(defaut
@@ -16634,6 +16640,154 @@ majQui = function () {
   b.id = 'bandeauDefaut';
   b.textContent = 'Default view · read only · your own folders and colours are kept';
   document.body.appendChild(b);
+})();
+</script>
+<script>
+// ===========================================================================
+//  La couleur des dossiers de rushes (comme celle des sequences, 1.3.68).
+//  Une pastille sur chaque dossier (ou clic droit > Folder colour), meme
+//  palette que les sequences. Rangee dans les prereglages de la bibliotheque
+//  (genre « couleurs-dos »), cle = empreinte de « projet + dossier ». En
+//  ligne, un compte ordinaire a les siennes (le serveur les range avec son
+//  classement) ; l administrateur ecrit celles du defaut. Elle suit le
+//  dossier quand on le renomme, et part avec lui quand on l efface.
+// ===========================================================================
+let DOS_COUL = {};
+const clefDos = (pj, d) => clefSeq(pj, '\u0001' + d);
+function couleurDos(pj, d) {
+  const v = DOS_COUL[clefDos(pj, d)];
+  const c = v && (typeof v === 'string' ? v : v.c);
+  return /^#[0-9a-f]{6}$/i.test(c || '') ? c : '';
+}
+// Les variables CSS d une ligne de dossier colore : la couleur, et le texte qui s y lit.
+function styleDos(pj, d) {
+  const c = couleurDos(pj, d);
+  if (!c) return '';
+  const n = parseInt(c.slice(1), 16);
+  const l = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return ';--sc:' + c + ';--st:' + (l > 0.55 ? '#1a1917' : '#fff');
+}
+async function chargerCouleursDos() {
+  try {
+    const d = await api('api/presets?genre=couleurs-dos');
+    DOS_COUL = (d && d.presets) || {};
+  } catch (e) {}
+}
+function menuCouleurDos(pj, d, ancre) {
+  const m = $('#menu');
+  const ici = couleurDos(pj, d).toLowerCase();
+  m.innerHTML = '<div class="lbl">Folder colour</div><div class="couls">' +
+    PALETTE_SEQ.map(c => '<span data-dos-c="' + c + '" style="background:' + c +
+      (c === ici ? ';outline:2px solid var(--encre);outline-offset:1px' : '') +
+      '"></span>').join('') +
+    '<span class="aucune" data-dos-c="" title="no colour"></span></div>';
+  m.dataset.pj = pj; m.dataset.rel = d;
+  placerMenu(m, ancre.getBoundingClientRect());
+}
+async function poserCouleurDos(pj, d, c, discret) {
+  if (typeof enDefaut === 'function' && enDefaut()) { dire(MSG_DEFAUT, true); return; }
+  const k = clefDos(pj, d), avant = DOS_COUL[k];
+  c = /^#[0-9a-f]{6}$/i.test(c || '') ? c : '';
+  if (!c && !avant) return;
+  if (c) DOS_COUL[k] = {c: c, p: pj, d: d}; else delete DOS_COUL[k];
+  if (!discret) rendreDossiers();
+  try {
+    await api('api/presets', c ? {genre: 'couleurs-dos', nom: k, valeur: DOS_COUL[k]}
+                               : {genre: 'couleurs-dos', nom: k, effacer: true});
+  } catch (err) {
+    if (avant) DOS_COUL[k] = avant; else delete DOS_COUL[k];
+    if (!discret) { rendreDossiers(); dire('colour not saved — ' + err.message, true); }
+  }
+}
+const dedansDos = (v, d) => v.d === d || String(v.d).startsWith(d + '/');
+async function deplacerCouleursDos(pj, ancien, cible) {
+  const l = Object.values(DOS_COUL).filter(v => v && v.p === pj && dedansDos(v, ancien));
+  for (const v of l) {
+    await poserCouleurDos(pj, v.d, '', true);
+    await poserCouleurDos(pj, cible + v.d.slice(ancien.length), v.c, true);
+  }
+  if (l.length) rendreDossiers();
+}
+async function retirerCouleursDos(pj, rel) {
+  const l = Object.values(DOS_COUL).filter(v => v && v.p === pj && dedansDos(v, rel));
+  for (const v of l) await poserCouleurDos(pj, v.d, '', true);
+  if (l.length) rendreDossiers();
+}
+
+// Renommer / effacer : la couleur suit.
+const _rdv0 = renommerDossierVirtuel;
+renommerDossierVirtuel = async function (pj, ancien, neuf) {
+  const p = String(neuf).trim().replace(/[\/\\:*?"<>|]/g, '-');
+  const b = String(ancien).split('/'); b[b.length - 1] = p;
+  const cible = b.join('/');
+  await _rdv0.apply(this, arguments);
+  if (p && p !== ancien && (rangementDe(pj).dossiers || []).includes(cible))
+    await deplacerCouleursDos(pj, ancien, cible);
+};
+const _edv0 = effacerDossierVirtuel;
+effacerDossierVirtuel = async function (pj, rel) {
+  await _edv0.apply(this, arguments);
+  if (rel && !(rangementDe(pj).dossiers || []).includes(rel)) await retirerCouleursDos(pj, rel);
+};
+const _api1 = api;
+api = async function (route, corps) {
+  const r = await _api1.apply(this, arguments);
+  try {
+    if (corps && route === 'api/dossier/renommer' && corps.ancien) {
+      const b = String(corps.ancien).split('/'); b[b.length - 1] = corps.nom;
+      await deplacerCouleursDos(corps.projet, corps.ancien, b.join('/'));
+    } else if (corps && route === 'api/dossier/effacer' && corps.dossier) {
+      await retirerCouleursDos(corps.projet, corps.dossier);
+    }
+  } catch (e) {}
+  return r;
+};
+
+// La pastille et le clic droit.
+colDos.addEventListener('click', e => {
+  const sp = e.target.closest('[data-dos-coul]');
+  if (!sp) return;
+  const ligne = sp.closest('.dos[data-d]');
+  if (!ligne) return;
+  e.stopPropagation(); e.preventDefault();
+  menuCouleurDos(ligne.dataset.pj, ligne.dataset.d, sp);
+}, true);
+colDos.addEventListener('dblclick', e => {
+  if (e.target.closest('[data-dos-coul]')) e.stopPropagation();
+}, true);
+colMenu.addEventListener('click', e => {
+  const act = e.target.closest('[data-dos="couleur"]');
+  const c = e.target.closest('[data-dos-c]');
+  if (act) {
+    e.stopPropagation();
+    const pj = colMenu.dataset.pj, rel = colMenu.dataset.rel;
+    fermerColMenu();
+    const ligne = $$('#dossiers .dos[data-d]').find(x => x.dataset.pj === pj && x.dataset.d === rel);
+    if (ligne) menuCouleurDos(pj, rel, ligne.querySelector('[data-dos-coul]') || ligne);
+  } else if (c) {
+    e.stopPropagation();
+    const pj = colMenu.dataset.pj, rel = colMenu.dataset.rel;
+    fermerColMenu();
+    poserCouleurDos(pj, rel, c.dataset.dosC);
+  }
+}, true);
+
+(function () {
+  const st = document.createElement('style');
+  st.textContent =
+    '.dos.dcol.teinte{background:color-mix(in srgb,var(--sc) 24%,transparent)}' +
+    '.dos.dcol.teinte:hover{background:color-mix(in srgb,var(--sc) 36%,transparent)}' +
+    '.dos.dcol.teinte.on{background:var(--sc);color:var(--st)}' +
+    '.dos.dcol.teinte.on b,.dos.dcol.teinte.on i{color:var(--st)}' +
+    '.dos.dcol .sPast{flex:0 0 auto;width:11px;height:11px;border-radius:50%;margin-left:auto;' +
+      'background:var(--sc);box-shadow:inset 0 0 0 1px #0006;cursor:pointer;opacity:.75}' +
+    '.dos.dcol .sPast.aucune{background:none;box-shadow:none;border:1px dashed #8a857c;' +
+      'box-sizing:border-box;opacity:0}' +
+    '.dos.dcol:hover .sPast{opacity:1}' +
+    '.dos.dcol .sPast:hover{transform:scale(1.3)}' +
+    '.dos.dcol.on .sPast{box-shadow:0 0 0 1px var(--st)}' +
+    '.dos.dcol.on .sPast.aucune{border-color:#1a1917}';
+  document.head.appendChild(st);
 })();
 </script>
 </body></html>
