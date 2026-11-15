@@ -560,6 +560,12 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
 .pEntete button.k{margin-right:auto;padding:0 3px;border:0;background:none;
  font-size:11px;line-height:1;opacity:.35;filter:grayscale(1)}
 .pEntete button.k:hover{opacity:.8}
+/* Les fleches d ordre des pistes, a droite du verrou : la derniere pousse le reste. */
+.pEntete button.k{margin-right:0}
+.pEntete button.ordre{padding:0 2px;border:0;background:none;font-size:9px;line-height:1;opacity:.6;cursor:pointer}
+.pEntete button.ordre.bas{margin-right:auto}
+.pEntete button.ordre:hover{opacity:1}
+.pEntete button.ordre.fin{opacity:.15;cursor:default}
 .pEntete button.k.on{opacity:1;filter:none}
 /* Une piste verrouillee : hachures par-dessus, blocs intouchables. */
 .lane.verrou{background-image:repeating-linear-gradient(135deg,#ffffff0d 0 6px,transparent 6px 12px)}
@@ -5208,8 +5214,12 @@ function couleurPiste(p) {
 }
 
 function rendreEntetes() {
-  $('#entetes').innerHTML = pistesOrdonnees().map(p => {
+  const ordreTout = pistesOrdonnees();
+  $('#entetes').innerHTML = ordreTout.map((p, ix) => {
     const v = volPiste(p);
+    // Les fleches d ordre ne sortent jamais de la famille : image en haut, son en bas.
+    const ordreHaut = ix > 0 && ordreTout[ix - 1].type === p.type;
+    const ordreBas = ix < ordreTout.length - 1 && ordreTout[ix + 1].type === p.type;
     return '<div class="pEntete' + (p.id === pisteActive ? ' active' : '') +
       '" data-piste="' + p.id + '" style="height:' + hauteurPiste(p) +
       'px;--pc:' + couleurPiste(p) + '" title="' + p.id + (p.id === pisteActive
@@ -5220,6 +5230,10 @@ function rendreEntetes() {
       '<b>' + p.id + '</b>' +
       '<button class="k ' + (p.lock ? 'on' : '') + '" data-lock="' + p.id + '" title="' +
       (p.lock ? 'locked — click to unlock' : 'lock this track') + '">🔒</button>' +
+      '<button class="ordre' + (ordreHaut ? '' : ' fin') + '" data-ordre="haut" data-piste-o="' + p.id +
+      '" title="move this track up (video stays above audio)">▲</button>' +
+      '<button class="ordre bas' + (ordreBas ? '' : ' fin') + '" data-ordre="bas" data-piste-o="' + p.id +
+      '" title="move this track down (video stays above audio)">▼</button>' +
       (estSon(p) ? '<i class="pVal' + (v === 1 ? ' neutre' : '') +
         '" title="double-click to type the volume">' +
         Math.round(v * 100) + '%</i>' : '') +
@@ -6320,6 +6334,25 @@ function retirerPiste(id) {
       (dedans.length > 1 ? 's' : '') : '') + ' — Ctrl+Z to undo');
 }
 
+// Changer l ordre des pistes : on echange la piste avec sa voisine de la meme
+// famille (image avec image, son avec son : jamais de melange). Le numero suit
+// la place (V3 est toujours au-dessus de V2), donc la piste emporte ses blocs, son
+// volume, ses reglages et on echange simplement les deux noms.
+function deplacerPiste(id, sens) {
+  const p = piste(id);
+  if (!p) return;
+  const l = pistesOrdonnees().filter(x => x.type === p.type);
+  const v = l[l.indexOf(p) + sens];
+  if (!v) return;
+  memoriser();
+  const a = p.id, b = v.id;
+  p.id = b; v.id = a;
+  CLIPS.forEach(c => { if (c.piste === a) c.piste = b; else if (c.piste === b) c.piste = a; });
+  if (pisteActive === a) pisteActive = b; else if (pisteActive === b) pisteActive = a;
+  rendreTimeline(); dessiner(); majMinimap();
+  dire('track moved ' + (sens < 0 ? 'up' : 'down') + ' — Ctrl+Z to undo');
+}
+
 // Clic droit sur l en-tete d une piste. On reutilise #menu, deja place et
 // ferme par le reste de l appli ; son gestionnaire de clic sort tout seul
 // quand l element vise ne porte pas sa propre clef.
@@ -6419,6 +6452,8 @@ $('#entetes').addEventListener('dblclick', e => {
 });
 $('#entetes').addEventListener('click', e => {
   if (e.target.closest('[data-vol], .pVal, .saisieVal, [data-hpiste]')) return;
+  const od = e.target.closest('[data-ordre]');
+  if (od) { deplacerPiste(od.dataset.pisteO, od.dataset.ordre === 'haut' ? -1 : 1); return; }
   const k = e.target.closest('[data-lock]');
   if (k) {
     memoriser();
@@ -12594,15 +12629,48 @@ function lierRackFx(r, c, sel) {
       return;
     }
     if (v === '-') {
-      const noms = Object.keys(FX_PRESETS).sort();
-      const nom = (prompt('Preset to delete:\n' + noms.join('\n')) || '').trim();
-      if (!nom) return;
-      try {
-        const d = await api('api/presets', {genre: 'fx', nom: nom, effacer: true});
-        FX_PRESETS = d.presets || {};
-        dire('preset “' + nom + '” deleted');
-        rendreReglages();
-      } catch (err) { dire('not deleted — ' + err.message, true); }
+      // Une liste avec une croix devant chaque preset : un clic sur la croix l efface.
+      const ancre = pr.getBoundingClientRect();
+      document.getElementById('fxEffPreset')?.remove();
+      const pop = document.createElement('div');
+      pop.id = 'fxEffPreset';
+      pop.style.cssText = 'position:fixed;z-index:10000;background:#1c1b1f;border:1px solid #555;' +
+        'border-radius:6px;padding:6px;max-height:60vh;overflow:auto;box-shadow:0 6px 20px #000a;' +
+        'min-width:200px;font-size:12px;color:#eee';
+      const fermer = () => { pop.remove(); document.removeEventListener('mousedown', dehors, true); };
+      const dehors = ev => { if (!pop.contains(ev.target)) fermer(); };
+      const dessiner = () => {
+        const noms = Object.keys(FX_PRESETS).sort();
+        if (!noms.length) { fermer(); return; }
+        pop.innerHTML = '<div style="opacity:.7;margin:0 4px 4px">Delete a preset (click ✕)</div>' +
+          noms.map(n => '<div class="fxEffLigne" data-n="' + encodeURIComponent(n) +
+            '" style="display:flex;align-items:center;gap:8px;padding:3px 4px;cursor:pointer">' +
+            '<span style="color:#ff6b6b;font-weight:700;width:16px;text-align:center">✕</span>' +
+            '<span>' + esc(n) + '</span></div>').join('') +
+          '<div class="fxEffFerme" style="text-align:right;margin-top:4px;opacity:.7;cursor:pointer">close</div>';
+      };
+      pop.onclick = async ev => {
+        if (ev.target.closest('.fxEffFerme')) { fermer(); return; }
+        const l = ev.target.closest('.fxEffLigne');
+        if (!l) return;
+        const nom = decodeURIComponent(l.dataset.n);
+        try {
+          const d = await api('api/presets', {genre: 'fx', nom: nom, effacer: true});
+          FX_PRESETS = d.presets || {};
+          dire('preset “' + nom + '” deleted');
+          dessiner();
+          rendreReglages();
+        } catch (err) { dire('not deleted — ' + err.message, true); }
+      };
+      pop.onmouseover = ev => {
+        const l = ev.target.closest('.fxEffLigne');
+        pop.querySelectorAll('.fxEffLigne').forEach(x => { x.style.background = x === l ? '#ffffff18' : ''; });
+      };
+      dessiner();
+      document.body.appendChild(pop);
+      pop.style.left = Math.max(4, Math.min(ancre.left, innerWidth - pop.offsetWidth - 4)) + 'px';
+      pop.style.top = Math.max(4, Math.min(ancre.bottom + 2, innerHeight - pop.offsetHeight - 4)) + 'px';
+      document.addEventListener('mousedown', dehors, true);
       return;
     }
     const maison = v.slice(0, 2) === 'm:';
