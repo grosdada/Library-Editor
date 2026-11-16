@@ -518,12 +518,12 @@ footer{flex:0 0 var(--hFooter);border-top:1px solid var(--trait);background:#151
 .minimap .mb.a{top:13px;height:6px}
 .minimap .vue{position:absolute;top:0;bottom:0;border:1px solid var(--orange);
  background:#d9532b22;pointer-events:none}
-.minimap .bulle{position:absolute;top:2px;z-index:7;background:#12110fee;
- border:1px solid var(--or);border-radius:3px;color:var(--or);
- font:9px/1.6 ui-monospace,monospace;padding:0 4px;white-space:nowrap;
- margin-left:5px;cursor:text}
-.minimap input.duree{position:absolute;top:1px;bottom:1px;z-index:8;width:92px;
- min-width:0;padding:0 5px;font:10px/1 ui-monospace,monospace;background:#12110f;
+.minimap .bulle{position:absolute;top:0;z-index:7;background:transparent;
+ border:0;border-radius:3px;color:var(--or);
+ font:bold 18px/22px ui-monospace,monospace;padding:0 4px;white-space:nowrap;
+ margin-left:5px;cursor:text;text-shadow:0 0 3px #000,0 0 6px #000,1px 1px 2px #000}
+.minimap input.duree{position:absolute;top:1px;bottom:1px;z-index:8;width:150px;
+ min-width:0;padding:0 5px;font:bold 16px/1 ui-monospace,monospace;background:#12110f;
  color:var(--or);border:1px solid var(--or);border-radius:3px}
 .minimap .bulle.gauche{margin-left:0;transform:translateX(-100%) translateX(-5px)}
 .minimap .mt{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;
@@ -5562,7 +5562,7 @@ function majTete() {
     const x = tLect / etendue() * mm;
     bu.textContent = fmt(tLect);
     bu.style.left = x + 'px';
-    bu.classList.toggle('gauche', x > mm - 66);
+    bu.classList.toggle('gauche', x > mm - 130);
   }
   majVue();
 }
@@ -5788,7 +5788,7 @@ function saisirDuree() {
     ' — Enter to set, Esc to cancel, empty to remove the out point';
   const bu = $('#bulleMt');
   const x = bu ? bu.offsetLeft : 0;
-  inp.style.left = Math.max(0, Math.min(mm.clientWidth - 94, x)) + 'px';
+  inp.style.left = Math.max(0, Math.min(mm.clientWidth - 152, x)) + 'px';
   mm.appendChild(inp);
   inp.focus(); inp.select();
   let fini = false;
